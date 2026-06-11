@@ -8,3 +8,6 @@ vitest.config.ts
 Dockerfile.web
 .dockerignore
 README.md
+# 環境変数ファイルはイメージに焼き込まない（COPY . . での秘匿情報混入を防ぐ）
+.env
+.env.*
