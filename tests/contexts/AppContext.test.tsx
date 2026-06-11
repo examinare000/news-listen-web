@@ -36,11 +36,6 @@ describe('Initial state', () => {
     const { result } = renderHook(() => useApp(), { wrapper })
     expect(result.current.state.currentPodcast).toBeNull()
   })
-
-  test('isPlaying is false initially', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-    expect(result.current.state.isPlaying).toBe(false)
-  })
 })
 
 // ==========================================================
@@ -140,33 +135,10 @@ describe('SET_PODCAST action', () => {
   })
 })
 
-describe('PLAY / PAUSE actions', () => {
-  test('sets isPlaying=true on PLAY', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    act(() => {
-      result.current.dispatch({ type: 'SET_PODCAST', podcast: SAMPLE_PODCAST })
-      result.current.dispatch({ type: 'PLAY' })
-    })
-
-    expect(result.current.state.isPlaying).toBe(true)
-  })
-
-  test('sets isPlaying=false on PAUSE', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    act(() => {
-      result.current.dispatch({ type: 'SET_PODCAST', podcast: SAMPLE_PODCAST })
-      result.current.dispatch({ type: 'PLAY' })
-      result.current.dispatch({ type: 'PAUSE' })
-    })
-
-    expect(result.current.state.isPlaying).toBe(false)
-  })
-})
-
-// NOTE: SET_TIME action and state.currentTime/state.duration were removed.
-// Playback time is the single source of truth in useAudioPlayer (spec §9).
+// NOTE: PLAY/PAUSE actions and state.isPlaying were removed.
+// isPlaying is the single source of truth in useAudioPlayer (spec §9).
+// AudioPlayerBar reads player.isPlaying directly from useAudioPlayerContext().
+// NOTE: SET_TIME action and state.currentTime/state.duration were also removed.
 // AudioPlayerBar.resume no longer re-loads the audio; it calls player.play() directly.
 
 describe('SET_SPEED action', () => {
@@ -220,7 +192,7 @@ describe('localStorage restore — default_playback_speed', () => {
 // ==========================================================
 // 状態の不変条件: 音量・再生位置は AppContext に置かない
 // ==========================================================
-describe('Volume is NOT in AppContext state', () => {
+describe('State fields managed in useAudioPlayer are NOT in AppContext', () => {
   test('AppContext state does not contain a volume field (volume managed in useAudioPlayer)', () => {
     const { result } = renderHook(() => useApp(), { wrapper })
     // volume フィールドが存在しないことを確認（spec §9 の設計判断）
@@ -231,5 +203,11 @@ describe('Volume is NOT in AppContext state', () => {
     const { result } = renderHook(() => useApp(), { wrapper })
     expect(result.current.state).not.toHaveProperty('currentTime')
     expect(result.current.state).not.toHaveProperty('duration')
+  })
+
+  test('AppContext state does not contain isPlaying (managed in useAudioPlayer as single source of truth)', () => {
+    const { result } = renderHook(() => useApp(), { wrapper })
+    // isPlaying は useAudioPlayer が唯一の正規源 — AppContext に持つと二重管理になる
+    expect(result.current.state).not.toHaveProperty('isPlaying')
   })
 })

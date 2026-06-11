@@ -15,10 +15,9 @@ export interface AppState {
   baseUrl: string
   apiKey: string
   currentPodcast: Podcast | null
-  isPlaying: boolean
   playbackSpeed: number
   // NOTE: volume is intentionally NOT here — managed by useAudioPlayer (spec §9)
-  // NOTE: currentTime/duration are intentionally NOT here — managed by useAudioPlayer (single source of truth)
+  // NOTE: isPlaying/currentTime/duration are intentionally NOT here — managed by useAudioPlayer (single source of truth)
 }
 
 const DEFAULT_STATE: AppState = {
@@ -27,7 +26,6 @@ const DEFAULT_STATE: AppState = {
   baseUrl: '',
   apiKey: '',
   currentPodcast: null,
-  isPlaying: false,
   playbackSpeed: 1.0,
 }
 
@@ -39,8 +37,6 @@ type Action =
   | { type: 'CONFIGURE'; baseUrl: string; apiKey: string }
   | { type: 'RESTORE_DONE' }
   | { type: 'SET_PODCAST'; podcast: Podcast }
-  | { type: 'PLAY' }
-  | { type: 'PAUSE' }
   | { type: 'SET_SPEED'; speed: number }
 
 function reducer(state: AppState, action: Action): AppState {
@@ -51,10 +47,6 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, isRestoring: false }
     case 'SET_PODCAST':
       return { ...state, currentPodcast: action.podcast }
-    case 'PLAY':
-      return { ...state, isPlaying: true }
-    case 'PAUSE':
-      return { ...state, isPlaying: false }
     case 'SET_SPEED':
       return { ...state, playbackSpeed: action.speed }
     default:

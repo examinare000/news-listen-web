@@ -26,13 +26,11 @@ export function AudioPlayerBar() {
   async function handlePlayPause() {
     if (player.isPlaying) {
       player.pause()
-      dispatch({ type: 'PAUSE' })
     } else {
       // Resume from current position — the Audio element retains src and
       // currentTime across pause, so re-loading would destructively reset
       // the playhead to 0. Just call play().
       await player.play()
-      dispatch({ type: 'PLAY' })
     }
   }
 
@@ -91,9 +89,8 @@ export function AudioPlayerBar() {
         aria-label="速度"
         value={state.playbackSpeed}
         onChange={(e) => {
-          const speed = Number(e.target.value)
-          player.setSpeed(speed)
-          dispatch({ type: 'SET_SPEED', speed })
+          // Dispatch to AppContext; the useEffect above syncs state.playbackSpeed → player.setSpeed()
+          dispatch({ type: 'SET_SPEED', speed: Number(e.target.value) })
         }}
       >
         {PLAYBACK_SPEEDS.map((s) => (

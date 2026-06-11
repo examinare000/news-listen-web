@@ -32,10 +32,12 @@ export function useStartPodcast(): (podcastId: string) => Promise<void> {
       player.load(fresh.audio_url, savedPosition, fresh.id)
       await player.play()
       dispatch({ type: 'SET_PODCAST', podcast: fresh })
-      dispatch({ type: 'PLAY' })
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(`再生できませんでした (${err.status})`, 'error')
+      } else {
+        // player.play() may reject with NotAllowedError (autoplay policy) or other DOMExceptions
+        showToast('再生できませんでした', 'error')
       }
     }
   }

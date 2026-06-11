@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { AppProvider } from '@/contexts/AppContext'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
+import { ToastProvider } from '@/components/ui/Toast'
 import type { Podcast } from '@/types/index'
 import { setupMockAudio } from '../helpers/mockAudio'
 
@@ -33,9 +34,11 @@ const SAMPLE_PODCAST: Podcast = {
 function renderWithContext(currentPodcast: Podcast | null = null) {
   return render(
     <AppProvider initialState={{ currentPodcast }}>
-      <AudioPlayerProvider>
-        <AudioPlayerBar />
-      </AudioPlayerProvider>
+      <ToastProvider>
+        <AudioPlayerProvider>
+          <AudioPlayerBar />
+        </AudioPlayerProvider>
+      </ToastProvider>
     </AppProvider>
   )
 }
@@ -108,6 +111,20 @@ describe('Play / Pause', () => {
 
     // Position should be preserved at 120, not reset to 0
     expect(mockAudio.currentTime).toBe(120)
+  })
+
+  test('Given audio element fires error event, shows toast "音声を再生できません" (spec §9 L144)', async () => {
+    renderWithContext(SAMPLE_PODCAST)
+
+    // Start playing so audio element is active
+    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+
+    // Simulate native Audio error (network failure, codec error, etc.)
+    mockAudio.fireError()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('音声を再生できません')
+    })
   })
 })
 
@@ -205,9 +222,11 @@ describe('Speed selector', () => {
     // Render with a non-default playback speed in AppContext (simulates restored default)
     render(
       <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST, playbackSpeed: 1.5 }}>
-        <AudioPlayerProvider>
-          <AudioPlayerBar />
-        </AudioPlayerProvider>
+        <ToastProvider>
+          <AudioPlayerProvider>
+            <AudioPlayerBar />
+          </AudioPlayerProvider>
+        </ToastProvider>
       </AppProvider>
     )
 
