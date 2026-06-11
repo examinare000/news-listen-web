@@ -87,6 +87,9 @@ export function SetupModal({ onConfigure }: SetupModalProps) {
 
       {testStatus === 'success' && <p>接続成功</p>}
       {testStatus === 'error' && <p>接続エラー</p>}
+
+      {/* 誤った値を保存しても後から修正できることを明示し、修正導線の不在による行き詰まりを防ぐ */}
+      <p>保存後も、下部の Settings タブからいつでも変更できます。</p>
     </div>
   )
 }
