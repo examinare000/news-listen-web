@@ -64,6 +64,12 @@ describe('SettingsPage — display', () => {
     expect(screen.getByText(/サーバー側設定/)).toBeInTheDocument()
   })
 
+  test('Shows guidance that the API URL and key can be edited here', async () => {
+    // API キーの修正導線がここにあることを明示する案内
+    renderSettingsPage()
+    expect(screen.getByText(/ここでいつでも変更できます/)).toBeInTheDocument()
+  })
+
   test('Renders speed selector with 8 options', async () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
