@@ -38,6 +38,9 @@ export default function SettingsPage() {
       <section>
         <h2>API 設定</h2>
 
+        {/* API キーの修正導線がここにあることを明示する（初回設定後の変更経路） */}
+        <p>API の接続先 URL と API キーはここでいつでも変更できます。API キー欄を空欄のまま保存すると、既存のキーを保持します。</p>
+
         <p>
           <strong>現在の API URL:</strong> {state.baseUrl}
         </p>

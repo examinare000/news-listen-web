@@ -93,6 +93,12 @@ describe('SetupModal', () => {
     expect(screen.getByRole('button', { name: /接続テスト|test|確認/i })).toBeInTheDocument()
   })
 
+  test('Shows guidance that the API config can be changed later from Settings', () => {
+    // 初回入力で誤ったキーを保存しても、後から修正できる導線があることをユーザーに示す
+    renderModal()
+    expect(screen.getByText(/Settings.*いつでも変更できます|いつでも変更できます/)).toBeInTheDocument()
+  })
+
   test('Given connection test button clicked, calls checkHealth via /api/backend/health', async () => {
     const { createApiClient } = await import('@/lib/api')
     createApiClient.mockReturnValue({
