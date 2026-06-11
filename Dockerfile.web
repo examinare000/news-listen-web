@@ -1,0 +1,34 @@
+# web/Dockerfile.web — Next.js 15 を standalone 出力でコンテナ化（ローカル PoC 用）
+#
+# next.config.ts の output:'standalone' により、.next/standalone に server.js と
+# 必要最小限の node_modules のみが生成される。実行ステージはこれだけをコピーする。
+
+# ── 依存インストール ─────────────────────────────────────────
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# ── ビルド ──────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+# ── 実行 ────────────────────────────────────────────────────
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# 非 root 実行でコンテナ侵害時の権限を最小化する
+RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
+
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3000
+CMD ["node", "server.js"]
