@@ -163,6 +163,21 @@ describe('SubscriptionsPage — listing', () => {
     })
   })
 
+  test('source list keeps explicit role="list" for Safari/VoiceOver', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    })
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => screen.getByText('Hacker News'))
+    // jsdom は ul を常に list と解釈するため、明示属性そのものを検証する
+    expect(screen.getByRole('list')).toHaveAttribute('role', 'list')
+  })
+
   test('Given empty sources, shows "購読ソースがありません" and guidance to add form', async () => {
     const { createApiClient } = await import('@/lib/api')
     createApiClient.mockReturnValue({
