@@ -118,6 +118,7 @@ describe('NavigationBar', () => {
 
   test('renders the theme toggle in the sidebar footer', () => {
     render(<NavigationBar />)
-    expect(screen.getByRole('button', { name: 'テーマ切替' })).toBeInTheDocument()
+    // ThemeToggle は role="switch"（現在テーマを aria-checked で公開する）
+    expect(screen.getByRole('switch', { name: 'テーマ切替' })).toBeInTheDocument()
   })
 })
