@@ -1,6 +1,6 @@
 /*
  * docs/design/app-ui.html の <style> ブロック（L17〜1363）+ @keyframes spin（L2001〜2003）の全量移植。
- * デザイン正本からの意図的な差分は以下の 3 点のみ（00-overview.md §2-D26 / §3.2）:
+ * デザイン正本からの意図的な差分は以下の 3 点のみ（docs/adr/003-web-pure-css-design-tokens.md）:
  *   1. font-family リテラル → next/font が注入する CSS 変数（--font-display / --font-body / --font-mono）
  *   2. .app-shell の grid-template-rows: 1fr var(--player-h) → 1fr auto
  *      WHY: プレイヤーバーは currentPodcast が null の間描画されないため、固定高だと空行が残る

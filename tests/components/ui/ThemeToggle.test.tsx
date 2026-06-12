@@ -6,7 +6,7 @@ import { KEY_THEME } from '@/lib/config'
 
 // ==========================================================
 // ThemeToggle — html[data-theme] のトグル + localStorage 永続化
-// （DOM が単一の真実。テーマのグローバル state は持たない: 00-overview.md §3.3）
+// （DOM が単一の真実。テーマのグローバル state は持たない: docs/adr/004-web-theme-dom-state.md）
 // role="switch" + aria-checked で現在テーマを支援技術へ伝える
 // （checked=true はトラックの ON 表示と同じ「ライトテーマ」を意味する）
 // ==========================================================

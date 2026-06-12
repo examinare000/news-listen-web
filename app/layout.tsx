@@ -9,7 +9,7 @@ import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import './globals.css'
 
 // next/font によるビルド時セルフホスティング。<link> 直書きにしないのは、
-// Docker コンテナ実行時の Google Fonts への外部リクエストを消すため（00-overview.md §3.2）
+// Docker コンテナ実行時の Google Fonts への外部リクエストを消すため（docs/adr/003-web-pure-css-design-tokens.md）
 const playfairDisplay = Playfair_Display({
   subsets: ['latin'],
   weight: ['400', '600', '700', '900'],
