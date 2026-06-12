@@ -11,40 +11,70 @@ vi.mock('next/navigation', () => ({
 }))
 
 // ==========================================================
-// NavigationBar — 4 リンク / aria-current="page"
+// NavigationBar — サイドバー化（aside.sidebar）+ 4 リンク / aria-current="page"
+// 表示文言はデザイン正本（docs/design/app-ui.html）準拠の日本語
 // ==========================================================
 describe('NavigationBar', () => {
-  test('renders 4 navigation links: Feed, Podcast, Subscriptions, Settings', async () => {
+  test('renders as a sidebar (complementary landmark)', () => {
     render(<NavigationBar />)
 
-    expect(screen.getByRole('link', { name: /Feed/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Podcast/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Subscriptions|購読/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Settings|設定/i })).toBeInTheDocument()
+    const sidebar = screen.getByRole('complementary')
+    expect(sidebar).toBeInTheDocument()
+    expect(sidebar.classList.contains('sidebar')).toBe(true)
   })
 
-  test('Feed link points to /feed', async () => {
+  test('contains the main navigation landmark with aria-label', () => {
     render(<NavigationBar />)
-    expect(screen.getByRole('link', { name: /Feed/i })).toHaveAttribute('href', '/feed')
+
+    expect(
+      screen.getByRole('navigation', { name: 'メインナビゲーション' })
+    ).toBeInTheDocument()
   })
 
-  test('Podcast link points to /podcast', async () => {
+  test('renders 4 navigation links: フィード, ポッドキャスト, 購読管理, 設定', () => {
     render(<NavigationBar />)
-    expect(screen.getByRole('link', { name: /Podcast/i })).toHaveAttribute('href', '/podcast')
+
+    expect(screen.getByRole('link', { name: 'フィード' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'ポッドキャスト' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '購読管理' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '設定' })).toBeInTheDocument()
   })
 
-  test('Settings link points to /settings', async () => {
+  test('フィード link points to /feed', () => {
     render(<NavigationBar />)
-    expect(screen.getByRole('link', { name: /Settings|設定/i })).toHaveAttribute('href', '/settings')
+    expect(screen.getByRole('link', { name: 'フィード' })).toHaveAttribute('href', '/feed')
   })
 
-  test('Given current path is /feed, Feed link has aria-current="page"', async () => {
+  test('ポッドキャスト link points to /podcast', () => {
+    render(<NavigationBar />)
+    expect(screen.getByRole('link', { name: 'ポッドキャスト' })).toHaveAttribute(
+      'href',
+      '/podcast'
+    )
+  })
+
+  test('購読管理 link points to /subscriptions', () => {
+    render(<NavigationBar />)
+    expect(screen.getByRole('link', { name: '購読管理' })).toHaveAttribute(
+      'href',
+      '/subscriptions'
+    )
+  })
+
+  test('設定 link points to /settings', () => {
+    render(<NavigationBar />)
+    expect(screen.getByRole('link', { name: '設定' })).toHaveAttribute('href', '/settings')
+  })
+
+  test('Given current path is /feed, フィード link has aria-current="page"', async () => {
     const { usePathname } = await import('next/navigation')
     vi.mocked(usePathname).mockReturnValue('/feed')
 
     render(<NavigationBar />)
 
-    expect(screen.getByRole('link', { name: /Feed/i })).toHaveAttribute('aria-current', 'page')
+    const feedLink = screen.getByRole('link', { name: 'フィード' })
+    expect(feedLink).toHaveAttribute('aria-current', 'page')
+    expect(feedLink.classList.contains('active')).toBe(true)
   })
 
   test('Given current path is /feed, other links do NOT have aria-current="page"', async () => {
@@ -53,25 +83,41 @@ describe('NavigationBar', () => {
 
     render(<NavigationBar />)
 
-    const podcastLink = screen.getByRole('link', { name: /Podcast/i })
+    const podcastLink = screen.getByRole('link', { name: 'ポッドキャスト' })
     expect(podcastLink).not.toHaveAttribute('aria-current', 'page')
+    expect(podcastLink.classList.contains('active')).toBe(false)
   })
 
-  test('Given current path is /settings, Settings link has aria-current="page"', async () => {
+  test('Given current path is /settings, 設定 link has aria-current="page"', async () => {
     const { usePathname } = await import('next/navigation')
     vi.mocked(usePathname).mockReturnValue('/settings')
 
     render(<NavigationBar />)
 
-    expect(screen.getByRole('link', { name: /Settings|設定/i })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '設定' })).toHaveAttribute('aria-current', 'page')
   })
 
-  test('Given current path is /podcast, Podcast link has aria-current="page"', async () => {
+  test('Given current path is /podcast, ポッドキャスト link has aria-current="page"', async () => {
     const { usePathname } = await import('next/navigation')
     vi.mocked(usePathname).mockReturnValue('/podcast')
 
     render(<NavigationBar />)
 
-    expect(screen.getByRole('link', { name: /Podcast/i })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'ポッドキャスト' })).toHaveAttribute(
+      'aria-current',
+      'page'
+    )
+  })
+
+  test('renders the AudioNews logo text', () => {
+    render(<NavigationBar />)
+    // ロゴは「Audio」+ amber の「News」に分割されるため部分一致で検証
+    expect(screen.getByText('Audio')).toBeInTheDocument()
+    expect(screen.getByText('News')).toBeInTheDocument()
+  })
+
+  test('renders the theme toggle in the sidebar footer', () => {
+    render(<NavigationBar />)
+    expect(screen.getByRole('button', { name: 'テーマ切替' })).toBeInTheDocument()
   })
 })
