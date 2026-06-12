@@ -1354,3 +1354,108 @@ html[data-theme="light"] .theme-name-light { display: inline; }
   .sidebar-logo { padding: 0 0 20px; display: flex; justify-content: center; }
 }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* ════════════════════════════════════════════════════════════════
+   T11 統合シーム調整 — Wave 2 申し送りの不足スタイル（追加のみ）
+   デザイントークン（CSS 変数）を使い app-ui.html の視覚言語を維持する
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Toast error 配色 ─────────────────────────────────────────
+   デザイン正本は success/info のみ定義（L1186-1187）。error は同じ作法
+   （色 20% の背景 + 本色の文字）で --red を割り当てる */
+.toast-error .toast-icon { background: rgba(224,92,92,.2); color: var(--red); }
+
+/* ── range 入力（シークバー・音量） ──────────────────────────
+   .progress-track は div 前提の装飾のため、input[type=range] に使う場合の
+   ネイティブ外観打ち消しと amber トラック/サムをここで定義する。
+   トラックは擬似要素側に描き、input 本体はサムが収まる高さの透明ヒット領域 */
+.volume-slider { width: 90px; flex-shrink: 0; }
+
+input[type="range"].progress-track,
+input[type="range"].volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  accent-color: var(--amber);
+}
+
+input[type="range"].progress-track::-webkit-slider-runnable-track,
+input[type="range"].volume-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  background: var(--bg-overlay);
+  border-radius: 2px;
+}
+
+input[type="range"].progress-track::-webkit-slider-thumb,
+input[type="range"].volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin-top: -3.5px; /* (track 3px - thumb 10px) / 2 */
+  border: none;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+
+input[type="range"].progress-track::-moz-range-track,
+input[type="range"].volume-slider::-moz-range-track {
+  height: 3px;
+  background: var(--bg-overlay);
+  border-radius: 2px;
+}
+
+input[type="range"].progress-track::-moz-range-thumb,
+input[type="range"].volume-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: none;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 8px var(--amber-glow);
+}
+
+/* ── button 要素で使う .feed-tab ──────────────────────────────
+   デザインの .feed-tab は div 前提。button のデフォルト外観のみ打ち消す。
+   border-bottom（選択インジケータ）はクラス側の指定を活かす */
+button.feed-tab {
+  background: transparent;
+  border-top: none;
+  border-right: none;
+  border-left: none;
+  font-family: inherit;
+}
+
+/* ── フォーム検証・接続テスト結果メッセージ ───────────────── */
+.form-error   { font-size: 12px; color: var(--red);        margin-top: 6px; }
+.form-hint    { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.form-success { font-size: 12px; color: var(--green);      margin-top: 6px; }
+
+/* ── モーダルのアクション行（ConfirmDialog / SetupModal 共通） ─ */
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+/* ── 詳細ページなど読み物コンテンツの幅制限 ───────────────── */
+.content-narrow { max-width: 680px; }
+
+/* ── 視覚的に隠すユーティリティ（支援技術には公開） ─────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
