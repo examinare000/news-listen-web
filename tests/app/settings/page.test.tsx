@@ -1,10 +1,11 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import SettingsPage from '@/app/settings/page'
 import { AppProvider, useApp } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
+import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
@@ -153,6 +154,68 @@ describe('SettingsPage — save settings', () => {
     await waitFor(() => {
       expect(capturedState?.playbackSpeed).toBe(1.75)
     })
+  })
+})
+
+// ==========================================================
+// Settings 画面 — リスタイル（セクションカード構造）
+// ==========================================================
+describe('SettingsPage — restyle (section card structure)', () => {
+  test('Shows page subtitle "アプリの動作をカスタマイズ"', () => {
+    renderSettingsPage()
+    expect(screen.getByText('アプリの動作をカスタマイズ')).toBeInTheDocument()
+  })
+
+  test('Shows section titles "Podcast 生成" and "API 接続設定"', () => {
+    renderSettingsPage()
+    expect(screen.getByText('Podcast 生成')).toBeInTheDocument()
+    expect(screen.getByText('API 接続設定')).toBeInTheDocument()
+  })
+
+  test('Speed selector is decorated with .select-input', () => {
+    renderSettingsPage()
+    const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
+    expect(speedSelect.classList.contains('select-input')).toBe(true)
+  })
+
+  test('Base URL input is decorated with .form-input', () => {
+    renderSettingsPage()
+    const urlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
+    expect(urlInput.classList.contains('form-input')).toBe(true)
+  })
+
+  test('Save button is decorated with .btn-primary', () => {
+    renderSettingsPage()
+    const saveButton = screen.getByRole('button', { name: /保存|save/i })
+    expect(saveButton.classList.contains('btn-primary')).toBe(true)
+  })
+})
+
+// ==========================================================
+// Settings 画面 — デザインとの乖離決定（D14 / D21 / D22）
+// リグレッション防止: デザインモックにある UI を誤って実装しないこと
+// ==========================================================
+describe('SettingsPage — design divergences (D14/D21/D22)', () => {
+  test('D14: difficulty <select> does NOT exist (speed combobox is the only one)', () => {
+    renderSettingsPage()
+    expect(screen.queryByRole('combobox', { name: /難易度/ })).not.toBeInTheDocument()
+    // combobox は速度セレクタの 1 つだけ
+    expect(screen.getAllByRole('combobox')).toHaveLength(1)
+  })
+
+  test('D21: speed selector keeps the 8 PLAYBACK_SPEEDS options (no continuous slider)', () => {
+    renderSettingsPage()
+    const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
+    const options = within(speedSelect).getAllByRole('option')
+    expect(options.map((o) => o.getAttribute('value'))).toEqual(PLAYBACK_SPEEDS.map(String))
+    // デザインの連続値スライダーは採用しない
+    expect(document.querySelector('input[type="range"]')).not.toBeInTheDocument()
+  })
+
+  test('D22: no cache management UI', () => {
+    renderSettingsPage()
+    expect(screen.queryByRole('button', { name: /キャッシュ/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/キャッシュ/)).not.toBeInTheDocument()
   })
 })
 

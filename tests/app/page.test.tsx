@@ -10,9 +10,25 @@ import { ToastProvider } from '@/components/ui/Toast'
 // useRouter の戻り値を各テスト前に制御する
 const mockReplace = vi.fn()
 
+// 復元中（isRestoring: true）は AppProvider の restore effect が RTL の act で
+// 即座に完了してしまい実 Provider では観測できないため、useApp のみ差し替え
+// 可能な委譲モックを用意する（override 未設定時は実装へ委譲し他テストは無風）
+const useAppOverride = vi.hoisted(() => ({
+  current: null as null | (() => unknown),
+}))
+
+vi.mock('@/contexts/AppContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/contexts/AppContext')>()
+  return {
+    ...actual,
+    useApp: () => (useAppOverride.current ? useAppOverride.current() : actual.useApp()),
+  }
+})
+
 beforeEach(async () => {
   vi.clearAllMocks()
   localStorage.clear()
+  useAppOverride.current = null
   // setup.ts の vi.fn() に対して mockReturnValue で挙動を制御
   const { useRouter } = await import('next/navigation')
   useRouter.mockReturnValue({ replace: mockReplace })
@@ -50,6 +66,28 @@ describe('RootPage — unconfigured', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+})
+
+// ==========================================================
+// Entry Gate — 復元中スケルトン (spec §10.1-a)
+// ==========================================================
+describe('RootPage — restoring', () => {
+  test('Given isRestoring, shows card-shaped skeleton placeholders', () => {
+    useAppOverride.current = () => ({
+      state: { isRestoring: true, isConfigured: false },
+      dispatch: vi.fn(),
+      configure: vi.fn(),
+    })
+
+    render(<RootPage />)
+
+    const loading = screen.getByLabelText('読み込み中')
+    // カード形状のプレースホルダー — 単一ブロックでなく複数の .skeleton 要素で構成される
+    expect(loading.querySelectorAll('.skeleton').length).toBeGreaterThanOrEqual(2)
+    // 復元中はモーダルもリダイレクトも発生しない
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(mockReplace).not.toHaveBeenCalled()
   })
 })
