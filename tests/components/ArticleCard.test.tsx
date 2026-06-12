@@ -2,6 +2,7 @@ import { describe, test, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ArticleCard } from '@/components/ArticleCard'
+import { formatDate } from '@/lib/format'
 import type { Article } from '@/types/index'
 
 const SAMPLE_ARTICLE: Article = {
@@ -120,5 +121,65 @@ describe('ArticleCard interactions', () => {
       starBtn.classList.contains('starred') ||
       starBtn.textContent?.includes('★')
     expect(isStarred).toBe(true)
+  })
+})
+
+// ==========================================================
+// ArticleCard — リスタイル（デザイン app-ui.html 準拠）
+// ==========================================================
+describe('ArticleCard restyle (design markup)', () => {
+  test('Given starred=true, root card element has "starred" class', () => {
+    const { container } = renderCard({ starred: true })
+    const card = container.querySelector('.article-card')
+    expect(card).not.toBeNull()
+    expect(card!.classList.contains('starred')).toBe(true)
+  })
+
+  test('Given starred=false, root card element does not have "starred" class', () => {
+    const { container } = renderCard({ starred: false })
+    const card = container.querySelector('.article-card')
+    expect(card).not.toBeNull()
+    expect(card!.classList.contains('starred')).toBe(false)
+  })
+
+  test('score bar fill width equals score * 100%', () => {
+    const { container } = renderCard()
+    const fill = container.querySelector('.score-bar-fill') as HTMLElement
+    expect(fill).not.toBeNull()
+    expect(fill.style.width).toBe(`${SAMPLE_ARTICLE.score * 100}%`)
+  })
+
+  test('Given score=0 (boundary), fill width is 0%', () => {
+    const { container } = renderCard({ article: { ...SAMPLE_ARTICLE, score: 0 } })
+    const fill = container.querySelector('.score-bar-fill') as HTMLElement
+    expect(fill.style.width).toBe('0%')
+  })
+
+  test('Given score=1.0 (boundary), fill width is 100%', () => {
+    const { container } = renderCard({ article: { ...SAMPLE_ARTICLE, score: 1.0 } })
+    const fill = container.querySelector('.score-bar-fill') as HTMLElement
+    expect(fill.style.width).toBe('100%')
+  })
+
+  test('renders score label "{score.toFixed(2)} 関連度"', () => {
+    renderCard()
+    expect(
+      screen.getByText(`${SAMPLE_ARTICLE.score.toFixed(2)} 関連度`)
+    ).toBeInTheDocument()
+  })
+
+  test('renders published date via formatDate (D28: 相対表記化しない)', () => {
+    renderCard()
+    expect(
+      screen.getByText(formatDate(SAMPLE_ARTICLE.published_at))
+    ).toBeInTheDocument()
+  })
+
+  test('progressbar role with aria-valuenow stays on the score bar track', () => {
+    const { container } = renderCard()
+    const track = container.querySelector('.score-bar-track')
+    expect(track).not.toBeNull()
+    expect(track!).toHaveAttribute('role', 'progressbar')
+    expect(track!).toHaveAttribute('aria-valuenow', String(SAMPLE_ARTICLE.score))
   })
 })
