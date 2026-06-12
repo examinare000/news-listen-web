@@ -230,9 +230,9 @@ describe('SettingsPage — connection test', () => {
 
   test('Given connection test succeeds, shows success indicator', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       checkHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSettingsPage()
     await userEvent.click(screen.getByRole('button', { name: /接続テスト|connection test|テスト/i }))
@@ -244,9 +244,9 @@ describe('SettingsPage — connection test', () => {
 
   test('Given connection test fails, shows failure indicator', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       checkHealth: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSettingsPage()
     await userEvent.click(screen.getByRole('button', { name: /接続テスト|connection test|テスト/i }))

@@ -44,11 +44,11 @@ beforeEach(() => {
 describe('SubscriptionsPage — fetch errors', () => {
   test('Given 401 on getSources, shows "API キーが正しくありません" and does NOT show empty state', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockRejectedValue(new ApiError(401, 'Unauthorized')),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -62,11 +62,11 @@ describe('SubscriptionsPage — fetch errors', () => {
 
   test('Given 500 on getSources, shows error message with status code', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockRejectedValue(new ApiError(500, 'Internal Server Error')),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -81,11 +81,11 @@ describe('SubscriptionsPage — fetch errors', () => {
     const getSources = vi.fn()
       .mockRejectedValueOnce(new ApiError(500, 'err'))
       .mockResolvedValue({ sources: [] })
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources,
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -104,11 +104,11 @@ describe('SubscriptionsPage — fetch errors', () => {
 describe('SubscriptionsPage — delete errors', () => {
   test('Given deleteSource returns 404, shows error toast', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource: vi.fn().mockRejectedValue(new ApiError(404, 'Source not found')),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -124,11 +124,11 @@ describe('SubscriptionsPage — delete errors', () => {
 
   test('Given deleteSource returns 500, shows error toast with status', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource: vi.fn().mockRejectedValue(new ApiError(500, 'Server Error')),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -149,11 +149,11 @@ describe('SubscriptionsPage — delete errors', () => {
 describe('SubscriptionsPage — listing', () => {
   test('Given sources returned, renders source list', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -165,11 +165,11 @@ describe('SubscriptionsPage — listing', () => {
 
   test('source list keeps explicit role="list" for Safari/VoiceOver', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -180,11 +180,11 @@ describe('SubscriptionsPage — listing', () => {
 
   test('Given empty sources, shows "購読ソースがありません" and guidance to add form', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -200,11 +200,11 @@ describe('SubscriptionsPage — listing', () => {
 describe('AddSubscriptionForm — client-side validation', () => {
   beforeEach(async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
   })
 
   test('Given URL not starting with http(s)://, shows inline error and does NOT submit', async () => {
@@ -216,18 +216,18 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
     expect(screen.getByText(/http/i)).toBeInTheDocument()
     const { createApiClient } = await import('@/lib/api')
-    const mockClient = createApiClient()
+    const mockClient = vi.mocked(createApiClient).mock.results[0].value
     expect(mockClient.addSource).not.toHaveBeenCalled()
   })
 
   test('Given name and valid URL submitted, calls addSource', async () => {
     const addSource = vi.fn().mockResolvedValue({ sources: [{ name: 'HN', url: 'https://news.ycombinator.com/rss' }] })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource,
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /ソース名|name|名前/i }))
@@ -243,11 +243,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
   test('Given 409 response, shows "この URL は登録済みです" and preserves input values', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn().mockRejectedValue(new ApiError(409, 'Source URL already exists')),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -265,11 +265,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
   test('Given 422 response, shows "URL の形式が正しくありません"', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn().mockRejectedValue(new ApiError(422, 'value is not a valid URL')),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -284,11 +284,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
   test('Given submission in progress, input and button are disabled', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn(() => new Promise(() => {})), // never resolves
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -301,11 +301,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
   test('Given submission succeeds, input fields are cleared', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn().mockResolvedValue({ sources: [{ name: 'HN', url: 'https://example.com/rss' }] }),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -326,11 +326,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
 describe('SubscriptionsPage — recommended sources', () => {
   beforeEach(async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
   })
 
   test('Given "The Verge" recommend button clicked, fills name and url inputs', async () => {
@@ -359,7 +359,7 @@ describe('SubscriptionsPage — recommended sources', () => {
     await userEvent.click(screen.getByRole('button', { name: 'The Verge を追加' }))
 
     const { createApiClient } = await import('@/lib/api')
-    const mockClient = createApiClient()
+    const mockClient = vi.mocked(createApiClient).mock.results[0].value
     expect(mockClient.addSource).not.toHaveBeenCalled()
   })
 })
@@ -371,11 +371,11 @@ describe('SubscriptionsPage — subscription count', () => {
   test('Given 2 sources, shows "2 ソース購読中" and decrements after delete', async () => {
     const deleteSource = vi.fn().mockResolvedValue({ sources: [SAMPLE_SOURCES[1]] })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource,
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
 
@@ -399,11 +399,11 @@ describe('SubscriptionsPage — subscription count', () => {
 describe('SubscriptionsPage — delete with confirm dialog', () => {
   test('Given delete button clicked, shows ConfirmDialog', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -416,11 +416,11 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
   test('Given user confirms deletion, calls deleteSource(url)', async () => {
     const deleteSource = vi.fn().mockResolvedValue({ sources: [SAMPLE_SOURCES[1]] })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
       addSource: vi.fn(),
       deleteSource,
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -438,11 +438,11 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
     const deleteSource = vi.fn().mockResolvedValue({ sources: remainingSources })
     const getSources = vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getSources,
       addSource: vi.fn(),
       deleteSource,
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))

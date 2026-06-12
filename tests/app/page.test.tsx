@@ -31,7 +31,7 @@ beforeEach(async () => {
   useAppOverride.current = null
   // setup.ts の vi.fn() に対して mockReturnValue で挙動を制御
   const { useRouter } = await import('next/navigation')
-  useRouter.mockReturnValue({ replace: mockReplace })
+  vi.mocked(useRouter).mockReturnValue({ replace: mockReplace } as unknown as ReturnType<typeof useRouter>)
 })
 
 function renderRootPage(initialState: Record<string, unknown> = {}) {

@@ -79,10 +79,10 @@ function renderPodcastPage(extraState = {}) {
 describe('PodcastPage — listing', () => {
   test('Given podcasts returned, renders podcast cards', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
 
@@ -93,10 +93,10 @@ describe('PodcastPage — listing', () => {
 
   test('Given empty podcasts array, displays empty state message', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: [] }),
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
 
@@ -108,10 +108,10 @@ describe('PodcastPage — listing', () => {
 
   test('Given loading state, shows skeleton', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn(() => new Promise(() => {})),
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
 
@@ -127,10 +127,10 @@ describe('PodcastPage — play with fresh URL', () => {
     const freshPodcast = { ...SAMPLE_PODCASTS[0], audio_url: 'https://storage.example.com/fresh.mp3' }
     const getPodcast = vi.fn().mockResolvedValue(freshPodcast)
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
       getPodcast,
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
@@ -145,10 +145,10 @@ describe('PodcastPage — play with fresh URL', () => {
     localStorage.setItem('podcast_position:p1', JSON.stringify(120))
     const freshPodcast = { ...SAMPLE_PODCASTS[0] }
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
       getPodcast: vi.fn().mockResolvedValue(freshPodcast),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
@@ -168,10 +168,10 @@ describe('PodcastPage — play with fresh URL', () => {
 describe('PodcastPage — playing highlight (D24)', () => {
   test('Given currentPodcast matches podcast A, only A\'s card shows 再生中 indicator', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: TWO_PODCASTS }),
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage({ currentPodcast: TWO_PODCASTS[0] })
 
@@ -189,10 +189,10 @@ describe('PodcastPage — playing highlight (D24)', () => {
 
   test('Given currentPodcast is null, no card shows 再生中 indicator', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: TWO_PODCASTS }),
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage({ currentPodcast: null })
 
@@ -211,10 +211,10 @@ describe('PodcastPage — refresh', () => {
   test('Given refresh button clicked, calls getPodcasts again', async () => {
     const getPodcasts = vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcasts,
       getPodcast: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))

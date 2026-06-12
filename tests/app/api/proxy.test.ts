@@ -1,6 +1,10 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
+import type { NextRequest } from 'next/server'
 // NOTE: Next.js の catch-all ルートファイルは [...path] をブラケット含みでインポートする
 import { GET, POST, DELETE } from '@/app/api/backend/[...path]/route'
+
+// パターン B: 型キャストのみ（ランタイム挙動を変えずに型エラーを解消）
+const asNextRequest = (req: Request) => req as unknown as NextRequest
 
 function makeRequest(
   method: string,
@@ -54,7 +58,7 @@ describe('GET — forwards request to backend', () => {
       'X-API-Key': 'secret',
     })
 
-    const res = await GET(req, makeContext(['health']))
+    const res = await GET(asNextRequest(req), makeContext(['health']))
 
     expect(res.status).toBe(200)
     const forwardedUrl = vi.mocked(fetch).mock.calls[0][0] as string
@@ -69,7 +73,7 @@ describe('GET — forwards request to backend', () => {
       'X-API-Key': 'my-key',
     })
 
-    await GET(req, makeContext(['feed']))
+    await GET(asNextRequest(req), makeContext(['feed']))
 
     const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
     const headers = forwardedInit.headers as Record<string, string>
@@ -83,7 +87,7 @@ describe('GET — forwards request to backend', () => {
       'X-Backend-Base-Url': 'https://api.example.com',
     })
 
-    await GET(req, makeContext(['settings', 'sources']))
+    await GET(asNextRequest(req), makeContext(['settings', 'sources']))
 
     const forwardedUrl = vi.mocked(fetch).mock.calls[0][0] as string
     expect(forwardedUrl).toContain(encodeURIComponent('https://example.com'))
@@ -99,7 +103,7 @@ describe('POST — forwards request body', () => {
       'X-API-Key': 'key',
     }, body)
 
-    const res = await POST(req, makeContext(['settings', 'sources']))
+    const res = await POST(asNextRequest(req), makeContext(['settings', 'sources']))
 
     expect(res.status).toBe(200)
   })
@@ -114,7 +118,7 @@ describe('DELETE — forwards request', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await DELETE(req, makeContext(['settings', 'sources']))
+    const res = await DELETE(asNextRequest(req), makeContext(['settings', 'sources']))
 
     expect(res.status).toBe(200)
   })
@@ -136,7 +140,7 @@ describe('Pass-through of backend status codes', () => {
       'X-API-Key': 'wrong-key',
     })
 
-    const res = await GET(req, makeContext(['feed']))
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(401)
   })
@@ -153,7 +157,7 @@ describe('Pass-through of backend status codes', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['podcasts', 'missing-id']))
+    const res = await GET(asNextRequest(req), makeContext(['podcasts', 'missing-id']))
 
     expect(res.status).toBe(404)
   })
@@ -170,7 +174,7 @@ describe('Pass-through of backend status codes', () => {
       'X-API-Key': 'key',
     }, JSON.stringify({ name: 'HN', url: 'https://example.com' }))
 
-    const res = await POST(req, makeContext(['settings', 'sources']))
+    const res = await POST(asNextRequest(req), makeContext(['settings', 'sources']))
 
     expect(res.status).toBe(409)
   })
@@ -186,7 +190,7 @@ describe('Missing X-Backend-Base-Url header', () => {
       // X-Backend-Base-Url を意図的に省略
     })
 
-    const res = await GET(req, makeContext(['feed']))
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(400)
   })
@@ -202,7 +206,7 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['feed']))
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(400)
   })
@@ -213,7 +217,7 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['health']))
+    const res = await GET(asNextRequest(req), makeContext(['health']))
 
     expect(res.status).toBe(400)
   })
@@ -224,7 +228,7 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['feed']))
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(400)
   })
@@ -236,7 +240,7 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['health']))
+    const res = await GET(asNextRequest(req), makeContext(['health']))
 
     expect(res.status).toBe(200)
   })
@@ -248,7 +252,7 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['health']))
+    const res = await GET(asNextRequest(req), makeContext(['health']))
 
     expect(res.status).toBe(200)
   })
@@ -265,7 +269,7 @@ describe('Backend unreachable', () => {
       'X-API-Key': 'key',
     })
 
-    const res = await GET(req, makeContext(['feed']))
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(502)
   })

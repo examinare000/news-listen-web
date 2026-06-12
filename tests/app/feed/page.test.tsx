@@ -62,11 +62,11 @@ beforeEach(() => {
 describe('FeedPage — data fetching', () => {
   test('Given loading state, displays SkeletonCard', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn(() => new Promise(() => {})), // never resolves
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
     expect(screen.getByTestId('skeleton-card')).toBeInTheDocument()
@@ -74,11 +74,11 @@ describe('FeedPage — data fetching', () => {
 
   test('Given articles returned, renders article cards', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -90,11 +90,11 @@ describe('FeedPage — data fetching', () => {
 
   test('Given empty articles array, displays empty state message', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: [], date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -112,11 +112,11 @@ describe('FeedPage — Star', () => {
   test('Given star succeeds, shows toast "Star しました" and keeps card in list', async () => {
     const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -133,11 +133,11 @@ describe('FeedPage — Star', () => {
 
   test('Given star returns 404, shows "記事が見つかりません" toast and removes card', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockRejectedValue(new ApiError(404, 'Article not found')),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -151,11 +151,11 @@ describe('FeedPage — Star', () => {
 
   test('Given star returns 401, shows API key error toast', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockRejectedValue(new ApiError(401, 'Invalid or missing API key')),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -174,11 +174,11 @@ describe('FeedPage — Star', () => {
 describe('FeedPage — Dismiss', () => {
   test('Given dismiss succeeds, removes card from list immediately', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn().mockResolvedValue({ status: 'dismissed', article_id: 'a1' }),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -207,11 +207,11 @@ describe('FeedPage — Tabs', () => {
 
   async function setupWithArticles() {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' }),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
     renderFeedPage()
     await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
   }
@@ -289,11 +289,11 @@ describe('FeedPage — Tabs', () => {
 describe('FeedPage — Page header', () => {
   test('Given feed date returned, shows it in the page subtitle', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 
@@ -310,11 +310,11 @@ describe('FeedPage — Refresh', () => {
   test('Given refresh button clicked, calls getFeed again', async () => {
     const getFeed = vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' })
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed,
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
     await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
@@ -331,11 +331,11 @@ describe('FeedPage — Refresh', () => {
 describe('FeedPage — Network error', () => {
   test('Given network error (status=0), shows "サーバーに接続できません"', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
 

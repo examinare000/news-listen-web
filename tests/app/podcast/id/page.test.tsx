@@ -57,9 +57,9 @@ function renderDetailPage(params = { id: 'p1' }) {
 describe('PodcastDetailPage — normal', () => {
   test('Displays full japanese_intro_text (not truncated)', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -71,9 +71,9 @@ describe('PodcastDetailPage — normal', () => {
 
   test('Displays difficulty badge', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -84,9 +84,9 @@ describe('PodcastDetailPage — normal', () => {
 
   test('Displays formatted duration', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -98,9 +98,9 @@ describe('PodcastDetailPage — normal', () => {
 
   test('Displays article IDs', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -111,9 +111,9 @@ describe('PodcastDetailPage — normal', () => {
 
   test('Has a back link to the podcast list (/podcast)', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -124,9 +124,9 @@ describe('PodcastDetailPage — normal', () => {
 
   test('Has a play button', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -143,7 +143,7 @@ describe('PodcastDetailPage — play flow', () => {
   test('handlePlay re-fetches fresh podcast via getPodcast (spec §9 L151: signed-URL must not be reused)', async () => {
     const getPodcastMock = vi.fn().mockResolvedValue(SAMPLE_PODCAST)
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({ getPodcast: getPodcastMock })
+    vi.mocked(createApiClient).mockReturnValue({ getPodcast: getPodcastMock } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -165,9 +165,9 @@ describe('PodcastDetailPage — play flow', () => {
     localStorage.setItem('podcast_position:p1', JSON.stringify(90))
 
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage()
 
@@ -190,9 +190,9 @@ describe('PodcastDetailPage — play flow', () => {
 describe('PodcastDetailPage — 404', () => {
   test('Given 404, shows "エピソードが見つかりません" and link to list', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
+    vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockRejectedValue(new ApiError(404, 'Podcast not found')),
-    })
+    } as unknown as ReturnType<typeof createApiClient>)
 
     renderDetailPage({ id: 'missing' })
 
