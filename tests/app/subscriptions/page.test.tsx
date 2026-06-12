@@ -197,7 +197,7 @@ describe('AddSubscriptionForm — client-side validation', () => {
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
 
     await userEvent.type(screen.getByRole('textbox', { name: /URL/i }), 'ftp://invalid.com')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     expect(screen.getByText(/http/i)).toBeInTheDocument()
     const { createApiClient } = await import('@/lib/api')
@@ -215,11 +215,11 @@ describe('AddSubscriptionForm — client-side validation', () => {
     })
 
     renderSubscriptionsPage()
-    await waitFor(() => screen.getByRole('textbox', { name: /name|名前/i }))
+    await waitFor(() => screen.getByRole('textbox', { name: /ソース名|name|名前/i }))
 
-    await userEvent.type(screen.getByRole('textbox', { name: /name|名前/i }), 'HN')
+    await userEvent.type(screen.getByRole('textbox', { name: /ソース名|name|名前/i }), 'HN')
     await userEvent.type(screen.getByRole('textbox', { name: /URL/i }), 'https://news.ycombinator.com/rss')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     await waitFor(() => {
       expect(addSource).toHaveBeenCalledWith('HN', 'https://news.ycombinator.com/rss')
@@ -239,7 +239,7 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
     const urlInput = screen.getByRole('textbox', { name: /URL/i })
     await userEvent.type(urlInput, 'https://example.com/rss')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     await waitFor(() => {
       expect(screen.getByText(/この URL は登録済みです/)).toBeInTheDocument()
@@ -260,7 +260,7 @@ describe('AddSubscriptionForm — client-side validation', () => {
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
 
     await userEvent.type(screen.getByRole('textbox', { name: /URL/i }), 'https://bad.url')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     await waitFor(() => {
       expect(screen.getByText(/URL の形式が正しくありません/)).toBeInTheDocument()
@@ -279,9 +279,9 @@ describe('AddSubscriptionForm — client-side validation', () => {
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
 
     await userEvent.type(screen.getByRole('textbox', { name: /URL/i }), 'https://example.com/rss')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
-    expect(screen.getByRole('button', { name: /追加|add/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: '追加する' })).toBeDisabled()
   })
 
   test('Given submission succeeds, input fields are cleared', async () => {
@@ -297,11 +297,84 @@ describe('AddSubscriptionForm — client-side validation', () => {
 
     const urlInput = screen.getByRole('textbox', { name: /URL/i })
     await userEvent.type(urlInput, 'https://example.com/rss')
-    await userEvent.click(screen.getByRole('button', { name: /追加|add/i }))
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     await waitFor(() => {
       expect(urlInput).toHaveValue('')
     })
+  })
+})
+
+// ==========================================================
+// おすすめのソース — フォーム自動入力（D23）
+// ==========================================================
+describe('SubscriptionsPage — recommended sources', () => {
+  beforeEach(async () => {
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    })
+  })
+
+  test('Given "The Verge" recommend button clicked, fills name and url inputs', async () => {
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'The Verge を追加' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を追加' }))
+
+    expect(screen.getByRole('textbox', { name: /ソース名|name|名前/i })).toHaveValue('The Verge')
+    expect(screen.getByRole('textbox', { name: /URL/i })).toHaveValue('https://www.theverge.com/rss/index.xml')
+  })
+
+  test('Given recommend button clicked, focuses the name input', async () => {
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'dev.to を追加' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'dev.to を追加' }))
+
+    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: /ソース名|name|名前/i }))
+  })
+
+  test('Given recommend button clicked, does NOT call addSource (form fill only)', async () => {
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'The Verge を追加' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を追加' }))
+
+    const { createApiClient } = await import('@/lib/api')
+    const mockClient = createApiClient()
+    expect(mockClient.addSource).not.toHaveBeenCalled()
+  })
+})
+
+// ==========================================================
+// ソース件数表示 — 「{N} ソース購読中」
+// ==========================================================
+describe('SubscriptionsPage — subscription count', () => {
+  test('Given 2 sources, shows "2 ソース購読中" and decrements after delete', async () => {
+    const deleteSource = vi.fn().mockResolvedValue({ sources: [SAMPLE_SOURCES[1]] })
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
+      addSource: vi.fn(),
+      deleteSource,
+    })
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('2 ソース購読中')).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getAllByRole('button', { name: /削除|delete/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /確認|OK/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('1 ソース購読中')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('2 ソース購読中')).not.toBeInTheDocument()
   })
 })
 
