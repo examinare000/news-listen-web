@@ -20,7 +20,14 @@ export default function RootPage() {
   }, [state.isRestoring, state.isConfigured, router])
 
   if (state.isRestoring) {
-    return <div aria-label="読み込み中" className="skeleton" />
+    // カード形状のスケルトン（タイトル行 + カード 2 枚）。表示条件 isRestoring は不変
+    return (
+      <div aria-label="読み込み中" role="status" className="content-area">
+        <div className="skeleton" style={{ height: 16, width: 180, marginBottom: 16 }} />
+        <div className="skeleton" style={{ height: 96, borderRadius: 'var(--radius)', marginBottom: 12 }} />
+        <div className="skeleton" style={{ height: 96, borderRadius: 'var(--radius)' }} />
+      </div>
+    )
   }
 
   if (state.isConfigured) {
