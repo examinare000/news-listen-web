@@ -109,6 +109,19 @@ describe('PodcastDetailPage — normal', () => {
     })
   })
 
+  test('Has a back link to the podcast list (/podcast)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+    })
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /一覧へ戻る/ })).toHaveAttribute('href', '/podcast')
+    })
+  })
+
   test('Has a play button', async () => {
     const { createApiClient } = await import('@/lib/api')
     createApiClient.mockReturnValue({

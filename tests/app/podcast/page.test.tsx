@@ -33,6 +33,21 @@ const SAMPLE_PODCASTS = [
   },
 ]
 
+// 再生中強調（D24）の検証用: 複数カードのうち 1 枚だけが強調されることを確認する
+const TWO_PODCASTS = [
+  SAMPLE_PODCASTS[0],
+  {
+    id: 'p2',
+    type: 'digest',
+    article_ids: ['a2', 'a3'],
+    difficulty: 'eiken_2',
+    audio_url: 'https://storage.example.com/audio2.mp3',
+    japanese_intro_text: '二つ目のポッドキャストのイントロです。',
+    duration_seconds: 600,
+    created_at: '2026-06-09T09:00:00+09:00',
+  },
+]
+
 let mockAudio: ReturnType<typeof setupMockAudio>
 
 beforeEach(() => {
@@ -41,12 +56,13 @@ beforeEach(() => {
   mockAudio = setupMockAudio()
 })
 
-function renderPodcastPage() {
+function renderPodcastPage(extraState = {}) {
   return render(
     <AppProvider initialState={{
       isConfigured: true,
       baseUrl: 'https://api.example.com',
       apiKey: 'test-key',
+      ...extraState,
     }}>
       <ToastProvider>
         <AudioPlayerProvider>
@@ -143,6 +159,48 @@ describe('PodcastPage — play with fresh URL', () => {
       // 保存済み位置 120 が currentTime に反映される
       expect(mockAudio.currentTime).toBe(120)
     })
+  })
+})
+
+// ==========================================================
+// Podcast 一覧 — 再生中強調（D24）
+// ==========================================================
+describe('PodcastPage — playing highlight (D24)', () => {
+  test('Given currentPodcast matches podcast A, only A\'s card shows 再生中 indicator', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getPodcasts: vi.fn().mockResolvedValue({ podcasts: TWO_PODCASTS }),
+      getPodcast: vi.fn(),
+    })
+
+    renderPodcastPage({ currentPodcast: TWO_PODCASTS[0] })
+
+    await waitFor(() => {
+      expect(screen.getByText(/二つ目のポッドキャストのイントロ/)).toBeInTheDocument()
+    })
+
+    // 「再生中」表示は currentPodcast に一致するカード 1 枚のみ
+    const playingLabels = screen.getAllByText('再生中')
+    expect(playingLabels).toHaveLength(1)
+    expect(playingLabels[0].closest('.podcast-card')).toHaveTextContent(
+      /これはテスト用のポッドキャストイントロ/
+    )
+  })
+
+  test('Given currentPodcast is null, no card shows 再生中 indicator', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    createApiClient.mockReturnValue({
+      getPodcasts: vi.fn().mockResolvedValue({ podcasts: TWO_PODCASTS }),
+      getPodcast: vi.fn(),
+    })
+
+    renderPodcastPage({ currentPodcast: null })
+
+    await waitFor(() => {
+      expect(screen.getByText(/二つ目のポッドキャストのイントロ/)).toBeInTheDocument()
+    })
+
+    expect(screen.queryByText('再生中')).not.toBeInTheDocument()
   })
 })
 
