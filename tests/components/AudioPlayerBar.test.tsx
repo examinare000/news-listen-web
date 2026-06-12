@@ -267,6 +267,55 @@ describe('Restyled player bar (T06)', () => {
 })
 
 // ==========================================================
+// シークバー再生済みフィル（T02: --seek-fill カスタムプロパティ）
+// ==========================================================
+describe('Seekbar progress fill (T02)', () => {
+  test('Given currentTime=60 and duration=240, seek slider has --seek-fill of 25%', async () => {
+    renderWithContext(SAMPLE_PODCAST)
+
+    // 再生を開始し、loadedmetadata で duration を確定させてから timeupdate で位置を更新
+    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    act(() => {
+      mockAudio.fireLoadedMetadata(240)
+      mockAudio.fireTimeUpdate(60)
+    })
+
+    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
+    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('25%')
+  })
+
+  test('Given duration=0 (not loaded), seek slider has --seek-fill of 0% (no NaN%)', () => {
+    renderWithContext(SAMPLE_PODCAST)
+
+    // duration が 0 の初期状態（再生前）でのゼロ除算ガード確認
+    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
+    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('0%')
+  })
+
+  test('Given currentTime exceeds duration, --seek-fill is clamped to 100%', async () => {
+    renderWithContext(SAMPLE_PODCAST)
+
+    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    act(() => {
+      mockAudio.fireLoadedMetadata(100)
+      // currentTime が duration を超える場合（保存値ズレなど）
+      mockAudio.fireTimeUpdate(150)
+    })
+
+    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
+    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('100%')
+  })
+
+  test('Volume slider does NOT have --seek-fill property', () => {
+    renderWithContext(SAMPLE_PODCAST)
+
+    const volumeSlider = screen.getByRole('slider', { name: '音量' })
+    // 音量スライダーには --seek-fill を付与しない（スコープ外）
+    expect(volumeSlider.style.getPropertyValue('--seek-fill')).toBe('')
+  })
+})
+
+// ==========================================================
 // 速度セレクタ（8 段階）
 // ==========================================================
 describe('Speed selector', () => {
