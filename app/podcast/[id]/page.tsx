@@ -100,13 +100,10 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     return (
       <>
         <PageHeader showBackLink />
-        {/* globals.css にコンテンツ幅制限クラスがないためインライン指定（settings の 600px に倣う） */}
-        <div className="content-area" style={{ maxWidth: 680 }}>
+        <div className="content-area content-narrow">
           {/* 読み込み中テキストは維持しつつ .skeleton のシマーで視覚表現する */}
           <div className="skeleton" style={{ height: 150, borderRadius: 'var(--radius-md)' }}>
-            <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
-              読み込み中...
-            </span>
+            <span className="sr-only">読み込み中...</span>
           </div>
         </div>
       </>
@@ -116,7 +113,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   return (
     <>
       <PageHeader showBackLink />
-      <div className="content-area" style={{ maxWidth: 680 }}>
+      <div className="content-area content-narrow">
         <div className="podcast-badges" style={{ marginBottom: 14 }}>
           <DifficultyBadge difficulty={podcast.difficulty} />
           {podcast.type === 'digest' && <span className="badge">DIGEST</span>}

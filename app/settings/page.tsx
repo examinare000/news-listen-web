@@ -40,7 +40,10 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      <div className="content-area" style={{ maxWidth: 600 }}>
+      {/* WHY content-narrow（680px 統一）: デザイン正本はインライン 600px だが、
+          詳細ページと共通のユーティリティに寄せてインラインスタイルを排除する。
+          80px の差は読み幅制限という視覚言語を変えない */}
+      <div className="content-area content-narrow">
         {/* セクション 1: Podcast 生成 */}
         <section className="settings-section">
           <div className="settings-section-header">
@@ -108,8 +111,7 @@ export default function SettingsPage() {
             </div>
           </div>
           <div style={{ padding: '0 20px 16px' }}>
-            {/* 視覚ラベルは settings-row-label が担うため、入力欄自体は aria-label で命名
-                （globals.css に sr-only がなく、編集も T01 占有のため不可） */}
+            {/* 視覚ラベルは settings-row-label が担うため、入力欄自体は aria-label で命名する */}
             <input
               id="settings-base-url"
               className="form-input"
@@ -145,12 +147,12 @@ export default function SettingsPage() {
           </div>
 
           {testStatus === 'success' && (
-            <div className="settings-row-desc" style={{ padding: '0 20px 12px' }}>
+            <div className="form-success" style={{ padding: '0 20px 12px' }}>
               接続成功しました
             </div>
           )}
           {testStatus === 'error' && (
-            <div className="settings-row-desc" style={{ padding: '0 20px 12px' }}>
+            <div className="form-error" style={{ padding: '0 20px 12px' }}>
               接続に失敗しました
             </div>
           )}

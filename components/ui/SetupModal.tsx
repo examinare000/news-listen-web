@@ -99,7 +99,7 @@ export function SetupModal({ onConfigure }: SetupModalProps) {
             value={baseUrl}
             onChange={(e) => setBaseUrl(e.target.value)}
           />
-          {urlError && <p>{urlError}</p>}
+          {urlError && <p className="form-error">{urlError}</p>}
         </div>
 
         <div className="form-field">
@@ -113,13 +113,13 @@ export function SetupModal({ onConfigure }: SetupModalProps) {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
-          {keyError && <p>{keyError}</p>}
+          {keyError && <p className="form-error">{keyError}</p>}
         </div>
 
-        {testStatus === 'success' && <p>接続成功</p>}
-        {testStatus === 'error' && <p>接続エラー</p>}
+        {testStatus === 'success' && <p className="form-success">接続成功</p>}
+        {testStatus === 'error' && <p className="form-error">接続エラー</p>}
 
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+        <div className="modal-actions">
           <button className="btn btn-ghost" onClick={handleTest}>
             接続テスト
           </button>

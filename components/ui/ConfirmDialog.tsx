@@ -45,7 +45,7 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p className="modal-desc">{message}</p>
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+        <div className="modal-actions">
           <button className="btn btn-ghost" onClick={onCancel}>
             キャンセル
           </button>
