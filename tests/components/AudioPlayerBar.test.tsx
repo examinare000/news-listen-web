@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
@@ -203,6 +203,66 @@ describe('Volume slider', () => {
     const volumeSlider = screen.getByRole('slider', { name: '音量' })
     // 0.6 → 60 に変換されて slider に反映
     expect(Number(volumeSlider.getAttribute('value') ?? (volumeSlider as HTMLInputElement).value)).toBeCloseTo(60, 0)
+  })
+})
+
+// ==========================================================
+// リスタイル（T06: footer.player-bar / 波形アート / 時間表示）
+// ==========================================================
+describe('Restyled player bar (T06)', () => {
+  test('Given currentPodcast=null, renders no player elements at all', () => {
+    const { container } = renderWithContext(null)
+    // ToastProvider が .toast-container を常時描画するため「コンテナが空」ではなく
+    // プレイヤー由来の要素が一切存在しないことを検証する
+    expect(container.querySelector('.player-bar')).toBeNull()
+    expect(container.querySelector('.player-art-waveform')).toBeNull()
+    expect(screen.queryByRole('contentinfo', { name: 'プレイヤー' })).not.toBeInTheDocument()
+  })
+
+  test('Root is a footer.player-bar with accessible name "プレイヤー" (contentinfo role)', () => {
+    const { container } = renderWithContext(SAMPLE_PODCAST)
+    const bar = screen.getByRole('contentinfo', { name: 'プレイヤー' })
+    expect(bar.tagName).toBe('FOOTER')
+    expect(bar.classList.contains('player-bar')).toBe(true)
+    expect(container.querySelector('.player-track')).toBeInTheDocument()
+    expect(container.querySelector('.player-controls')).toBeInTheDocument()
+    expect(container.querySelector('.player-extra')).toBeInTheDocument()
+  })
+
+  test('Renders waveform art with 5 bars, paused while not playing', () => {
+    const { container } = renderWithContext(SAMPLE_PODCAST)
+    const bars = container.querySelectorAll('.player-art-waveform .player-art-bar')
+    expect(bars).toHaveLength(5)
+    bars.forEach((bar) => {
+      expect((bar as HTMLElement).style.animationPlayState).toBe('paused')
+    })
+  })
+
+  test('Waveform bars animate (running) while playing', async () => {
+    const { container } = renderWithContext(SAMPLE_PODCAST)
+    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    const bars = container.querySelectorAll('.player-art-waveform .player-art-bar')
+    expect(bars).toHaveLength(5)
+    bars.forEach((bar) => {
+      expect((bar as HTMLElement).style.animationPlayState).toBe('running')
+    })
+  })
+
+  test('Displays currentTime ("0:00") and duration ("5:00") as progress times', () => {
+    renderWithContext(SAMPLE_PODCAST)
+    // 初期 currentTime=0 → "0:00"、duration は podcast の 300 秒 → "5:00"
+    expect(screen.getByText('0:00')).toBeInTheDocument()
+    expect(screen.getByText('5:00')).toBeInTheDocument()
+  })
+
+  test('currentTime display updates in formatDuration format on timeupdate', async () => {
+    renderWithContext(SAMPLE_PODCAST)
+    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    act(() => {
+      mockAudio.fireTimeUpdate(125)
+    })
+    // 125 秒 → "2:05"
+    expect(screen.getByText('2:05')).toBeInTheDocument()
   })
 })
 
