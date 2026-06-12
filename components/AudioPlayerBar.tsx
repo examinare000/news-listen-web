@@ -127,6 +127,19 @@ export function AudioPlayerBar() {
             aria-label="シーク"
             // a11y を守るため div 化せず range 入力のまま .progress-track 風に装飾
             className="progress-track seek-slider"
+            // --seek-fill: WebKit/Firefox 両エンジンで再生済み区間を amber で塗るための
+            // CSS カスタムプロパティ。擬似要素は親要素のカスタムプロパティを継承するため
+            // インラインで渡す（globals.css T11 ブロックで linear-gradient / -moz-range-progress に使用）。
+            // duration が 0・未定義・NaN の場合はゼロ除算を防ぎ 0% に固定し、
+            // currentTime が duration を超える保存値ズレにも 0〜100 で clamp する。
+            style={{
+              '--seek-fill': (() => {
+                const dur = player.duration
+                if (!dur || !isFinite(dur) || dur <= 0) return '0%'
+                const pct = Math.min(100, Math.max(0, (player.currentTime / dur) * 100))
+                return `${pct}%`
+              })(),
+            } as React.CSSProperties}
           />
           <span className="progress-time end">
             {formatDuration(player.duration || currentPodcast.duration_seconds)}

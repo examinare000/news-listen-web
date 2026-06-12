@@ -1383,7 +1383,19 @@ input[type="range"].volume-slider {
   accent-color: var(--amber);
 }
 
-input[type="range"].progress-track::-webkit-slider-runnable-track,
+/* WHY: progress-track のみ再生済み区間を amber グラデーションで塗る（T02）。
+   volume-slider は再生率と無関係なため別セレクタで一色のまま維持する。
+   --seek-fill はホスト要素（input 本体）のインラインで渡し、擬似要素に継承される。 */
+input[type="range"].progress-track::-webkit-slider-runnable-track {
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--amber) var(--seek-fill, 0%),
+    var(--bg-overlay) var(--seek-fill, 0%)
+  );
+  border-radius: 2px;
+}
+
 input[type="range"].volume-slider::-webkit-slider-runnable-track {
   height: 3px;
   background: var(--bg-overlay);
@@ -1407,6 +1419,15 @@ input[type="range"].progress-track::-moz-range-track,
 input[type="range"].volume-slider::-moz-range-track {
   height: 3px;
   background: var(--bg-overlay);
+  border-radius: 2px;
+}
+
+/* WHY: Firefox は WebKit と異なり ::-moz-range-progress で再生済み区間を独立描画できる。
+   WebKit 側の linear-gradient と組み合わせて両エンジンで amber フィルを実現する（T02）。
+   volume-slider は対象外（シークバーのみ）。 */
+input[type="range"].progress-track::-moz-range-progress {
+  background: var(--amber);
+  height: 3px;
   border-radius: 2px;
 }
 
