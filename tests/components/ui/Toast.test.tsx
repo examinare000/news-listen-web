@@ -85,6 +85,48 @@ describe('Toast', () => {
 })
 
 // ==========================================================
+// Toast — デザインクラス / アイコン（03-ui-parts.md §1）
+// ==========================================================
+describe('Toast design classes', () => {
+  test('Given success toast, has toast / toast-success classes and ✓ icon', () => {
+    renderWithProvider('成功通知', 'success')
+    act(() => {
+      screen.getByText('Show Toast').click()
+    })
+    const toast = screen.getByRole('status')
+    expect(toast.classList.contains('toast')).toBe(true)
+    expect(toast.classList.contains('toast-success')).toBe(true)
+    const icon = toast.querySelector('.toast-icon')
+    expect(icon).not.toBeNull()
+    expect(icon!.textContent).toBe('✓')
+  })
+
+  test('Given error toast, has toast / toast-error classes and ! icon', () => {
+    renderWithProvider('失敗通知', 'error')
+    act(() => {
+      screen.getByText('Show Toast').click()
+    })
+    const toast = screen.getByRole('alert')
+    expect(toast.classList.contains('toast')).toBe(true)
+    expect(toast.classList.contains('toast-error')).toBe(true)
+    expect(toast.classList.contains('toast-success')).toBe(false)
+    const icon = toast.querySelector('.toast-icon')
+    expect(icon).not.toBeNull()
+    expect(icon!.textContent).toBe('!')
+  })
+
+  test('Toasts render inside a .toast-container element', () => {
+    const { container } = renderWithProvider('コンテナ確認')
+    act(() => {
+      screen.getByText('Show Toast').click()
+    })
+    const toastContainer = container.querySelector('.toast-container')
+    expect(toastContainer).not.toBeNull()
+    expect(toastContainer!.querySelector('.toast')).not.toBeNull()
+  })
+})
+
+// ==========================================================
 // useToast — Provider 外で呼ぶと throw
 // ==========================================================
 describe('useToast outside ToastProvider', () => {

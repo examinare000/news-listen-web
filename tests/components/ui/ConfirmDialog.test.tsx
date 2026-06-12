@@ -53,6 +53,21 @@ describe('ConfirmDialog', () => {
     expect(onCancel).toHaveBeenCalledOnce()
   })
 
+  test('Dialog uses design modal classes (modal-backdrop / modal-box / btn)', () => {
+    render(<ConfirmDialog {...defaultProps} />)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.classList.contains('modal-box')).toBe(true)
+    expect(dialog.parentElement?.classList.contains('modal-backdrop')).toBe(true)
+
+    const confirmBtn = screen.getByRole('button', { name: '確認' })
+    expect(confirmBtn.classList.contains('btn')).toBe(true)
+    expect(confirmBtn.classList.contains('btn-primary')).toBe(true)
+
+    const cancelBtn = screen.getByRole('button', { name: 'キャンセル' })
+    expect(cancelBtn.classList.contains('btn')).toBe(true)
+    expect(cancelBtn.classList.contains('btn-ghost')).toBe(true)
+  })
+
   test('Given onConfirm is not called when isOpen=false', async () => {
     const onConfirm = vi.fn()
     render(<ConfirmDialog {...defaultProps} isOpen={false} onConfirm={onConfirm} />)

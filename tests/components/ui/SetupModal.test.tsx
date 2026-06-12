@@ -99,11 +99,35 @@ describe('SetupModal', () => {
     expect(screen.getByText(/Settings.*いつでも変更できます|いつでも変更できます/)).toBeInTheDocument()
   })
 
+  test('Modal uses design classes (modal-backdrop / modal-box / modal-logo / form-input / btn)', () => {
+    renderModal()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.classList.contains('modal-box')).toBe(true)
+    expect(dialog.parentElement?.classList.contains('modal-backdrop')).toBe(true)
+    expect(dialog.querySelector('.modal-logo')).not.toBeNull()
+    expect(dialog.querySelector('.modal-title')).not.toBeNull()
+    expect(dialog.querySelector('.modal-desc')).not.toBeNull()
+
+    const urlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
+    expect(urlInput.classList.contains('form-input')).toBe(true)
+    const keyInput = document.querySelector('input[type="password"]') as HTMLInputElement
+    expect(keyInput.classList.contains('form-input')).toBe(true)
+
+    const saveBtn = screen.getByRole('button', { name: /保存/ })
+    expect(saveBtn.classList.contains('btn')).toBe(true)
+    expect(saveBtn.classList.contains('btn-primary')).toBe(true)
+    const testBtn = screen.getByRole('button', { name: /接続テスト/ })
+    expect(testBtn.classList.contains('btn')).toBe(true)
+    expect(testBtn.classList.contains('btn-ghost')).toBe(true)
+  })
+
   test('Given connection test button clicked, calls checkHealth via /api/backend/health', async () => {
     const { createApiClient } = await import('@/lib/api')
-    createApiClient.mockReturnValue({
-      checkHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
-    })
+    const checkHealth = vi.fn().mockResolvedValue({ status: 'ok' })
+    // vi.mocked + 戻り値キャストで型エラーなくモックを差し替える（挙動は従来と同一）
+    vi.mocked(createApiClient).mockReturnValue({ checkHealth } as unknown as ReturnType<
+      typeof createApiClient
+    >)
 
     renderModal()
 
@@ -113,7 +137,7 @@ describe('SetupModal', () => {
     await userEvent.click(screen.getByRole('button', { name: /接続テスト|test|確認/i }))
 
     await waitFor(() => {
-      expect(createApiClient().checkHealth).toHaveBeenCalled()
+      expect(checkHealth).toHaveBeenCalled()
     })
   })
 })
