@@ -48,16 +48,6 @@ const tabCountStyle: React.CSSProperties = {
   marginLeft: 4,
 }
 
-// WHY: .feed-tab は div 前提の CSS のため、button のデフォルト外観だけを打ち消す。
-// border-bottom（選択インジケータ）はクラス側の指定を活かすので個別辺のみ none にする
-const tabButtonResetStyle: React.CSSProperties = {
-  background: 'transparent',
-  borderTop: 'none',
-  borderRight: 'none',
-  borderLeft: 'none',
-  fontFamily: 'inherit',
-}
-
 export default function FeedPage() {
   const { state } = useApp()
   const { showToast } = useToast()
@@ -219,23 +209,23 @@ export default function FeedPage() {
         </div>
       </div>
 
-      <div className="feed-tabs" role="tablist" aria-label="フィードの絞り込み">
+      {/* WHY toggle button（tab ロール不使用）: WAI-ARIA tabs パターンは tabpanel の
+          関連付けと矢印キーの roving tabindex まで実装して初めて成立する。
+          2 択のクライアントフィルタには aria-pressed トグルボタンの方が、標準の
+          Tab キー操作のまま正しい状態を支援技術へ伝えられる */}
+      <div className="feed-tabs" role="group" aria-label="フィードの絞り込み">
         <button
           type="button"
-          role="tab"
-          aria-selected={activeTab === 'all'}
+          aria-pressed={activeTab === 'all'}
           className={activeTab === 'all' ? 'feed-tab active' : 'feed-tab'}
-          style={tabButtonResetStyle}
           onClick={() => setActiveTab('all')}
         >
           すべて <span style={tabCountStyle}>{articles.length}</span>
         </button>
         <button
           type="button"
-          role="tab"
-          aria-selected={activeTab === 'starred'}
+          aria-pressed={activeTab === 'starred'}
           className={activeTab === 'starred' ? 'feed-tab active' : 'feed-tab'}
-          style={tabButtonResetStyle}
           onClick={() => setActiveTab('starred')}
         >
           ★ スター済み <span style={tabCountStyle}>{starredArticles.length}</span>
