@@ -7,8 +7,55 @@ import { ArticleCard } from '@/components/ArticleCard'
 import { createApiClient, ApiError } from '@/lib/api'
 import type { Article } from '@/types/index'
 
+type FeedTab = 'all' | 'starred'
+
 function SkeletonCard() {
-  return <div data-testid="skeleton-card" className="skeleton-card" />
+  // WHY: カード本体（タイトル2行 + メタ + スコア行）と同等の高さ・角丸を
+  // インラインで与える。globals.css は T01 完成後の編集禁止のため
+  return (
+    <div
+      data-testid="skeleton-card"
+      className="skeleton"
+      style={{ height: 104, borderRadius: 10 }}
+    />
+  )
+}
+
+function RefreshIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 .49-4.75" />
+    </svg>
+  )
+}
+
+// WHY: デザインのタブ件数はインラインスタイル（DM Mono 10px）で表現されており、
+// globals.css に専用クラスがないためデザイン正本同様にインラインで再現する
+const tabCountStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-mono), monospace',
+  fontSize: 10,
+  color: 'var(--text-muted)',
+  marginLeft: 4,
+}
+
+// WHY: .feed-tab は div 前提の CSS のため、button のデフォルト外観だけを打ち消す。
+// border-bottom（選択インジケータ）はクラス側の指定を活かすので個別辺のみ none にする
+const tabButtonResetStyle: React.CSSProperties = {
+  background: 'transparent',
+  borderTop: 'none',
+  borderRight: 'none',
+  borderLeft: 'none',
+  fontFamily: 'inherit',
 }
 
 export default function FeedPage() {
@@ -16,10 +63,12 @@ export default function FeedPage() {
   const { showToast } = useToast()
 
   const [articles, setArticles] = useState<Article[]>([])
+  const [feedDate, setFeedDate] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set())
+  const [activeTab, setActiveTab] = useState<FeedTab>('all')
 
   const fetchFeed = useCallback(async () => {
     setLoading(true)
@@ -27,6 +76,7 @@ export default function FeedPage() {
     try {
       const data = await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).getFeed()
       setArticles(data.articles)
+      setFeedDate(data.date ?? null)
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 0) {
@@ -92,42 +142,107 @@ export default function FeedPage() {
     }
   }
 
-  if (loading) {
-    return <SkeletonCard />
-  }
+  // WHY: 件数・表示対象は articles と starredIds から都度導出する。
+  // Dismiss で記事が消えた際にも別カウンタの同期処理なしで件数が追従するため
+  const starredArticles = articles.filter((a) => starredIds.has(a.id))
+  const visibleArticles = activeTab === 'starred' ? starredArticles : articles
 
-  if (errorMessage) {
-    return (
-      <div>
-        <p>{errorMessage}</p>
-        <button onClick={fetchFeed} aria-label="リフレッシュ">リフレッシュ</button>
-      </div>
-    )
-  }
+  function renderContent() {
+    if (loading) {
+      return <SkeletonCard />
+    }
 
-  if (articles.length === 0) {
+    if (errorMessage) {
+      return (
+        <div className="empty-state">
+          <div className="empty-state-icon" aria-hidden="true">⚠</div>
+          <div className="empty-state-title">{errorMessage}</div>
+          <div className="empty-state-desc">右上の更新ボタンで再試行できます</div>
+        </div>
+      )
+    }
+
+    if (visibleArticles.length === 0) {
+      if (activeTab === 'starred') {
+        return (
+          <div className="empty-state">
+            <div className="empty-state-icon" aria-hidden="true">★</div>
+            <div className="empty-state-title">スター済みの記事はありません</div>
+            <div className="empty-state-desc">記事の ★ を押すとここに表示されます</div>
+          </div>
+        )
+      }
+      return (
+        <div className="empty-state">
+          <div className="empty-state-icon" aria-hidden="true">📭</div>
+          <div className="empty-state-title">まだ記事がありません</div>
+          <div className="empty-state-desc">毎日 06:00 に自動更新されます</div>
+        </div>
+      )
+    }
+
     return (
-      <div>
-        <p>まだ記事がありません</p>
-        <p>毎日 06:00 に自動更新されます</p>
-        <button onClick={fetchFeed} aria-label="リフレッシュ">リフレッシュ</button>
+      <div className="article-list">
+        {visibleArticles.map((article) => (
+          <ArticleCard
+            key={article.id}
+            article={article}
+            onStar={handleStar}
+            onDismiss={handleDismiss}
+            busy={busyIds.has(article.id)}
+            starred={starredIds.has(article.id)}
+          />
+        ))}
       </div>
     )
   }
 
   return (
-    <div>
-      <button onClick={fetchFeed} aria-label="リフレッシュ">リフレッシュ</button>
-      {articles.map((article) => (
-        <ArticleCard
-          key={article.id}
-          article={article}
-          onStar={handleStar}
-          onDismiss={handleDismiss}
-          busy={busyIds.has(article.id)}
-          starred={starredIds.has(article.id)}
-        />
-      ))}
-    </div>
+    <>
+      <div className="page-header">
+        <div>
+          <div className="page-title">フィード</div>
+          <div className="page-subtitle">
+            今日のレコメンド記事{feedDate ? ` — ${feedDate}` : ''}
+          </div>
+        </div>
+        <div className="header-actions">
+          <button
+            type="button"
+            className="btn btn-icon"
+            onClick={fetchFeed}
+            aria-label="更新"
+            title="更新"
+          >
+            <RefreshIcon />
+          </button>
+        </div>
+      </div>
+
+      <div className="feed-tabs" role="tablist" aria-label="フィードの絞り込み">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'all'}
+          className={activeTab === 'all' ? 'feed-tab active' : 'feed-tab'}
+          style={tabButtonResetStyle}
+          onClick={() => setActiveTab('all')}
+        >
+          すべて <span style={tabCountStyle}>{articles.length}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'starred'}
+          className={activeTab === 'starred' ? 'feed-tab active' : 'feed-tab'}
+          style={tabButtonResetStyle}
+          onClick={() => setActiveTab('starred')}
+        >
+          ★ スター済み <span style={tabCountStyle}>{starredArticles.length}</span>
+        </button>
+      </div>
+
+      <div className="content-area">{renderContent()}</div>
+    </>
   )
 }
