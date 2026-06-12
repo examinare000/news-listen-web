@@ -171,7 +171,9 @@ export default function SubscriptionsPage() {
                   <div className="empty-state-desc">右のフォームから RSS ソースを追加してください</div>
                 </div>
               ) : (
-                <ul className="subs-list" style={{ listStyle: 'none' }}>
+                /* WHY role="list" 明示: list-style:none の ul は Safari/VoiceOver が
+                   リストセマンティクスを除去するため、属性で復元する */
+                <ul className="subs-list" role="list" style={{ listStyle: 'none' }}>
                   {sources.map((source) => (
                     <li key={source.url} className="sub-row">
                       {/* WHY 固定絵文字: デザインの 🔺🟢 はモック用の手動割当で、URL からの推定はスコープ外（指示書 §2） */}
@@ -236,7 +238,11 @@ export default function SubscriptionsPage() {
                     />
                   </div>
 
-                  {addError && <p role="alert">{addError}</p>}
+                  {addError && (
+                    <p role="alert" className="form-error">
+                      {addError}
+                    </p>
+                  )}
 
                   <button
                     type="submit"
