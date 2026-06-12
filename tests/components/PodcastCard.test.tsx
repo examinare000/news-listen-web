@@ -20,23 +20,15 @@ const SAMPLE_PODCAST: Podcast = {
 // PodcastCard — 表示コンテンツ
 // ==========================================================
 describe('PodcastCard display', () => {
-  test('Displays first 80 characters of japanese_intro_text', () => {
+  test('Displays japanese_intro_text', () => {
     render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
-    const intro80 = SAMPLE_PODCAST.japanese_intro_text.slice(0, 80)
-    expect(screen.getByText(new RegExp(intro80.slice(0, 30)))).toBeInTheDocument()
+    expect(screen.getByText(/これはテスト用の日本語イントロテキスト/)).toBeInTheDocument()
   })
 
-  test('Does NOT display characters beyond 80 in intro text', () => {
+  test('Intro has podcast-intro class (CSS 2-line clamp replaces 80-char slice)', () => {
     render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
-    // 80文字を超える部分の特徴的なテキスト
-    const beyond80 = SAMPLE_PODCAST.japanese_intro_text.slice(80)
-    if (beyond80.length > 5) {
-      // 80 文字以降の固有テキストが画面に存在しないこと
-      const uniquePart = beyond80.slice(0, 5)
-      // ただし 80 文字内にも含まれる文字がある可能性があるため、位置で判断
-      const displayedText = screen.getByText(/これはテスト用/)?.textContent ?? ''
-      expect(displayedText.length).toBeLessThanOrEqual(83) // 省略記号込みで +3 程度
-    }
+    const intro = screen.getByText(/これはテスト用の日本語イントロテキスト/)
+    expect(intro.classList.contains('podcast-intro')).toBe(true)
   })
 
   test('Renders DifficultyBadge', () => {
@@ -61,6 +53,29 @@ describe('PodcastCard display', () => {
     const link = screen.getByRole('link', { name: /これはテスト用/ })
     expect(link).toHaveAttribute('href', `/podcast/${SAMPLE_PODCAST.id}`)
   })
+
+  test('Root element has podcast-card class', () => {
+    const { container } = render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
+    const root = container.firstElementChild
+    expect(root?.classList.contains('podcast-card')).toBe(true)
+  })
+})
+
+// ==========================================================
+// PodcastCard — DIGEST タグ
+// ==========================================================
+describe('PodcastCard digest tag', () => {
+  test('Given type="digest", displays DIGEST tag', () => {
+    render(
+      <PodcastCard podcast={{ ...SAMPLE_PODCAST, type: 'digest' }} onPlay={vi.fn()} />
+    )
+    expect(screen.getByText('DIGEST')).toBeInTheDocument()
+  })
+
+  test('Given type="single", does not display DIGEST tag', () => {
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
+    expect(screen.queryByText('DIGEST')).not.toBeInTheDocument()
+  })
 })
 
 // ==========================================================
@@ -74,6 +89,36 @@ describe('PodcastCard play', () => {
     await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
 
     expect(onPlay).toHaveBeenCalledWith(SAMPLE_PODCAST)
+  })
+
+  test('Play button is independent from the detail page link', () => {
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
+    const button = screen.getByRole('button', { name: /再生|play/i })
+    // 再生ボタンクリックがリンク遷移を起こさないよう、リンクの外に配置されていること
+    expect(button.closest('a')).toBeNull()
+  })
+})
+
+// ==========================================================
+// PodcastCard — 再生中強調（playing prop）
+// ==========================================================
+describe('PodcastCard playing state', () => {
+  test('Given playing=true, root has playing class and "再生中" label is shown', () => {
+    const { container } = render(
+      <PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} playing />
+    )
+    const root = container.firstElementChild
+    expect(root?.classList.contains('playing')).toBe(true)
+    expect(screen.getByText('再生中')).toBeInTheDocument()
+  })
+
+  test('Given playing omitted, no playing class and no "再生中" label', () => {
+    const { container } = render(
+      <PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />
+    )
+    const root = container.firstElementChild
+    expect(root?.classList.contains('playing')).toBe(false)
+    expect(screen.queryByText('再生中')).not.toBeInTheDocument()
   })
 })
 
