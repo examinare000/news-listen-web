@@ -5,7 +5,10 @@ import { useApp } from '@/contexts/AppContext'
 import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
-import { formatDuration } from '@/lib/format'
+import { formatDuration, formatDate } from '@/lib/format'
+
+// 波形アートのバー本数（デザイン正本 app-ui.html L1944〜1950 と同じ 5 本）
+const WAVEFORM_BAR_COUNT = 5
 
 export function AudioPlayerBar() {
   const { state, dispatch } = useApp()
@@ -35,70 +38,130 @@ export function AudioPlayerBar() {
   }
 
   return (
-    <section aria-label="プレイヤー" className="audio-player-bar">
-      <div className="player-info">
-        <span>{intro50}</span>
-        <DifficultyBadge difficulty={currentPodcast.difficulty} />
-        <span>{formatDuration(currentPodcast.duration_seconds)}</span>
+    <footer aria-label="プレイヤー" className="player-bar">
+      {/* 左: トラック情報（波形アート + タイトル + バッジ/生成日） */}
+      <div className="player-track">
+        <div className="player-art">
+          <div className="player-art-waveform">
+            {Array.from({ length: WAVEFORM_BAR_COUNT }, (_, i) => (
+              <div
+                key={i}
+                className="player-art-bar"
+                // globals.css に paused 用クラスがないため、インラインの
+                // animation-play-state で再生/停止に同期させる（指示書 T06）
+                style={{
+                  animationPlayState: player.isPlaying ? 'running' : 'paused',
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <div className="player-info">
+          <div className="player-title">{intro50}</div>
+          <div className="player-subtitle">
+            <DifficultyBadge difficulty={currentPodcast.difficulty} />
+            <span>{formatDate(currentPodcast.created_at)}</span>
+          </div>
+        </div>
       </div>
 
+      {/* 中央: 再生コントロール + 進捗 */}
       <div className="player-controls">
-        <button
-          onClick={() => player.seekRelative(-15)}
-          aria-label="-15秒戻る"
-        >
-          -15
-        </button>
+        <div className="player-buttons">
+          <button
+            className="ctrl-btn"
+            onClick={() => player.seekRelative(-15)}
+            aria-label="-15秒戻る"
+          >
+            -15
+          </button>
 
-        <button
-          onClick={handlePlayPause}
-          aria-label={player.isPlaying ? '一時停止' : '再生'}
-        >
-          {player.isPlaying ? '一時停止' : '再生'}
-        </button>
+          <button
+            className="ctrl-btn-main"
+            onClick={handlePlayPause}
+            aria-label={player.isPlaying ? '一時停止' : '再生'}
+          >
+            {player.isPlaying ? (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </svg>
+            ) : (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
+                focusable="false"
+              >
+                <polygon points="7 4 20 12 7 20" />
+              </svg>
+            )}
+          </button>
 
-        <button
-          onClick={() => player.seekRelative(30)}
-          aria-label="+30秒進む"
-        >
-          +30
-        </button>
+          <button
+            className="ctrl-btn"
+            onClick={() => player.seekRelative(30)}
+            aria-label="+30秒進む"
+          >
+            +30
+          </button>
+        </div>
+
+        <div className="player-progress">
+          <span className="progress-time">{formatDuration(player.currentTime)}</span>
+          <input
+            type="range"
+            min={0}
+            max={player.duration || currentPodcast.duration_seconds}
+            value={player.currentTime}
+            onChange={(e) => player.seek(Number(e.target.value))}
+            aria-label="シーク"
+            // a11y を守るため div 化せず range 入力のまま .progress-track 風に装飾
+            className="progress-track seek-slider"
+          />
+          <span className="progress-time end">
+            {formatDuration(player.duration || currentPodcast.duration_seconds)}
+          </span>
+        </div>
       </div>
 
-      <input
-        type="range"
-        min={0}
-        max={player.duration || currentPodcast.duration_seconds}
-        value={player.currentTime}
-        onChange={(e) => player.seek(Number(e.target.value))}
-        aria-label="シーク"
-        className="seek-slider"
-      />
+      {/* 右: 音量 + 速度（シャッフルは D19 により実装しない） */}
+      <div className="player-extra">
+        <input
+          type="range"
+          min={0}
+          max={100}
+          value={Math.round(player.volume * 100)}
+          onChange={(e) => player.setVolume(Number(e.target.value) / 100)}
+          aria-label="音量"
+          className="volume-slider"
+        />
 
-      <input
-        type="range"
-        min={0}
-        max={100}
-        value={Math.round(player.volume * 100)}
-        onChange={(e) => player.setVolume(Number(e.target.value) / 100)}
-        aria-label="音量"
-        className="volume-slider"
-      />
-
-      <select
-        aria-label="速度"
-        value={state.playbackSpeed}
-        onChange={(e) => {
-          // Dispatch to AppContext; the useEffect above syncs state.playbackSpeed → player.setSpeed()
-          dispatch({ type: 'SET_SPEED', speed: Number(e.target.value) })
-        }}
-      >
-        {PLAYBACK_SPEEDS.map((s) => (
-          <option key={s} value={s}>
-            {s}x
-          </option>
-        ))}
-      </select>
-    </section>
+        <select
+          aria-label="速度"
+          className="speed-pill"
+          value={state.playbackSpeed}
+          onChange={(e) => {
+            // Dispatch to AppContext; the useEffect above syncs state.playbackSpeed → player.setSpeed()
+            dispatch({ type: 'SET_SPEED', speed: Number(e.target.value) })
+          }}
+        >
+          {PLAYBACK_SPEEDS.map((s) => (
+            <option key={s} value={s}>
+              {s}x
+            </option>
+          ))}
+        </select>
+      </div>
+    </footer>
   )
 }
