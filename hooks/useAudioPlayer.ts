@@ -145,7 +145,7 @@ export function useAudioPlayer(
       audio.removeEventListener('error', handleError)
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const load = useCallback(
     (url: string, resumePosition: number, podcastId: string) => {

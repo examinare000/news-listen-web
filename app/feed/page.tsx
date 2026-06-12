@@ -82,7 +82,7 @@ export default function FeedPage() {
     } finally {
       setLoading(false)
     }
-  }, [state.baseUrl, state.apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.baseUrl, state.apiKey])
 
   useEffect(() => {
     fetchFeed()

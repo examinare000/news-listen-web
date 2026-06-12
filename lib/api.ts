@@ -22,8 +22,6 @@ interface ApiClientConfig {
   apiKey: string
 }
 
-type ApiClient = ReturnType<typeof createApiClient>
-
 /** Shared fetch wrapper that normalizes errors to ApiError */
 async function request<T>(
   path: string,

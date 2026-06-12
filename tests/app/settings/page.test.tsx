@@ -52,10 +52,6 @@ describe('SettingsPage — display', () => {
 
   test('apiKey re-input field has type="password"', () => {
     renderSettingsPage()
-    const passwordInputs = screen.getAllByDisplayValue('')
-    const apiKeyInput = passwordInputs.find(
-      (el) => el.getAttribute('type') === 'password' || el.getAttribute('name')?.includes('api')
-    )
     // type="password" の入力欄が存在すること
     expect(document.querySelector('input[type="password"]')).toBeInTheDocument()
   })

@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
-import { createApiClient, ApiError } from '@/lib/api'
+import { createApiClient } from '@/lib/api'
 
 interface SetupModalProps {
   onConfigure: (baseUrl: string, apiKey: string) => void

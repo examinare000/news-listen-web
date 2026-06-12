@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { useAudioPlayer, PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { setupMockAudio } from '../helpers/mockAudio'
 

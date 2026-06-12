@@ -115,7 +115,7 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
       // Corrupted storage — stay unconfigured
     }
     dispatch({ type: 'RESTORE_DONE' })
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const configure = useCallback((baseUrl: string, apiKey: string) => {
     try {
