@@ -41,7 +41,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             role={toast.type === 'error' ? 'alert' : 'status'}
             className={`toast toast-${toast.type}`}
           >
-            {toast.message}
+            {/* デザイン準拠のアイコン（app-ui.html L2097）。error はデザインに定義がないため「!」を採用 */}
+            <div className="toast-icon" aria-hidden="true">
+              {toast.type === 'success' ? '✓' : '!'}
+            </div>
+            <span>{toast.message}</span>
           </div>
         ))}
       </div>

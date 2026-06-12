@@ -34,12 +34,25 @@ export function ConfirmDialog({
   if (!isOpen) return null
 
   return (
-    <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title">
-      <h2 id="confirm-dialog-title">{title}</h2>
-      <p>{message}</p>
-      <div>
-        <button onClick={onConfirm}>確認</button>
-        <button onClick={onCancel}>キャンセル</button>
+    <div className="modal-backdrop">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="modal-box"
+      >
+        <h2 id="confirm-dialog-title" className="modal-title">
+          {title}
+        </h2>
+        <p className="modal-desc">{message}</p>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onCancel}>
+            キャンセル
+          </button>
+          <button className="btn btn-primary" onClick={onConfirm}>
+            確認
+          </button>
+        </div>
       </div>
     </div>
   )
