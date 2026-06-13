@@ -1,6 +1,6 @@
 import React from 'react'
 import type { Metadata } from 'next'
-import { Playfair_Display, DM_Sans, DM_Mono } from 'next/font/google'
+import localFont from 'next/font/local'
 import { AppProvider } from '@/contexts/AppContext'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -8,23 +8,32 @@ import { NavigationBar } from '@/components/NavigationBar'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import './globals.css'
 
-// next/font によるビルド時セルフホスティング。<link> 直書きにしないのは、
-// Docker コンテナ実行時の Google Fonts への外部リクエストを消すため（docs/adr/003-web-pure-css-design-tokens.md）
-const playfairDisplay = Playfair_Display({
-  subsets: ['latin'],
-  weight: ['400', '600', '700', '900'],
+// フォントは next/font/local で app/fonts/ の woff2（latin サブセット）からセルフホストする。
+// next/font/google はビルド時に Google Fonts へ fetch するため、オフラインの Docker ビルドで
+// 失敗する。ローカルファイル化することでビルドを外部依存ゼロ・決定的にする。
+// （実行時に Google Fonts へ出ない意図は docs/adr/003-web-pure-css-design-tokens.md と同じ）
+// DM Sans / Playfair Display は可変フォント（1ファイルで weight 範囲を内包）、DM Mono は
+// weight ごとに別ファイル。
+const playfairDisplay = localFont({
+  src: './fonts/PlayfairDisplay-latin.woff2',
+  weight: '400 900',
+  display: 'swap',
   variable: '--font-display',
 })
 
-const dmSans = DM_Sans({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
+const dmSans = localFont({
+  src: './fonts/DMSans-latin.woff2',
+  weight: '300 600',
+  display: 'swap',
   variable: '--font-body',
 })
 
-const dmMono = DM_Mono({
-  subsets: ['latin'],
-  weight: ['400', '500'],
+const dmMono = localFont({
+  src: [
+    { path: './fonts/DMMono-400-latin.woff2', weight: '400', style: 'normal' },
+    { path: './fonts/DMMono-500-latin.woff2', weight: '500', style: 'normal' },
+  ],
+  display: 'swap',
   variable: '--font-mono',
 })
 

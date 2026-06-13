@@ -2,12 +2,13 @@ import { describe, test, expect, vi } from 'vitest'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
 
-// next/font/google は Next.js のビルド時変換が前提で vitest では動かないため、
-// variable プロパティを返す形だけ模倣する（フォント変数が body に配線されることを検証する目的）
-vi.mock('next/font/google', () => ({
-  Playfair_Display: vi.fn(() => ({ variable: 'mock-font-display' })),
-  DM_Sans: vi.fn(() => ({ variable: 'mock-font-body' })),
-  DM_Mono: vi.fn(() => ({ variable: 'mock-font-mono' })),
+// next/font/local は Next.js のビルド時変換（フォントファイル読込）が前提で vitest では
+// 動かないため、variable プロパティを返す形だけ模倣する（フォント変数が body に配線される
+// ことを検証する目的）。渡された CSS 変数名から mock-font-* クラスを導出する。
+vi.mock('next/font/local', () => ({
+  default: vi.fn((opts: { variable: string }) => ({
+    variable: `mock-font-${opts.variable.replace('--font-', '')}`,
+  })),
 }))
 
 import RootLayout from '@/app/layout'
