@@ -5,14 +5,7 @@ import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
-import type { Source } from '@/types/index'
-
-// おすすめのソース（D23）: クリックでフォームに自動入力する。即 API 送信はしない
-// WHY: ユーザーが URL を確認してから登録する余地を残す（デザインの fillForm と同挙動）
-const RECOMMENDED_SOURCES = [
-  { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml', desc: 'テクノロジー全般' },
-  { name: 'dev.to', url: 'https://dev.to/feed', desc: '開発者コミュニティ' },
-] as const
+import type { Source, FeaturedSource } from '@/types/index'
 
 function TrashIcon() {
   return (
@@ -39,6 +32,11 @@ export default function SubscriptionsPage() {
   const [sources, setSources] = useState<Source[]>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+
+  // システム提供のおすすめサイト（DB 駆動）
+  const [featured, setFeatured] = useState<FeaturedSource[]>([])
+  // 即購読中のおすすめサイト id（ボタンの二重押下防止）
+  const [subscribingId, setSubscribingId] = useState<string | null>(null)
 
   // Add form state
   const [newName, setNewName] = useState('')
@@ -76,9 +74,40 @@ export default function SubscriptionsPage() {
     }
   }, [makeClient])
 
+  const fetchFeatured = useCallback(async () => {
+    try {
+      const data = await makeClient().getFeaturedSources()
+      setFeatured(data.sites)
+    } catch {
+      // おすすめ欄の取得失敗は致命的でない（購読一覧・追加フォームは独立して機能する）
+      setFeatured([])
+    }
+  }, [makeClient])
+
   useEffect(() => {
     fetchSources()
-  }, [fetchSources])
+    fetchFeatured()
+  }, [fetchSources, fetchFeatured])
+
+  // おすすめサイトをワンクリックで即購読する。
+  async function handleSubscribeFeatured(site: FeaturedSource) {
+    setSubscribingId(site.id)
+    try {
+      const data = await makeClient().addSource(site.name, site.url)
+      setSources(data.sources)
+      showToast(`「${site.name}」を購読しました`, 'success')
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        showToast(`「${site.name}」は登録済みです`, 'error')
+      } else if (err instanceof ApiError) {
+        showToast(`購読に失敗しました (${err.status})`, 'error')
+      } else {
+        showToast('購読に失敗しました', 'error')
+      }
+    } finally {
+      setSubscribingId(null)
+    }
+  }
 
   async function handleAdd() {
     // Client-side validation: URL must start with http:// or https://
@@ -123,12 +152,6 @@ export default function SubscriptionsPage() {
         showToast('削除に失敗しました', 'error')
       }
     }
-  }
-
-  function fillForm(name: string, url: string) {
-    setNewName(name)
-    setNewUrl(url)
-    nameInputRef.current?.focus()
   }
 
   return (
@@ -267,53 +290,84 @@ export default function SubscriptionsPage() {
                   </button>
                 </form>
 
-                <div
-                  style={{
-                    marginTop: 16,
-                    paddingTop: 16,
-                    borderTop: '1px solid var(--border)',
-                  }}
-                >
+                {featured.length > 0 && (
                   <div
                     style={{
-                      fontSize: 11,
-                      color: 'var(--text-muted)',
-                      marginBottom: 8,
-                      fontWeight: 600,
+                      marginTop: 16,
+                      paddingTop: 16,
+                      borderTop: '1px solid var(--border)',
                     }}
                   >
-                    おすすめのソース
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {RECOMMENDED_SOURCES.map((rec) => (
-                      <div
-                        key={rec.url}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          padding: '8px 12px',
-                          background: 'var(--bg-base)',
-                          borderRadius: 6,
-                          border: '1px solid var(--border)',
-                        }}
-                      >
-                        <div>
-                          <div style={{ fontSize: 12, fontWeight: 600 }}>{rec.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{rec.desc}</div>
-                        </div>
-                        <button
-                          className="btn btn-ghost"
-                          style={{ padding: '4px 10px', fontSize: 11 }}
-                          onClick={() => fillForm(rec.name, rec.url)}
-                          aria-label={`${rec.name} を追加`}
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: 'var(--text-muted)',
+                        marginBottom: 8,
+                        fontWeight: 600,
+                      }}
+                    >
+                      おすすめのサイト
+                    </div>
+                    {/* ワンクリックで即購読する（D23 から挙動変更）。URL 直接入力は左フォームで従来どおり可能 */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {featured.map((site) => (
+                        <div
+                          key={site.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: 8,
+                            padding: '8px 12px',
+                            background: 'var(--bg-base)',
+                            borderRadius: 6,
+                            border: '1px solid var(--border)',
+                          }}
                         >
-                          追加
-                        </button>
-                      </div>
-                    ))}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                            {site.thumbnail_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- 任意ホストのサムネイルのため next/image の最適化対象外
+                              <img
+                                src={site.thumbnail_url}
+                                alt=""
+                                width={20}
+                                height={20}
+                                style={{ borderRadius: 4, flexShrink: 0, objectFit: 'cover' }}
+                              />
+                            ) : (
+                              <span aria-hidden="true" style={{ flexShrink: 0 }}>📡</span>
+                            )}
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontSize: 12, fontWeight: 600 }}>{site.name}</div>
+                              {site.description && (
+                                <div
+                                  style={{
+                                    fontSize: 11,
+                                    color: 'var(--text-muted)',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                    whiteSpace: 'nowrap',
+                                  }}
+                                >
+                                  {site.description}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}
+                            onClick={() => handleSubscribeFeatured(site)}
+                            disabled={subscribingId === site.id}
+                            aria-label={`${site.name} を購読`}
+                          >
+                            {subscribingId === site.id ? '購読中…' : '購読'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
