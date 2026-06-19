@@ -5,7 +5,14 @@
  * The proxy adds X-Backend-Base-Url and X-API-Key so this client
  * never talks to the backend directly.
  */
-import type { FeedResponse, PodcastsResponse, SourcesResponse, Podcast } from '@/types/index'
+import type {
+  FeedResponse,
+  PodcastsResponse,
+  SourcesResponse,
+  Podcast,
+  FeaturedSourcesResponse,
+  OnboardingStatusResponse,
+} from '@/types/index'
 
 export class ApiError extends Error {
   constructor(
@@ -106,6 +113,30 @@ export function createApiClient(config: ApiClientConfig) {
         `/api/backend/settings/sources?url=${encoded}`,
         config,
         { method: 'DELETE' },
+      )
+    },
+
+    getFeaturedSources() {
+      return request<FeaturedSourcesResponse>(
+        '/api/backend/settings/featured-sources',
+        config,
+        { method: 'GET' },
+      )
+    },
+
+    getOnboardingStatus() {
+      return request<OnboardingStatusResponse>(
+        '/api/backend/settings/onboarding',
+        config,
+        { method: 'GET' },
+      )
+    },
+
+    completeOnboarding() {
+      return request<OnboardingStatusResponse>(
+        '/api/backend/settings/onboarding/complete',
+        config,
+        { method: 'POST' },
       )
     },
 

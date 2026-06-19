@@ -45,3 +45,20 @@ export interface Source {
 export interface SourcesResponse {
   sources: Source[]
 }
+
+// システム提供のおすすめサイト（GET /settings/featured-sources）
+export interface FeaturedSource {
+  id: string
+  name: string
+  url: string
+  thumbnail_url?: string | null
+  description?: string | null
+}
+
+export interface FeaturedSourcesResponse {
+  sites: FeaturedSource[]
+}
+
+export interface OnboardingStatusResponse {
+  onboarding_completed: boolean
+}
