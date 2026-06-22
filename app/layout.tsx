@@ -2,6 +2,7 @@ import React from 'react'
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import { AppProvider } from '@/contexts/AppContext'
+import { AuthProvider } from '@/contexts/AuthContext'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { NavigationBar } from '@/components/NavigationBar'
@@ -63,15 +64,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={`${playfairDisplay.variable} ${dmSans.variable} ${dmMono.variable}`}>
         <AppProvider>
-          <ToastProvider>
-            <AudioPlayerProvider>
-              <div className="app-shell">
-                <NavigationBar />
-                <main className="main-content">{children}</main>
-                <AudioPlayerBar />
-              </div>
-            </AudioPlayerProvider>
-          </ToastProvider>
+          <AuthProvider>
+            <ToastProvider>
+              <AudioPlayerProvider>
+                <div className="app-shell">
+                  <NavigationBar />
+                  <main className="main-content">{children}</main>
+                  <AudioPlayerBar />
+                </div>
+              </AudioPlayerProvider>
+            </ToastProvider>
+          </AuthProvider>
         </AppProvider>
       </body>
     </html>
