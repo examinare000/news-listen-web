@@ -62,3 +62,23 @@ export interface FeaturedSourcesResponse {
 export interface OnboardingStatusResponse {
   onboarding_completed: boolean
 }
+
+// ── 認証・ユーザー管理 ────────────────────────────────────────────
+export type UserRole = 'admin' | 'user'
+
+/** ログインユーザーの公開情報（GET /auth/me 等）。password_hash は含まれない。 */
+export interface AuthUser {
+  username: string
+  role: UserRole
+  display_name: string
+}
+
+/** POST /auth/login のレスポンス。Web は Cookie 認証のため token は未使用。 */
+export interface LoginResponse {
+  token: string
+  user: AuthUser
+}
+
+export interface UserListResponse {
+  users: AuthUser[]
+}

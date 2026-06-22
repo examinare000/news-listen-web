@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import type { NextRequest } from 'next/server'
 // NOTE: Next.js の catch-all ルートファイルは [...path] をブラケット含みでインポートする
-import { GET, POST, DELETE } from '@/app/api/backend/[...path]/route'
+import { GET, POST, PATCH, DELETE } from '@/app/api/backend/[...path]/route'
 
 // パターン B: 型キャストのみ（ランタイム挙動を変えずに型エラーを解消）
 const asNextRequest = (req: Request) => req as unknown as NextRequest
@@ -255,6 +255,73 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
     const res = await GET(asNextRequest(req), makeContext(['health']))
 
     expect(res.status).toBe(200)
+  })
+})
+
+// ==========================================================
+// PATCH — 転送
+// ==========================================================
+describe('PATCH — forwards request', () => {
+  test('forwards PATCH body to backend', async () => {
+    mockBackendOk({ username: 'alice', role: 'user', display_name: 'New' })
+    const req = makeRequest(
+      'PATCH',
+      'auth/me',
+      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      JSON.stringify({ display_name: 'New' }),
+    )
+    const res = await PATCH(asNextRequest(req), makeContext(['auth', 'me']))
+    expect(res.status).toBe(200)
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    expect(forwardedInit.method).toBe('PATCH')
+  })
+})
+
+// ==========================================================
+// セッション Cookie の中継
+// ==========================================================
+describe('Session cookie relay', () => {
+  test('forwards incoming Cookie header to backend', async () => {
+    mockBackendOk({ username: 'alice', role: 'user', display_name: 'Alice' })
+    const req = makeRequest('GET', 'auth/me', {
+      'X-Backend-Base-Url': 'https://api.example.com',
+      'X-API-Key': 'key',
+      Cookie: 'nl_session=raw-token',
+    })
+
+    await GET(asNextRequest(req), makeContext(['auth', 'me']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    const headers = new Headers(forwardedInit.headers)
+    expect(headers.get('Cookie')).toBe('nl_session=raw-token')
+  })
+
+  test('relays backend Set-Cookie to the browser response', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ token: 't', user: { username: 'alice', role: 'user', display_name: 'Alice' } }), {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json',
+            'set-cookie': 'nl_session=raw-token; Path=/; HttpOnly; SameSite=Lax',
+          },
+        }),
+      ),
+    )
+    const req = makeRequest(
+      'POST',
+      'auth/login',
+      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      JSON.stringify({ username: 'alice', password: 'pw' }),
+    )
+
+    const res = await POST(asNextRequest(req), makeContext(['auth', 'login']))
+
+    expect(res.status).toBe(200)
+    const setCookie = res.headers.get('set-cookie')
+    expect(setCookie).toContain('nl_session=raw-token')
+    expect(setCookie).toContain('HttpOnly')
   })
 })
 

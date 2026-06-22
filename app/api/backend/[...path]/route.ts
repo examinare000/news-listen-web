@@ -49,6 +49,12 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
   if (apiKey) {
     forwardedHeaders['X-API-Key'] = apiKey
   }
+  // セッション Cookie（nl_session 等）をバックエンドへ転送する。ログイン認証は
+  // サーバーサイドセッション方式で、トークンは httpOnly Cookie で往復する。
+  const cookie = req.headers.get('cookie')
+  if (cookie) {
+    forwardedHeaders['Cookie'] = cookie
+  }
 
   let backendResponse: Response
   try {
@@ -64,10 +70,25 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
 
   // Pass through the backend response (including error status codes)
   const responseBody = await backendResponse.text()
-  return new NextResponse(responseBody, {
+  const response = new NextResponse(responseBody, {
     status: backendResponse.status,
     headers: { 'Content-Type': 'application/json' },
   })
+
+  // バックエンドが発行した Set-Cookie をブラウザへ中継する。バックエンドは Domain 属性を
+  // 付けないため、Cookie は Web アプリのオリジンにバインドされる（httpOnly/SameSite は維持）。
+  // ログイン時のセッション発行・ログアウト時の失効の双方をこの中継でブラウザに反映する。
+  const setCookies =
+    typeof backendResponse.headers.getSetCookie === 'function'
+      ? backendResponse.headers.getSetCookie()
+      : (backendResponse.headers.get('set-cookie')
+          ? [backendResponse.headers.get('set-cookie') as string]
+          : [])
+  for (const c of setCookies) {
+    response.headers.append('set-cookie', c)
+  }
+
+  return response
 }
 
 export async function GET(req: NextRequest, ctx: Context) {
@@ -76,6 +97,11 @@ export async function GET(req: NextRequest, ctx: Context) {
 }
 
 export async function POST(req: NextRequest, ctx: Context) {
+  const { path } = await ctx.params
+  return forward(req, path)
+}
+
+export async function PATCH(req: NextRequest, ctx: Context) {
   const { path } = await ctx.params
   return forward(req, path)
 }
