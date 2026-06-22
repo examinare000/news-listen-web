@@ -12,6 +12,10 @@ import type {
   Podcast,
   FeaturedSourcesResponse,
   OnboardingStatusResponse,
+  AuthUser,
+  LoginResponse,
+  UserListResponse,
+  UserRole,
 } from '@/types/index'
 
 export class ApiError extends Error {
@@ -44,7 +48,8 @@ async function request<T>(
 
   let response: Response
   try {
-    response = await fetch(path, { ...init, headers })
+    // credentials: 'include' で同一オリジンの BFF 経由のセッション Cookie を送受信する。
+    response = await fetch(path, { ...init, headers, credentials: 'include' })
   } catch {
     throw new ApiError(0, 'Network error')
   }
@@ -142,6 +147,66 @@ export function createApiClient(config: ApiClientConfig) {
 
     checkHealth() {
       return request<{ status: string }>('/api/backend/health', config, { method: 'GET' })
+    },
+
+    // ── 認証（セッション） ──────────────────────────────────────
+    login(username: string, password: string) {
+      return request<LoginResponse>('/api/backend/auth/login', config, {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+      })
+    },
+
+    logout() {
+      return request<{ status: string }>('/api/backend/auth/logout', config, { method: 'POST' })
+    },
+
+    getMe() {
+      return request<AuthUser>('/api/backend/auth/me', config, { method: 'GET' })
+    },
+
+    updateProfile(displayName: string) {
+      return request<AuthUser>('/api/backend/auth/me', config, {
+        method: 'PATCH',
+        body: JSON.stringify({ display_name: displayName }),
+      })
+    },
+
+    changePassword(currentPassword: string, newPassword: string) {
+      return request<{ status: string }>('/api/backend/auth/password', config, {
+        method: 'POST',
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      })
+    },
+
+    // ── 管理者によるユーザー管理 ────────────────────────────────
+    listUsers() {
+      return request<UserListResponse>('/api/backend/admin/users', config, { method: 'GET' })
+    },
+
+    createUser(input: { username: string; password: string; display_name?: string; role?: UserRole }) {
+      return request<AuthUser>('/api/backend/admin/users', config, {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+    },
+
+    updateUser(
+      username: string,
+      patch: { role?: UserRole; new_password?: string; display_name?: string },
+    ) {
+      return request<AuthUser>(`/api/backend/admin/users/${encodeURIComponent(username)}`, config, {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      })
+    },
+
+    deleteUser(username: string) {
+      return request<{ status: string; username: string }>(
+        `/api/backend/admin/users/${encodeURIComponent(username)}`,
+        config,
+        { method: 'DELETE' },
+      )
     },
   }
 }
