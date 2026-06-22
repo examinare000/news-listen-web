@@ -10,12 +10,25 @@ import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     checkHealth: vi.fn(),
+    updateProfile: vi.fn(),
+    changePassword: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
       super(detail)
     }
   },
+}))
+
+// AccountSection が useAuth を使うためモックする（管理者ユーザーでログイン中とする）。
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    status: 'authenticated',
+    user: { username: 'admin', role: 'admin', display_name: 'Admin' },
+    login: vi.fn(),
+    logout: vi.fn(),
+    refreshMe: vi.fn(),
+  }),
 }))
 
 function renderSettingsPage(baseUrl = 'https://api.example.com') {
@@ -86,7 +99,8 @@ describe('SettingsPage — save settings', () => {
     await userEvent.clear(urlInput)
     await userEvent.type(urlInput, 'https://new-api.example.com')
 
-    const apiKeyInput = document.querySelector('input[type="password"]') as HTMLInputElement
+    // API キー欄は aria-label で特定する（アカウント欄のパスワード入力と区別するため）
+    const apiKeyInput = screen.getByLabelText('API Key') as HTMLInputElement
     await userEvent.clear(apiKeyInput)
     await userEvent.type(apiKeyInput, 'new-key')
 

@@ -6,6 +6,7 @@ import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { createApiClient } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
+import { AccountSection } from '@/components/ui/AccountSection'
 
 export default function SettingsPage() {
   const { state, configure, dispatch } = useApp()
@@ -44,6 +45,9 @@ export default function SettingsPage() {
           詳細ページと共通のユーティリティに寄せてインラインスタイルを排除する。
           80px の差は読み幅制限という視覚言語を変えない */}
       <div className="content-area content-narrow">
+        {/* セクション 0: アカウント（ログイン・プロフィール・パスワード） */}
+        <AccountSection />
+
         {/* セクション 1: Podcast 生成 */}
         <section className="settings-section">
           <div className="settings-section-header">
