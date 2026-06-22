@@ -25,10 +25,24 @@ vi.mock('@/contexts/AppContext', async (importOriginal) => {
   }
 })
 
+// 認証状態は useAuth をモックして制御する（AuthProvider の /auth/me 実呼び出しを避ける）。
+// 既定は 'authenticated' とし、設定済みテストが従来どおりフィードへ進むようにする。
+const authStatusOverride = vi.hoisted(() => ({ current: 'authenticated' as string }))
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: () => ({
+    status: authStatusOverride.current,
+    user: null,
+    login: vi.fn(),
+    logout: vi.fn(),
+    refreshMe: vi.fn(),
+  }),
+}))
+
 beforeEach(async () => {
   vi.clearAllMocks()
   localStorage.clear()
   useAppOverride.current = null
+  authStatusOverride.current = 'authenticated'
   // setup.ts の vi.fn() に対して mockReturnValue で挙動を制御
   const { useRouter } = await import('next/navigation')
   vi.mocked(useRouter).mockReturnValue({ replace: mockReplace } as unknown as ReturnType<typeof useRouter>)
@@ -109,6 +123,30 @@ describe('RootPage — configured', () => {
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalled())
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Entry Gate — 設定済みだが未ログイン → LoginModal
+// ==========================================================
+describe('RootPage — configured but unauthenticated', () => {
+  test('Given configured and unauthenticated, shows LoginModal and does not redirect', async () => {
+    authStatusOverride.current = 'unauthenticated'
+    renderRootPage({ isConfigured: true, isRestoring: false })
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog', { name: 'ログイン' })).toBeInTheDocument()
+    })
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  test('Given configured and auth unknown, renders nothing (resolving)', async () => {
+    authStatusOverride.current = 'unknown'
+    renderRootPage({ isConfigured: true, isRestoring: false })
+
+    // ログイン画面もフィード遷移も発生しない（/auth/me 解決待ち）
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(mockReplace).not.toHaveBeenCalled()
   })
 })
 
