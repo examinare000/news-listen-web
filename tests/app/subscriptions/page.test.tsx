@@ -321,46 +321,95 @@ describe('AddSubscriptionForm — client-side validation', () => {
 })
 
 // ==========================================================
-// おすすめのソース — フォーム自動入力（D23）
+// おすすめのソース — ワンクリック即購読（D23）／未購読のみ表示
 // ==========================================================
 describe('SubscriptionsPage — recommended sources', () => {
-  beforeEach(async () => {
+  const FEATURED = [
+    { id: 'verge', name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
+    { id: 'devto', name: 'dev.to', url: 'https://dev.to/feed' },
+  ]
+
+  test('Given featured sites returned, shows a 購読 button per recommended site', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
       addSource: vi.fn(),
       deleteSource: vi.fn(),
     } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'The Verge を購読' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'dev.to を購読' })).toBeInTheDocument()
+    })
   })
 
-  test('Given "The Verge" recommend button clicked, fills name and url inputs', async () => {
-    renderSubscriptionsPage()
-    await waitFor(() => screen.getByRole('button', { name: 'The Verge を追加' }))
-
-    await userEvent.click(screen.getByRole('button', { name: 'The Verge を追加' }))
-
-    expect(screen.getByRole('textbox', { name: /ソース名|name|名前/i })).toHaveValue('The Verge')
-    expect(screen.getByRole('textbox', { name: /URL/i })).toHaveValue('https://www.theverge.com/rss/index.xml')
-  })
-
-  test('Given recommend button clicked, focuses the name input', async () => {
-    renderSubscriptionsPage()
-    await waitFor(() => screen.getByRole('button', { name: 'dev.to を追加' }))
-
-    await userEvent.click(screen.getByRole('button', { name: 'dev.to を追加' }))
-
-    expect(document.activeElement).toBe(screen.getByRole('textbox', { name: /ソース名|name|名前/i }))
-  })
-
-  test('Given recommend button clicked, does NOT call addSource (form fill only)', async () => {
-    renderSubscriptionsPage()
-    await waitFor(() => screen.getByRole('button', { name: 'The Verge を追加' }))
-
-    await userEvent.click(screen.getByRole('button', { name: 'The Verge を追加' }))
-
+  test('Given recommend 購読 button clicked, calls addSource with that site', async () => {
+    const addSource = vi.fn().mockResolvedValue({ sources: FEATURED })
     const { createApiClient } = await import('@/lib/api')
-    const mockClient = vi.mocked(createApiClient).mock.results[0].value
-    expect(mockClient.addSource).not.toHaveBeenCalled()
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
+      addSource,
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'The Verge を購読' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
+
+    await waitFor(() => {
+      expect(addSource).toHaveBeenCalledWith('The Verge', 'https://www.theverge.com/rss/index.xml')
+    })
+  })
+
+  test('Given a featured site is already subscribed, it is excluded from recommendations', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      // The Verge は購読済み、dev.to は未購読
+      getSources: vi.fn().mockResolvedValue({
+        sources: [{ name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' }],
+      }),
+      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    // 未購読の dev.to はおすすめに残る
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'dev.to を購読' })).toBeInTheDocument()
+    })
+    // 購読済みの The Verge はおすすめから除外される
+    expect(screen.queryByRole('button', { name: 'The Verge を購読' })).not.toBeInTheDocument()
+  })
+
+  test('Given a recommended site is subscribed via its 購読 button, it disappears from recommendations', async () => {
+    const addSource = vi.fn().mockResolvedValue({
+      sources: [{ name: 'dev.to', url: 'https://dev.to/feed' }],
+    })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
+      addSource,
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'dev.to を購読' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'dev.to を購読' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'dev.to を購読' })).not.toBeInTheDocument()
+    })
+    // 未購読のまま残る The Verge は引き続き表示される
+    expect(screen.getByRole('button', { name: 'The Verge を購読' })).toBeInTheDocument()
   })
 })
 
