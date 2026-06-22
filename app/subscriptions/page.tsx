@@ -48,6 +48,12 @@ export default function SubscriptionsPage() {
   // Delete dialog state
   const [deleteTarget, setDeleteTarget] = useState<Source | null>(null)
 
+  // 既に購読済みのサイトはおすすめから除外する（URL で突合）。
+  // サーバ側は featured / sources とも Pydantic HttpUrl で同一正規化され、重複判定も完全一致のため、
+  // フロントでも URL の完全一致で判定する（末尾スラッシュ違いは別フィードとして残す）。
+  const subscribedUrls = new Set(sources.map((s) => s.url))
+  const recommended = featured.filter((site) => !subscribedUrls.has(site.url))
+
   const makeClient = useCallback(
     () => createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }),
     [state.baseUrl, state.apiKey],
@@ -290,7 +296,7 @@ export default function SubscriptionsPage() {
                   </button>
                 </form>
 
-                {featured.length > 0 && (
+                {recommended.length > 0 && (
                   <div
                     style={{
                       marginTop: 16,
@@ -310,7 +316,7 @@ export default function SubscriptionsPage() {
                     </div>
                     {/* ワンクリックで即購読する（D23 から挙動変更）。URL 直接入力は左フォームで従来どおり可能 */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {featured.map((site) => (
+                      {recommended.map((site) => (
                         <div
                           key={site.id}
                           style={{
