@@ -174,14 +174,17 @@ export default function AdminUsersPage() {
                   <div className="settings-row-desc">ロール: {u.role}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button className="btn btn-ghost" onClick={() => handleToggleRole(u)} aria-label={`${u.username} のロールを変更`}>
-                    {u.role === 'admin' ? 'user へ' : 'admin へ'}
-                  </button>
-                  {/* 自分自身は削除させない（ロックアウト防止） */}
+                  {/* 自分自身のロール変更・削除はさせない（自己ロックアウト防止。サーバー側でも
+                      最後の admin は 409 で保護される） */}
                   {u.username !== user?.username && (
-                    <button className="btn btn-ghost" onClick={() => handleDelete(u.username)} aria-label={`${u.username} を削除`}>
-                      削除
-                    </button>
+                    <>
+                      <button className="btn btn-ghost" onClick={() => handleToggleRole(u)} aria-label={`${u.username} のロールを変更`}>
+                        {u.role === 'admin' ? 'user へ' : 'admin へ'}
+                      </button>
+                      <button className="btn btn-ghost" onClick={() => handleDelete(u.username)} aria-label={`${u.username} を削除`}>
+                        削除
+                      </button>
+                    </>
                   )}
                 </div>
               </li>

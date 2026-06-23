@@ -73,8 +73,9 @@ describe('AdminUsersPage', () => {
     renderPage()
     await waitFor(() => expect(screen.getByText(/Bob（bob）/)).toBeInTheDocument())
 
-    // 自分（admin）の削除ボタンは存在しない
+    // 自分（admin）の削除・ロール変更ボタンは存在しない（自己ロックアウト防止）
     expect(screen.queryByLabelText('admin を削除')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('admin のロールを変更')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByLabelText('bob を削除'))
     await waitFor(() => expect(deleteUser).toHaveBeenCalledWith('bob'))
