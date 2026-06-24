@@ -5,6 +5,7 @@ import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { PodcastCard } from '@/components/PodcastCard'
 import { getSavedPosition } from '@/hooks/useAudioPlayer'
+import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
 import { createApiClient, ApiError } from '@/lib/api'
 import type { Podcast } from '@/types/index'
@@ -47,16 +48,18 @@ export default function PodcastPage() {
 
   const [podcasts, setPodcasts] = useState<Podcast[]>([])
   const [loading, setLoading] = useState(true)
+  const [pollingEnabled, setPollingEnabled] = useState(true)
 
   const fetchPodcasts = useCallback(async () => {
-    setLoading(true)
     try {
       const data = await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).getPodcasts()
       setPodcasts(data.podcasts)
+      return data
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(`エラーが発生しました (${err.status})`, 'error')
       }
+      return { podcasts: [] }
     } finally {
       setLoading(false)
     }
@@ -65,6 +68,17 @@ export default function PodcastPage() {
   useEffect(() => {
     fetchPodcasts()
   }, [fetchPodcasts])
+
+  // #11 ポーリング: 新規 Podcast 生成完了を待つ
+  // WHY: ユーザーが /feed で Star → /podcast に遷移した直後、生成完了を自動検知して表示更新
+  // onUpdate で停止時に polling を無効化（過剰ポーリング防止）
+  usePodcastListPolling({
+    fetchPodcasts,
+    onUpdate: () => {
+      setPollingEnabled(false)
+    },
+    enabled: pollingEnabled,
+  })
 
   function handlePlay(podcast: Podcast) {
     startPodcast(podcast.id)

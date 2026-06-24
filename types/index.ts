@@ -8,6 +8,8 @@ export type DifficultyLevel =
   | 'eiken_2'
   | 'eiken_p1'
 
+export type PodcastStatus = 'processing' | 'completed' | 'failed' | 'partial_failed'
+
 export interface Article {
   id: string
   title: string
@@ -31,6 +33,9 @@ export interface Podcast {
   japanese_intro_text: string
   duration_seconds: number
   created_at: string
+  status: PodcastStatus
+  error_message: string | null
+  playback_position_seconds: number
 }
 
 export interface PodcastsResponse {
@@ -82,3 +87,13 @@ export interface LoginResponse {
 export interface UserListResponse {
   users: AuthUser[]
 }
+
+// ── ユーザー設定・嗜好 ────────────────────────────────────────────
+export interface UserPreferences {
+  default_difficulty: DifficultyLevel
+  default_playback_speed: number
+  digest_enabled: boolean
+  digest_article_count: number
+}
+
+export type UserPreferencesPatch = Partial<UserPreferences>

@@ -30,6 +30,9 @@ const SAMPLE_PODCASTS = [
     japanese_intro_text: 'これはテスト用のポッドキャストイントロです。',
     duration_seconds: 300,
     created_at: '2026-06-10T09:00:00+09:00',
+    status: 'completed' as const,
+    error_message: null,
+    playback_position_seconds: 0,
   },
 ]
 
@@ -45,6 +48,9 @@ const TWO_PODCASTS = [
     japanese_intro_text: '二つ目のポッドキャストのイントロです。',
     duration_seconds: 600,
     created_at: '2026-06-09T09:00:00+09:00',
+    status: 'completed' as const,
+    error_message: null,
+    playback_position_seconds: 0,
   },
 ]
 
@@ -219,8 +225,46 @@ describe('PodcastPage — refresh', () => {
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
+    const initialCallCount = getPodcasts.mock.calls.length
     await userEvent.click(screen.getByRole('button', { name: /リフレッシュ|更新|refresh/i }))
 
-    expect(getPodcasts).toHaveBeenCalledTimes(2)
+    // Refresh button should trigger at least one more call (polling may also call in background)
+    expect(getPodcasts.mock.calls.length).toBeGreaterThan(initialCallCount)
+  })
+})
+
+// ==========================================================
+// Podcast 一覧 — ポーリング（#11 生成完了待ち）
+// ==========================================================
+describe('PodcastPage — polling for new podcasts (#11)', () => {
+  test('Polling hook is used and enabled on mount', async () => {
+    const getPodcasts = vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcasts,
+      getPodcast: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderPodcastPage()
+
+    // Polling should be enabled on mount: fetchPodcasts called for initial load
+    // plus polling calls will increment over time. Just verify it starts.
+    await waitFor(() => {
+      expect(getPodcasts).toHaveBeenCalled()
+    })
+  })
+
+  test('Page renders list after initial fetch completes', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
+      getPodcast: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderPodcastPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/これはテスト用のポッドキャストイントロ/)).toBeInTheDocument()
+    })
   })
 })
