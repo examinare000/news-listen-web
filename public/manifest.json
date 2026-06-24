@@ -1,0 +1,8 @@
+{
+  "name": "News Listen",
+  "short_name": "NewsListen",
+  "display": "standalone",
+  "background_color": "#0B0A0E",
+  "theme_color": "#0B0A0E",
+  "icons": []
+}

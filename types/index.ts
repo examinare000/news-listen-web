@@ -97,3 +97,27 @@ export interface UserPreferences {
 }
 
 export type UserPreferencesPatch = Partial<UserPreferences>
+
+// ── Web Push 通知 ────────────────────────────────────────────────────
+/** W3C PushSubscription の JSON 表現（backend API に送るボディ）*/
+export interface PushSubscriptionJSON {
+  endpoint: string
+  keys: {
+    p256dh: string
+    auth: string
+  }
+}
+
+/** GET /notifications/vapid-public-key のレスポンス */
+export interface VapidPublicKeyResponse {
+  public_key: string
+}
+
+/** Web Push 購読状態機械 */
+export type PushSubscriptionState =
+  | 'unsupported' // serviceWorker/PushManager 非対応
+  | 'denied'      // Notification.permission === 'denied'
+  | 'unsubscribed' // 購読なし
+  | 'subscribing'  // 購読処理中
+  | 'subscribed'   // 購読済み
+  | 'error'        // エラー発生

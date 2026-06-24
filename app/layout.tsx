@@ -7,6 +7,7 @@ import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { NavigationBar } from '@/components/NavigationBar'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
+import { PushRegistrar } from '@/components/PushRegistrar'
 import './globals.css'
 
 // フォントは next/font/local で app/fonts/ の woff2（latin サブセット）からセルフホストする。
@@ -52,6 +53,7 @@ const themeInitScript = `
 export const metadata: Metadata = {
   title: 'Podcast App',
   description: 'English learning podcast app',
+  manifest: '/manifest.json',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -72,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <main className="main-content">{children}</main>
                   <AudioPlayerBar />
                 </div>
+                <PushRegistrar />
               </AudioPlayerProvider>
             </ToastProvider>
           </AuthProvider>
