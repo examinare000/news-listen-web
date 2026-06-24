@@ -645,3 +645,105 @@ describe('CSRF token injection', () => {
     expect(headers['X-CSRF-Token']).toBeUndefined()
   })
 })
+
+// ==========================================================
+// getVapidPublicKey — GET /api/backend/notifications/vapid-public-key
+// ==========================================================
+describe('getVapidPublicKey', () => {
+  test('GET /api/backend/notifications/vapid-public-key にリクエストを送る', async () => {
+    mockFetchOk({ public_key: 'test-vapid-key-base64url' })
+    const client = makeClient()
+    await client.getVapidPublicKey()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/notifications/vapid-public-key',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          'X-API-Key': API_KEY,
+          'X-Backend-Base-Url': BASE_URL,
+        }),
+      })
+    )
+  })
+
+  test('public_key フィールドを含むレスポンスを返す', async () => {
+    const key = 'BNVa2nUfxEMGkLfDNj3xRnqGqX3z12345'
+    mockFetchOk({ public_key: key })
+    const client = makeClient()
+    const result = await client.getVapidPublicKey()
+
+    expect(result.public_key).toBe(key)
+  })
+})
+
+// ==========================================================
+// subscribePush — POST /api/backend/notifications/subscriptions
+// ==========================================================
+describe('subscribePush', () => {
+  test('POST /api/backend/notifications/subscriptions にリクエストを送る', async () => {
+    mockFetchOk({}, 201)
+    const client = makeClient()
+    const subscription = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/test',
+      keys: { p256dh: 'p256dh-key', auth: 'auth-key' },
+    }
+    await client.subscribePush(subscription)
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/notifications/subscriptions',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'X-API-Key': API_KEY }),
+      })
+    )
+  })
+
+  test('サブスクリプション JSON をリクエストボディに含める', async () => {
+    mockFetchOk({}, 201)
+    const client = makeClient()
+    const subscription = {
+      endpoint: 'https://fcm.googleapis.com/fcm/send/abc',
+      keys: { p256dh: 'p256dh-value', auth: 'auth-value' },
+    }
+    await client.subscribePush(subscription)
+
+    const callArgs = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1]
+    const body = JSON.parse((callArgs as RequestInit).body as string)
+    expect(body).toEqual(subscription)
+  })
+})
+
+// ==========================================================
+// unsubscribePush — DELETE /api/backend/notifications/subscriptions
+// ==========================================================
+describe('unsubscribePush', () => {
+  test('DELETE /api/backend/notifications/subscriptions にリクエストを送る', async () => {
+    mockFetchOk({})
+    const client = makeClient()
+    await client.unsubscribePush('https://fcm.googleapis.com/fcm/send/test')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/notifications/subscriptions?endpoint=https%3A%2F%2Ffcm.googleapis.com%2Ffcm%2Fsend%2Ftest',
+      expect.objectContaining({
+        method: 'DELETE',
+        headers: expect.objectContaining({ 'X-API-Key': API_KEY }),
+      })
+    )
+  })
+
+  test('endpoint を URL エンコードしてクエリパラメータに含める', async () => {
+    mockFetchOk({})
+    const client = makeClient()
+    const endpoint = 'https://fcm.googleapis.com/fcm/send/xyz'
+    await client.unsubscribePush(endpoint)
+
+    const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string
+    expect(calledUrl).toBe(
+      `/api/backend/notifications/subscriptions?endpoint=${encodeURIComponent(endpoint)}`,
+    )
+    // DELETE はボディを持たない（クエリパラメータ規約）
+    const callArgs = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit
+    expect(callArgs.body).toBeUndefined()
+  })
+})

@@ -8,6 +8,7 @@ import { createApiClient, ApiError } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
+import { PushNotificationSection } from '@/components/PushNotificationSection'
 import type { DifficultyLevel } from '@/types/index'
 
 const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
@@ -245,6 +246,9 @@ export default function SettingsPage() {
             クッキーへ移行予定。
           </div>
         </section>
+
+        {/* セクション 3: プッシュ通知 */}
+        <PushNotificationSection />
 
         <div style={{ textAlign: 'right', paddingTop: 4 }}>
           <button className="btn btn-primary" onClick={handleSave} aria-label="保存">

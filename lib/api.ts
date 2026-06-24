@@ -18,6 +18,8 @@ import type {
   UserRole,
   UserPreferences,
   UserPreferencesPatch,
+  VapidPublicKeyResponse,
+  PushSubscriptionJSON,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -240,6 +242,34 @@ export function createApiClient(config: ApiClientConfig) {
     deleteUser(username: string) {
       return request<{ status: string; username: string }>(
         `/api/backend/admin/users/${encodeURIComponent(username)}`,
+        config,
+        { method: 'DELETE' },
+      )
+    },
+
+    // ── Web Push 通知 ─────────────────────────────────────────────────────
+    getVapidPublicKey() {
+      return request<VapidPublicKeyResponse>(
+        '/api/backend/notifications/vapid-public-key',
+        config,
+        { method: 'GET' },
+      )
+    },
+
+    subscribePush(subscription: PushSubscriptionJSON) {
+      return request<Record<string, unknown>>(
+        '/api/backend/notifications/subscriptions',
+        config,
+        { method: 'POST', body: JSON.stringify(subscription) },
+      )
+    },
+
+    unsubscribePush(endpoint: string) {
+      // WHY: endpoint はクエリパラメータで渡す（backend は ?endpoint= を読む。
+      //       既存 deleteSource(url) と同じ DELETE 規約に揃える）。
+      const encoded = encodeURIComponent(endpoint)
+      return request<Record<string, unknown>>(
+        `/api/backend/notifications/subscriptions?endpoint=${encoded}`,
         config,
         { method: 'DELETE' },
       )
