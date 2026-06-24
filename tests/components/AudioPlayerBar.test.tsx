@@ -29,6 +29,9 @@ const SAMPLE_PODCAST: Podcast = {
   japanese_intro_text: 'これは日本語のイントロテキストです。テストのために書かれた文章です。長い文章でも先頭50文字だけが表示されることを確認します。',
   duration_seconds: 300,
   created_at: '2026-06-10T00:00:00+00:00',
+  status: 'completed',
+  error_message: null,
+  playback_position_seconds: 0,
 }
 
 function renderWithContext(currentPodcast: Podcast | null = null) {

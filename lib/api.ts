@@ -16,6 +16,8 @@ import type {
   LoginResponse,
   UserListResponse,
   UserRole,
+  UserPreferences,
+  UserPreferencesPatch,
 } from '@/types/index'
 
 export class ApiError extends Error {
@@ -98,6 +100,17 @@ export function createApiClient(config: ApiClientConfig) {
 
     getPodcast(id: string) {
       return request<Podcast>(`/api/backend/podcasts/${id}`, config, { method: 'GET' })
+    },
+
+    updatePosition(id: string, positionSeconds: number) {
+      return request<Podcast>(
+        `/api/backend/podcasts/${id}/position`,
+        config,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ position_seconds: positionSeconds }),
+        },
+      )
     },
 
     getSources() {
