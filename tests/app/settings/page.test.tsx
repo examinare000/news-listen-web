@@ -12,6 +12,8 @@ vi.mock('@/lib/api', () => ({
     checkHealth: vi.fn(),
     updateProfile: vi.fn(),
     changePassword: vi.fn(),
+    getPreferences: vi.fn(),
+    updatePreferences: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
@@ -69,9 +71,24 @@ describe('SettingsPage — display', () => {
     expect(document.querySelector('input[type="password"]')).toBeInTheDocument()
   })
 
-  test('Displays difficulty explanation text (no difficulty UI)', async () => {
+  test('Displays difficulty selector label', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
     renderSettingsPage()
-    expect(screen.getByText(/サーバー側設定/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/デフォルト難易度/)).toBeInTheDocument()
+    })
   })
 
   test('Shows guidance that the API URL and key can be edited here', async () => {
@@ -202,16 +219,127 @@ describe('SettingsPage — restyle (section card structure)', () => {
 })
 
 // ==========================================================
-// Settings 画面 — デザインとの乖離決定（D14 / D21 / D22）
+// Settings 画面 — デフォルト難易度（C群#13）
+// ==========================================================
+describe('SettingsPage — default difficulty (C群#13)', () => {
+  test('Renders difficulty selector with 6 difficulty levels', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_900',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      const diffSelect = screen.getByRole('combobox', { name: /難易度/i })
+      expect(diffSelect).toBeInTheDocument()
+    })
+  })
+
+  test('Displays option labels as text (not nested components)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      // Verify label text is visible (not component nesting)
+      expect(screen.getByText('TOEIC 600')).toBeInTheDocument()
+      expect(screen.getByText('TOEIC 900')).toBeInTheDocument()
+      expect(screen.getByText('IELTS 7.0')).toBeInTheDocument()
+    })
+  })
+
+  test('Loads initial difficulty from getPreferences', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'ielts_7',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      const diffSelect = screen.getByRole('combobox', { name: /難易度/i }) as HTMLSelectElement
+      expect(diffSelect.value).toBe('ielts_7')
+    })
+  })
+
+  test('Calls updatePreferences when difficulty changes', async () => {
+    const updatePreferences = vi.fn().mockResolvedValue({})
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /難易度/i })).toBeInTheDocument()
+    })
+
+    const diffSelect = screen.getByRole('combobox', { name: /難易度/i })
+    await userEvent.selectOptions(diffSelect, 'eiken_p1')
+
+    await waitFor(() => {
+      expect(updatePreferences).toHaveBeenCalledWith({ default_difficulty: 'eiken_p1' })
+    })
+  })
+
+  test('Falls back to toeic_600 if getPreferences fails', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      const diffSelect = screen.getByRole('combobox', { name: /難易度/i }) as HTMLSelectElement
+      expect(diffSelect.value).toBe('toeic_600')
+    })
+  })
+})
+
+// ==========================================================
+// Settings 画面 — デザインとの乖離決定（D21 / D22）
 // リグレッション防止: デザインモックにある UI を誤って実装しないこと
 // ==========================================================
-describe('SettingsPage — design divergences (D14/D21/D22)', () => {
-  test('D14: difficulty <select> does NOT exist (speed combobox is the only one)', () => {
-    renderSettingsPage()
-    expect(screen.queryByRole('combobox', { name: /難易度/ })).not.toBeInTheDocument()
-    // combobox は速度セレクタの 1 つだけ
-    expect(screen.getAllByRole('combobox')).toHaveLength(1)
-  })
+describe('SettingsPage — design divergences (D21/D22)', () => {
 
   test('D21: speed selector keeps the 8 PLAYBACK_SPEEDS options (no continuous slider)', () => {
     renderSettingsPage()

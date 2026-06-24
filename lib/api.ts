@@ -158,6 +158,17 @@ export function createApiClient(config: ApiClientConfig) {
       )
     },
 
+    getPreferences() {
+      return request<UserPreferences>('/api/backend/settings/preferences', config, { method: 'GET' })
+    },
+
+    updatePreferences(patch: UserPreferencesPatch) {
+      return request<UserPreferences>('/api/backend/settings/preferences', config, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      })
+    },
+
     checkHealth() {
       return request<{ status: string }>('/api/backend/health', config, { method: 'GET' })
     },
