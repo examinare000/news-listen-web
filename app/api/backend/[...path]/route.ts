@@ -55,6 +55,11 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
   if (cookie) {
     forwardedHeaders['Cookie'] = cookie
   }
+  // CSRF トークンを転送する（状態変更リクエストで必須）。
+  const csrfToken = req.headers.get('X-CSRF-Token')
+  if (csrfToken) {
+    forwardedHeaders['X-CSRF-Token'] = csrfToken
+  }
 
   let backendResponse: Response
   try {
@@ -97,6 +102,13 @@ export async function GET(req: NextRequest, ctx: Context) {
 }
 
 export async function POST(req: NextRequest, ctx: Context) {
+  const { path } = await ctx.params
+  return forward(req, path)
+}
+
+export async function PUT(req: NextRequest, ctx: Context) {
+  // WHY: updatePreferences() は PUT /settings/preferences を呼ぶ。PUT ハンドラが無いと
+  //       Next.js が 405 を返し、設定更新が BFF を通らず必ず失敗する。
   const { path } = await ctx.params
   return forward(req, path)
 }

@@ -543,3 +543,105 @@ describe('Security: API key is not logged', () => {
     expect(allArgs).not.toContain(API_KEY)
   })
 })
+
+// ==========================================================
+// CSRF token injection on state-changing methods
+// ==========================================================
+describe('CSRF token injection', () => {
+  // Helper to clear jsdom cookies between tests
+  function clearCookies() {
+    document.cookie.split(';').forEach(c => {
+      const name = c.trim().split('=')[0]
+      if (name) document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`
+    })
+  }
+
+  beforeEach(() => {
+    clearCookies()
+  })
+
+  test('adds X-CSRF-Token header to POST when csrf_token cookie is present', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1' })
+    document.cookie = 'csrf_token=secret-token'
+    const client = makeClient()
+    await client.starArticle('a1')
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('secret-token')
+  })
+
+  test('adds X-CSRF-Token header to PATCH when csrf_token cookie is present', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 120,
+    }
+    mockFetchOk(podcast)
+    document.cookie = 'csrf_token=patch-token'
+    const client = makeClient()
+    await client.updatePosition('p1', 150)
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('patch-token')
+  })
+
+  test('adds X-CSRF-Token header to PUT when csrf_token cookie is present', async () => {
+    const prefs = {
+      default_difficulty: 'toeic_900' as const,
+      default_playback_speed: 1.0,
+      digest_enabled: true,
+      digest_article_count: 10,
+    }
+    mockFetchOk(prefs)
+    document.cookie = 'csrf_token=put-token'
+    const client = makeClient()
+    await client.updatePreferences({ default_difficulty: 'toeic_900' })
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('put-token')
+  })
+
+  test('adds X-CSRF-Token header to DELETE when csrf_token cookie is present', async () => {
+    mockFetchOk({ sources: [] })
+    document.cookie = 'csrf_token=delete-token'
+    const client = makeClient()
+    await client.deleteSource('https://example.com/rss')
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('delete-token')
+  })
+
+  test('does NOT add X-CSRF-Token to GET even with csrf_token cookie', async () => {
+    mockFetchOk({ articles: [], date: '2026-06-10' })
+    document.cookie = 'csrf_token=secret-token'
+    const client = makeClient()
+    await client.getFeed()
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBeUndefined()
+  })
+
+  test('does NOT add X-CSRF-Token to POST when csrf_token cookie is absent', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1' })
+    // no cookie set
+    const client = makeClient()
+    await client.starArticle('a1')
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBeUndefined()
+  })
+})

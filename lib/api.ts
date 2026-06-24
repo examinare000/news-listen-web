@@ -19,6 +19,7 @@ import type {
   UserPreferences,
   UserPreferencesPatch,
 } from '@/types/index'
+import { readCookie } from '@/lib/cookie'
 
 export class ApiError extends Error {
   constructor(
@@ -46,6 +47,17 @@ async function request<T>(
     'X-API-Key': config.apiKey,
     'X-Backend-Base-Url': config.baseUrl,
     ...(init.headers as Record<string, string>),
+  }
+
+  // CSRF token injection: add X-CSRF-Token header for state-changing methods
+  // if csrf_token cookie is present and not already explicitly set in init.headers
+  const method = (init.method ?? 'GET').toUpperCase()
+  const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
+  if (!safeMethods.has(method) && typeof document !== 'undefined') {
+    const token = readCookie('csrf_token', document.cookie)
+    if (token && !headers['X-CSRF-Token']) {
+      headers['X-CSRF-Token'] = token
+    }
   }
 
   let response: Response

@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import type { NextRequest } from 'next/server'
 // NOTE: Next.js の catch-all ルートファイルは [...path] をブラケット含みでインポートする
-import { GET, POST, PATCH, DELETE } from '@/app/api/backend/[...path]/route'
+import { GET, POST, PUT, PATCH, DELETE } from '@/app/api/backend/[...path]/route'
 
 // パターン B: 型キャストのみ（ランタイム挙動を変えずに型エラーを解消）
 const asNextRequest = (req: Request) => req as unknown as NextRequest
@@ -278,6 +278,25 @@ describe('PATCH — forwards request', () => {
 })
 
 // ==========================================================
+// PUT — 転送（updatePreferences が PUT を使うため必須）
+// ==========================================================
+describe('PUT — forwards request', () => {
+  test('forwards PUT body to backend (settings/preferences)', async () => {
+    mockBackendOk({ default_difficulty: 'toeic_900' })
+    const req = makeRequest(
+      'PUT',
+      'settings/preferences',
+      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      JSON.stringify({ default_difficulty: 'toeic_900' }),
+    )
+    const res = await PUT(asNextRequest(req), makeContext(['settings', 'preferences']))
+    expect(res.status).toBe(200)
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    expect(forwardedInit.method).toBe('PUT')
+  })
+})
+
+// ==========================================================
 // セッション Cookie の中継
 // ==========================================================
 describe('Session cookie relay', () => {
@@ -339,5 +358,70 @@ describe('Backend unreachable', () => {
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(502)
+  })
+})
+
+// ==========================================================
+// CSRF token forwarding
+// ==========================================================
+describe('CSRF token forwarding', () => {
+  test('forwards X-CSRF-Token header to backend when present', async () => {
+    mockBackendOk({ status: 'ok' })
+    const req = makeRequest('POST', 'settings/sources', {
+      'X-Backend-Base-Url': 'https://api.example.com',
+      'X-API-Key': 'key',
+      'X-CSRF-Token': 'csrf-token-123',
+    }, JSON.stringify({ name: 'HN' }))
+
+    await POST(asNextRequest(req), makeContext(['settings', 'sources']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    const headers = forwardedInit.headers as Record<string, string>
+    expect(headers['X-CSRF-Token'] ?? (new Headers(forwardedInit.headers)).get('X-CSRF-Token')).toBe('csrf-token-123')
+  })
+
+  test('does not add X-CSRF-Token header when absent from request', async () => {
+    mockBackendOk({ status: 'ok' })
+    const req = makeRequest('POST', 'settings/sources', {
+      'X-Backend-Base-Url': 'https://api.example.com',
+      'X-API-Key': 'key',
+    }, JSON.stringify({ name: 'HN' }))
+
+    await POST(asNextRequest(req), makeContext(['settings', 'sources']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    const headers = new Headers(forwardedInit.headers)
+    expect(headers.has('X-CSRF-Token')).toBe(false)
+  })
+
+  test('forwards X-CSRF-Token on state-changing methods (PATCH)', async () => {
+    mockBackendOk({ username: 'alice' })
+    const req = makeRequest('PATCH', 'auth/me', {
+      'X-Backend-Base-Url': 'https://api.example.com',
+      'X-API-Key': 'key',
+      'X-CSRF-Token': 'csrf-abc',
+    }, JSON.stringify({ display_name: 'New' }))
+
+    await PATCH(asNextRequest(req), makeContext(['auth', 'me']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    const headers = forwardedInit.headers as Record<string, string>
+    expect(headers['X-CSRF-Token'] ?? (new Headers(forwardedInit.headers)).get('X-CSRF-Token')).toBe('csrf-abc')
+  })
+
+  test('forwards X-CSRF-Token on DELETE', async () => {
+    mockBackendOk({ sources: [] })
+    const encodedUrl = encodeURIComponent('https://example.com/rss')
+    const req = makeRequest('DELETE', `settings/sources?url=${encodedUrl}`, {
+      'X-Backend-Base-Url': 'https://api.example.com',
+      'X-API-Key': 'key',
+      'X-CSRF-Token': 'csrf-xyz',
+    })
+
+    await DELETE(asNextRequest(req), makeContext(['settings', 'sources']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    const headers = forwardedInit.headers as Record<string, string>
+    expect(headers['X-CSRF-Token'] ?? (new Headers(forwardedInit.headers)).get('X-CSRF-Token')).toBe('csrf-xyz')
   })
 })
