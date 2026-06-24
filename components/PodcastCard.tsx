@@ -2,6 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import type { Podcast } from '@/types/index'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDuration, formatDate } from '@/lib/format'
 
 interface PodcastCardProps {
@@ -26,6 +27,7 @@ export function PodcastCard({
       <div className="podcast-card-top">
         <div className="podcast-badges">
           <DifficultyBadge difficulty={podcast.difficulty} />
+          <StatusBadge status={podcast.status} />
           {podcast.type === 'digest' && <span className="badge">DIGEST</span>}
         </div>
         {/* 再生ボタンはリンク外に配置し、カード内クリックの伝播も止める

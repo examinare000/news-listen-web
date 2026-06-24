@@ -348,6 +348,190 @@ describe('ApiError normalization', () => {
 // セキュリティ要件: API キーをログ出力しない
 // (API キーが console.log の引数に渡されないことを型レベルで保証する構造的テスト)
 // ==========================================================
+// getPreferences — GET /api/backend/settings/preferences
+// ==========================================================
+describe('getPreferences', () => {
+  test('sends GET request to /api/backend/settings/preferences with correct headers', async () => {
+    const preferences = {
+      default_difficulty: 'toeic_900' as const,
+      default_playback_speed: 1.0,
+      digest_enabled: true,
+      digest_article_count: 10,
+    }
+    mockFetchOk(preferences)
+    const client = makeClient()
+    await client.getPreferences()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/settings/preferences',
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({
+          'X-API-Key': API_KEY,
+          'X-Backend-Base-Url': BASE_URL,
+        }),
+      })
+    )
+  })
+
+  test('returns UserPreferences with all required fields', async () => {
+    const preferences = {
+      default_difficulty: 'ielts_7' as const,
+      default_playback_speed: 1.25,
+      digest_enabled: false,
+      digest_article_count: 5,
+    }
+    mockFetchOk(preferences)
+    const client = makeClient()
+    const result = await client.getPreferences()
+
+    expect(result.default_difficulty).toBe('ielts_7')
+    expect(result.default_playback_speed).toBe(1.25)
+    expect(result.digest_enabled).toBe(false)
+    expect(result.digest_article_count).toBe(5)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getPreferences()).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
+// updatePreferences — PUT /api/backend/settings/preferences
+// ==========================================================
+describe('updatePreferences', () => {
+  test('sends PUT request to /api/backend/settings/preferences with partial update body', async () => {
+    const updated = {
+      default_difficulty: 'eiken_2' as const,
+      default_playback_speed: 1.0,
+      digest_enabled: true,
+      digest_article_count: 10,
+    }
+    mockFetchOk(updated)
+    const client = makeClient()
+    await client.updatePreferences({ default_difficulty: 'eiken_2' })
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/settings/preferences',
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({
+          'X-API-Key': API_KEY,
+          'X-Backend-Base-Url': BASE_URL,
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ default_difficulty: 'eiken_2' }),
+      })
+    )
+  })
+
+  test('returns updated UserPreferences', async () => {
+    const updated = {
+      default_difficulty: 'toeic_600' as const,
+      default_playback_speed: 0.75,
+      digest_enabled: true,
+      digest_article_count: 20,
+    }
+    mockFetchOk(updated)
+    const client = makeClient()
+    const result = await client.updatePreferences({ default_difficulty: 'toeic_600' })
+
+    expect(result.default_difficulty).toBe('toeic_600')
+  })
+
+  test('throws ApiError on 400 Bad Request', async () => {
+    mockFetchError(400, 'Invalid difficulty level')
+    const client = makeClient()
+
+    // Pass empty patch that will fail validation
+    await expect(client.updatePreferences({})).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
+// updatePosition — PATCH /api/backend/podcasts/:id/position
+// ==========================================================
+describe('updatePosition', () => {
+  test('sends PATCH request to correct endpoint with position in body', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 120,
+    }
+    mockFetchOk(podcast)
+    const client = makeClient()
+    await client.updatePosition('p1', 150)
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/podcasts/p1/position',
+      expect.objectContaining({
+        method: 'PATCH',
+        headers: expect.objectContaining({
+          'X-API-Key': API_KEY,
+          'X-Backend-Base-Url': BASE_URL,
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({ position_seconds: 150 }),
+      })
+    )
+  })
+
+  test('returns updated Podcast with new position', async () => {
+    const updatedPodcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 150,
+    }
+    mockFetchOk(updatedPodcast)
+    const client = makeClient()
+    const result = await client.updatePosition('p1', 150)
+
+    expect(result.playback_position_seconds).toBe(150)
+    expect(result.status).toBe('completed')
+  })
+
+  test('throws ApiError on 404 Not Found', async () => {
+    mockFetchError(404, 'Podcast not found')
+    const client = makeClient()
+
+    await expect(client.updatePosition('nonexistent', 100)).rejects.toThrow(ApiError)
+  })
+
+  test('throws ApiError on 422 Unprocessable Entity', async () => {
+    mockFetchError(422, 'Invalid position value')
+    const client = makeClient()
+
+    await expect(client.updatePosition('p1', -100)).rejects.toThrow(ApiError)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.updatePosition('p1', 100)).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
 describe('Security: API key is not logged', () => {
   test('console.log is not called with API key during normal operations', async () => {
     mockFetchOk({ articles: [], date: '2026-06-10' })

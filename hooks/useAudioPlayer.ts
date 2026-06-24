@@ -11,6 +11,9 @@ const POSITION_SAVE_INTERVAL = 10
 
 interface UseAudioPlayerOptions {
   onError?: () => void
+  // Callback to save position to backend (network call)
+  // WHY: Hook does not import fetch to keep it pure; server sync is caller's responsibility
+  onPositionSave?: (podcastId: string, seconds: number) => void
 }
 
 interface AudioPlayerState {
@@ -68,10 +71,12 @@ function savePosition(podcastId: string, time: number): void {
 export function useAudioPlayer(
   opts?: UseAudioPlayerOptions,
 ): AudioPlayerState & AudioPlayerControls {
-  // Stable ref for the callback to avoid re-running effects when it changes
+  // Stable refs for the callbacks to avoid re-running effects when they change
   const onErrorRef = useRef(opts?.onError)
+  const onPositionSaveRef = useRef(opts?.onPositionSave)
   useEffect(() => {
     onErrorRef.current = opts?.onError
+    onPositionSaveRef.current = opts?.onPositionSave
   })
 
   // Single audio element shared across the hook's lifetime
@@ -109,6 +114,8 @@ export function useAudioPlayer(
       ) {
         lastSavedPositionRef.current = t
         savePosition(podcastIdRef.current, t)
+        // Also notify server via callback (network: caller's responsibility)
+        onPositionSaveRef.current?.(podcastIdRef.current, t)
       }
     }
 
@@ -116,6 +123,8 @@ export function useAudioPlayer(
       setIsPlaying(false)
       if (podcastIdRef.current) {
         savePosition(podcastIdRef.current, 0)
+        // Save ended position to server as well
+        onPositionSaveRef.current?.(podcastIdRef.current, 0)
       }
       audio.currentTime = 0
     }

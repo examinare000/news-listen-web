@@ -29,6 +29,9 @@ const SAMPLE_PODCAST = {
   japanese_intro_text: 'これは日本語のイントロ全文です。詳細ページではすべてのテキストが表示されます。追加のテキストも含まれています。',
   duration_seconds: 1820,
   created_at: '2026-06-10T09:00:00+09:00',
+  status: 'completed' as const,
+  error_message: null,
+  playback_position_seconds: 0,
 }
 
 let mockAudio: MockAudio

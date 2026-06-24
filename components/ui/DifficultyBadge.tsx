@@ -1,7 +1,9 @@
 import React from 'react'
 import type { DifficultyLevel } from '@/types/index'
 
-const DIFFICULTY_LABELS: Record<string, string> = {
+// Shared labels for difficulty level (used in badge display and form options)
+// WHY exported: Settings page select needs same label text to avoid DOM nesting issues
+export const DIFFICULTY_LABELS: Record<string, string> = {
   toeic_600: 'TOEIC 600',
   toeic_900: 'TOEIC 900',
   ielts_55: 'IELTS 5.5',

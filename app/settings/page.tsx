@@ -1,12 +1,23 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
-import { createApiClient } from '@/lib/api'
+import { createApiClient, ApiError } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
+import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
+import type { DifficultyLevel } from '@/types/index'
+
+const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
+  'toeic_600',
+  'toeic_900',
+  'ielts_55',
+  'ielts_7',
+  'eiken_2',
+  'eiken_p1',
+]
 
 export default function SettingsPage() {
   const { state, configure, dispatch } = useApp()
@@ -16,6 +27,44 @@ export default function SettingsPage() {
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
+  const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>('toeic_600')
+  const [loading, setLoading] = useState(true)
+
+  // Load preferences on mount (C群#13)
+  useEffect(() => {
+    const loadPreferences = async () => {
+      try {
+        const prefs = await createApiClient({
+          baseUrl: state.baseUrl,
+          apiKey: state.apiKey,
+        }).getPreferences()
+        setDefaultDifficulty(prefs.default_difficulty)
+      } catch {
+        // Fallback to toeic_600 if fetch fails
+        setDefaultDifficulty('toeic_600')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadPreferences()
+  }, [state.baseUrl, state.apiKey])
+
+  // Handle difficulty change (C群#13)
+  async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
+    setDefaultDifficulty(newDifficulty)
+    try {
+      await createApiClient({
+        baseUrl: state.baseUrl,
+        apiKey: state.apiKey,
+      }).updatePreferences({ default_difficulty: newDifficulty })
+    } catch (err) {
+      // Fail silently: keep UI updated even if API fails
+      // (Non-fatal for playback experience)
+      if (err instanceof ApiError) {
+        // Optionally log but don't show to user
+      }
+    }
+  }
 
   async function handleSave() {
     // Preserve existing API key when the field is left blank
@@ -85,12 +134,27 @@ export default function SettingsPage() {
             </select>
           </div>
 
-          {/* D14: 難易度セレクトは実装しない（API がないため）。説明テキストのみ */}
+          {/* C群#13: デフォルト難易度設定（サーバー同期） */}
           <div className="settings-row">
             <div>
-              <div className="settings-row-label">デフォルト難易度</div>
-              <div className="settings-row-desc">Podcast の難易度はサーバー側設定で管理されています。</div>
+              <label className="settings-row-label" htmlFor="default-difficulty">
+                デフォルト難易度
+              </label>
+              <div className="settings-row-desc">新規生成 Podcast の推奨難易度を選択</div>
             </div>
+            <select
+              id="default-difficulty"
+              className="select-input"
+              value={defaultDifficulty}
+              onChange={(e) => handleDifficultyChange(e.target.value as DifficultyLevel)}
+              disabled={loading}
+            >
+              {DIFFICULTY_OPTIONS.map((d) => (
+                <option key={d} value={d}>
+                  {DIFFICULTY_LABELS[d]}
+                </option>
+              ))}
+            </select>
           </div>
         </section>
 

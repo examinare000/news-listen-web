@@ -16,6 +16,8 @@ import type {
   LoginResponse,
   UserListResponse,
   UserRole,
+  UserPreferences,
+  UserPreferencesPatch,
 } from '@/types/index'
 
 export class ApiError extends Error {
@@ -100,6 +102,17 @@ export function createApiClient(config: ApiClientConfig) {
       return request<Podcast>(`/api/backend/podcasts/${id}`, config, { method: 'GET' })
     },
 
+    updatePosition(id: string, positionSeconds: number) {
+      return request<Podcast>(
+        `/api/backend/podcasts/${id}/position`,
+        config,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({ position_seconds: positionSeconds }),
+        },
+      )
+    },
+
     getSources() {
       return request<SourcesResponse>('/api/backend/settings/sources', config, { method: 'GET' })
     },
@@ -143,6 +156,17 @@ export function createApiClient(config: ApiClientConfig) {
         config,
         { method: 'POST' },
       )
+    },
+
+    getPreferences() {
+      return request<UserPreferences>('/api/backend/settings/preferences', config, { method: 'GET' })
+    },
+
+    updatePreferences(patch: UserPreferencesPatch) {
+      return request<UserPreferences>('/api/backend/settings/preferences', config, {
+        method: 'PUT',
+        body: JSON.stringify(patch),
+      })
     },
 
     checkHealth() {

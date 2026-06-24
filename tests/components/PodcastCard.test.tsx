@@ -14,6 +14,9 @@ const SAMPLE_PODCAST: Podcast = {
     'これはテスト用の日本語イントロテキストです。80文字を超える長い文章を書いておきます。これ以降の文章は切り捨てられるはずです。テスト完了。',
   duration_seconds: 300,
   created_at: '2026-06-10T09:00:00+09:00',
+  status: 'completed',
+  error_message: null,
+  playback_position_seconds: 0,
 }
 
 // ==========================================================
@@ -34,6 +37,11 @@ describe('PodcastCard display', () => {
   test('Renders DifficultyBadge', () => {
     render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
     expect(screen.getByText(/TOEIC 900/)).toBeInTheDocument()
+  })
+
+  test('Renders StatusBadge with podcast status', () => {
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
+    expect(screen.getByText('完成')).toBeInTheDocument()
   })
 
   test('Displays formatted duration', () => {

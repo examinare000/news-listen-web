@@ -3,6 +3,7 @@
 import { useApp } from '@/contexts/AppContext'
 import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { getSavedPosition } from '@/hooks/useAudioPlayer'
+import { resolveResumePosition } from '@/lib/playbackPosition'
 import { createApiClient, ApiError } from '@/lib/api'
 import { useToast } from '@/components/ui/Toast'
 
@@ -28,8 +29,13 @@ export function useStartPodcast(): (podcastId: string) => Promise<void> {
         baseUrl: state.baseUrl,
         apiKey: state.apiKey,
       }).getPodcast(podcastId)
-      const savedPosition = getSavedPosition(fresh.id)
-      player.load(fresh.audio_url, savedPosition, fresh.id)
+
+      // Resolve resume position: server (B群#12) takes priority over local
+      // WHY: audioPlayerContext provides onPositionSave callback for sync; we only choose position here
+      const localPosition = getSavedPosition(fresh.id)
+      const resumePosition = resolveResumePosition(fresh.playback_position_seconds, localPosition)
+
+      player.load(fresh.audio_url, resumePosition, fresh.id)
       await player.play()
       dispatch({ type: 'SET_PODCAST', podcast: fresh })
     } catch (err) {

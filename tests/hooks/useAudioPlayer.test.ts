@@ -430,3 +430,103 @@ describe('Unmount cleanup', () => {
     expect(mockAudio.paused).toBe(true)
   })
 })
+
+// ==========================================================
+// onPositionSave callback — サーバー同期
+// ==========================================================
+describe('onPositionSave callback', () => {
+  test('Given onPositionSave provided, calls it when position is saved during playback', async () => {
+    const onPositionSave = vi.fn()
+    const { result } = renderHook(() => useAudioPlayer({ onPositionSave }))
+    mockAudio.duration = 300
+
+    act(() => {
+      // Load from position 0 so lastSavedPositionRef is 0
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    // Play and advance to trigger position save (POSITION_SAVE_INTERVAL = 10)
+    await act(async () => {
+      await result.current.play()
+    })
+
+    // First save triggers at currentTime = 10 (10 - 0 >= 10)
+    act(() => {
+      mockAudio.fireTimeUpdate(10)
+    })
+
+    expect(onPositionSave).toHaveBeenCalledWith('p1', 10)
+  })
+
+  test('Given onPositionSave not provided, does not throw', async () => {
+    const { result } = renderHook(() => useAudioPlayer({}))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    act(() => {
+      mockAudio.fireTimeUpdate(10)
+    })
+
+    // Should not throw
+    expect(true).toBe(true)
+  })
+
+  test('Given track ended, calls onPositionSave with position=0', async () => {
+    const onPositionSave = vi.fn()
+    const { result } = renderHook(() => useAudioPlayer({ onPositionSave }))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    act(() => {
+      mockAudio.fireEnded()
+    })
+
+    expect(onPositionSave).toHaveBeenCalledWith('p1', 0)
+  })
+
+  test('Multiple position saves are throttled and only called for intervals', async () => {
+    const onPositionSave = vi.fn()
+    const { result } = renderHook(() => useAudioPlayer({ onPositionSave }))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    // First save at 10 seconds
+    act(() => {
+      mockAudio.fireTimeUpdate(10)
+    })
+    expect(onPositionSave).toHaveBeenCalledTimes(1)
+
+    // Sub-interval update should not trigger callback
+    act(() => {
+      mockAudio.fireTimeUpdate(12)
+    })
+    expect(onPositionSave).toHaveBeenCalledTimes(1)
+
+    // Next interval save at 20 seconds
+    act(() => {
+      mockAudio.fireTimeUpdate(20)
+    })
+    expect(onPositionSave).toHaveBeenCalledTimes(2)
+  })
+})
