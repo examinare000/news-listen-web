@@ -1,6 +1,7 @@
 import { describe, test, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 
 // ==========================================================
@@ -75,5 +76,56 @@ describe('ConfirmDialog', () => {
     // ダイアログが非表示なのでボタンが存在しない
     expect(screen.queryByRole('button', { name: /確認|削除|OK/i })).not.toBeInTheDocument()
     expect(onConfirm).not.toHaveBeenCalled()
+  })
+
+  test('focuses cancel button on open (focus trap)', () => {
+    render(<ConfirmDialog {...defaultProps} isOpen={true} />)
+    const cancelButton = screen.getByRole('button', { name: /キャンセル/ })
+    expect(cancelButton).toHaveFocus()
+  })
+
+  test('restores focus to trigger button when isOpen changes from true to false', async () => {
+    const onCancel = vi.fn()
+    function TestApp() {
+      const [isOpen, setIsOpen] = React.useState(false)
+      const triggerRef = React.useRef<HTMLButtonElement>(null)
+      return (
+        <div>
+          <button ref={triggerRef} onClick={() => setIsOpen(true)}>
+            削除
+          </button>
+          <ConfirmDialog
+            isOpen={isOpen}
+            title="削除の確認"
+            message="このソースを削除しますか？"
+            onConfirm={() => setIsOpen(false)}
+            onCancel={() => {
+              setIsOpen(false)
+              onCancel()
+            }}
+          />
+        </div>
+      )
+    }
+
+    render(<TestApp />)
+    const trigger = screen.getByRole('button', { name: '削除' })
+
+    // Trigger にフォーカスを当てる
+    await userEvent.click(trigger)
+
+    // ダイアログが開いたことを確認
+    await screen.findByText('削除の確認')
+
+    // イニシャルフォーカスはキャンセルボタン（ダイアログが開いているため）
+    expect(screen.getByRole('button', { name: /キャンセル/ })).toHaveFocus()
+
+    // キャンセルボタンをクリック
+    await userEvent.click(screen.getByRole('button', { name: /キャンセル/ }))
+
+    // フォーカスが trigger ボタンへ復帰したことを確認
+    await waitFor(() => {
+      expect(trigger).toHaveFocus()
+    })
   })
 })

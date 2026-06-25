@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { createApiClient, ApiError } from '@/lib/api'
 import type { FeaturedSource } from '@/types/index'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface OnboardingSourcesModalProps {
   baseUrl: string
@@ -24,6 +25,7 @@ export function OnboardingSourcesModal({ baseUrl, apiKey, onDone }: OnboardingSo
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [subscribingId, setSubscribingId] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
+  const dialogRef = useFocusTrap<HTMLDivElement>()
 
   useEffect(() => {
     let cancelled = false
@@ -70,7 +72,7 @@ export function OnboardingSourcesModal({ baseUrl, apiKey, onDone }: OnboardingSo
 
   return (
     <div className="modal-backdrop">
-      <div role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="modal-box">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="onboarding-title" className="modal-box">
         <h2 id="onboarding-title" className="modal-title">
           おすすめサイトを購読
         </h2>
