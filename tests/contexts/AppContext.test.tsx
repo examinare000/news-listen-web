@@ -156,6 +156,45 @@ describe('SET_SPEED action', () => {
   })
 })
 
+describe('SET_TIME_FORMAT action', () => {
+  test('updates timeFormat to "relative"', () => {
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    act(() => {
+      result.current.dispatch({ type: 'SET_TIME_FORMAT', timeFormat: 'relative' })
+    })
+
+    expect(result.current.state.timeFormat).toBe('relative')
+  })
+
+  test('updates timeFormat back to "absolute"', () => {
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    act(() => {
+      result.current.dispatch({ type: 'SET_TIME_FORMAT', timeFormat: 'relative' })
+    })
+    expect(result.current.state.timeFormat).toBe('relative')
+
+    act(() => {
+      result.current.dispatch({ type: 'SET_TIME_FORMAT', timeFormat: 'absolute' })
+    })
+    expect(result.current.state.timeFormat).toBe('absolute')
+  })
+})
+
+describe('setTimeFormat method', () => {
+  test('calls SET_TIME_FORMAT action and persists to localStorage', () => {
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    act(() => {
+      result.current.setTimeFormat('relative')
+    })
+
+    expect(result.current.state.timeFormat).toBe('relative')
+    expect(localStorage.getItem('time_format')).toBe(JSON.stringify('relative'))
+  })
+})
+
 // ==========================================================
 // localStorage 復元 — default_playback_speed (spec §10.5)
 // ==========================================================
@@ -189,6 +228,50 @@ describe('localStorage restore — default_playback_speed', () => {
     const { result } = renderHook(() => useApp(), { wrapper })
 
     expect(result.current.state.playbackSpeed).toBe(1.0)
+  })
+})
+
+// ==========================================================
+// localStorage 復元 — time_format (relative/absolute)
+// ==========================================================
+describe('localStorage restore — time_format', () => {
+  test('restores timeFormat "relative" from localStorage on mount', () => {
+    localStorage.setItem('time_format', JSON.stringify('relative'))
+
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    expect(result.current.state.timeFormat).toBe('relative')
+  })
+
+  test('restores timeFormat "absolute" from localStorage on mount', () => {
+    localStorage.setItem('time_format', JSON.stringify('absolute'))
+
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    expect(result.current.state.timeFormat).toBe('absolute')
+  })
+
+  test('uses default timeFormat "absolute" when time_format is not set', () => {
+    // localStorage is cleared in beforeEach
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    expect(result.current.state.timeFormat).toBe('absolute')
+  })
+
+  test('uses default timeFormat "absolute" when time_format contains invalid value', () => {
+    localStorage.setItem('time_format', JSON.stringify('invalid-value'))
+
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    expect(result.current.state.timeFormat).toBe('absolute')
+  })
+
+  test('uses default timeFormat "absolute" when time_format is corrupted JSON', () => {
+    localStorage.setItem('time_format', 'not-valid-json{')
+
+    const { result } = renderHook(() => useApp(), { wrapper })
+
+    expect(result.current.state.timeFormat).toBe('absolute')
   })
 })
 

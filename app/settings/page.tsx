@@ -11,6 +11,8 @@ import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import type { DifficultyLevel } from '@/types/index'
 
+type TimeFormat = 'absolute' | 'relative'
+
 const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
   'toeic_600',
   'toeic_900',
@@ -21,7 +23,7 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
 ]
 
 export default function SettingsPage() {
-  const { state, configure, dispatch } = useApp()
+  const { state, configure, dispatch, setTimeFormat } = useApp()
 
   const [newBaseUrl, setNewBaseUrl] = useState(state.baseUrl)
   const [newApiKey, setNewApiKey] = useState('')
@@ -98,7 +100,35 @@ export default function SettingsPage() {
         {/* セクション 0: アカウント（ログイン・プロフィール・パスワード） */}
         <AccountSection />
 
-        {/* セクション 1: Podcast 生成 */}
+        {/* セクション 1: 表示設定 */}
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+              📄
+            </div>
+            <h2 className="settings-section-title">表示設定</h2>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <label className="settings-row-label" htmlFor="time-format">
+                記事の日付表記
+              </label>
+              <div className="settings-row-desc">記事一覧の日付を絶対表記または相対表記で表示</div>
+            </div>
+            <select
+              id="time-format"
+              className="select-input"
+              value={state.timeFormat}
+              onChange={(e) => setTimeFormat(e.target.value as TimeFormat)}
+            >
+              <option value="absolute">絶対表記（M/D HH:MM）</option>
+              <option value="relative">相対表記（3時間前）</option>
+            </select>
+          </div>
+        </section>
+
+        {/* セクション 2: Podcast 生成 */}
         <section className="settings-section">
           <div className="settings-section-header">
             <div className="settings-section-icon" style={{ background: 'var(--amber-dim)' }} aria-hidden="true">
@@ -159,7 +189,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* セクション 2: API 接続設定 */}
+        {/* セクション 3: API 接続設定 */}
         <section className="settings-section">
           <div className="settings-section-header">
             <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
@@ -247,7 +277,7 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* セクション 3: プッシュ通知 */}
+        {/* セクション 4: プッシュ通知 */}
         <PushNotificationSection />
 
         <div style={{ textAlign: 'right', paddingTop: 4 }}>

@@ -1,8 +1,10 @@
 import { describe, test, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import React from 'react'
 import { ArticleCard } from '@/components/ArticleCard'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatRelativeTime } from '@/lib/format'
+import { AppProvider } from '@/contexts/AppContext'
 import type { Article } from '@/types/index'
 
 const SAMPLE_ARTICLE: Article = {
@@ -20,6 +22,7 @@ function renderCard(overrides: Partial<{
   onDismiss: (id: string) => void
   busy: boolean
   starred: boolean
+  timeFormat?: 'absolute' | 'relative'
 }> = {}) {
   const props = {
     article: SAMPLE_ARTICLE,
@@ -29,7 +32,15 @@ function renderCard(overrides: Partial<{
     starred: false,
     ...overrides,
   }
-  return { ...render(<ArticleCard {...props} />), props }
+  const timeFormat = overrides.timeFormat || 'absolute'
+  return {
+    ...render(
+      <AppProvider initialState={{ timeFormat }}>
+        <ArticleCard {...props} />
+      </AppProvider>
+    ),
+    props,
+  }
 }
 
 // ==========================================================
@@ -168,11 +179,19 @@ describe('ArticleCard restyle (design markup)', () => {
     ).toBeInTheDocument()
   })
 
-  test('renders published date via formatDate (D28: 相対表記化しない)', () => {
-    renderCard()
+  test('renders published date via formatDate in absolute mode (default)', () => {
+    renderCard({ timeFormat: 'absolute' })
     expect(
       screen.getByText(formatDate(SAMPLE_ARTICLE.published_at))
     ).toBeInTheDocument()
+  })
+
+  test('renders published date via formatRelativeTime in relative mode', () => {
+    renderCard({ timeFormat: 'relative' })
+    // formatRelativeTime with current now will produce relative string
+    const now = new Date()
+    const relativeDate = formatRelativeTime(new Date(SAMPLE_ARTICLE.published_at), now)
+    expect(screen.getByText(relativeDate)).toBeInTheDocument()
   })
 
   test('progressbar role with aria-valuenow stays on the score bar track', () => {

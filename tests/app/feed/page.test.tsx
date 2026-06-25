@@ -344,3 +344,153 @@ describe('FeedPage — Network error', () => {
     })
   })
 })
+
+// ==========================================================
+// Feed 画面 — 一括スター（複数選択）
+// ==========================================================
+describe('FeedPage — Bulk Star', () => {
+  test('Given "複数選択" toggle clicked, shows checkboxes on article cards', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' }),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 複数選択モード toggle を探して click
+    const selectToggle = screen.getByRole('button', { name: /複数選択/i })
+    await userEvent.click(selectToggle)
+
+    // チェックボックスが表示されることを確認
+    const checkboxes = screen.getAllByRole('checkbox')
+    expect(checkboxes.length).toBeGreaterThanOrEqual(2)
+  })
+
+  test('Given articles selected and "一括スター" clicked, calls starArticle for each', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: '' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 複数選択モード開始
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/i }))
+
+    // 2つの記事を選択
+    const checkboxes = screen.getAllByRole('checkbox')
+    await userEvent.click(checkboxes[0])
+    await userEvent.click(checkboxes[1])
+
+    // 一括スターボタンを click
+    const bulkStarBtn = screen.getByRole('button', { name: /一括スター|2件を.*スター/i })
+    await userEvent.click(bulkStarBtn)
+
+    // starArticle が2回呼ばれることを確認
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledTimes(2)
+      expect(starArticle).toHaveBeenCalledWith('a1')
+      expect(starArticle).toHaveBeenCalledWith('a2')
+    })
+  })
+
+  test('Given bulk star succeeds, shows toast and reflects starred state', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: '' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 複数選択モード
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/i }))
+
+    // 1つ選択
+    const checkboxes = screen.getAllByRole('checkbox')
+    await userEvent.click(checkboxes[0])
+
+    // 一括スター
+    const bulkStarBtn = screen.getByRole('button', { name: /1件を.*スター/i })
+    await userEvent.click(bulkStarBtn)
+
+    // starArticle が 1 回呼ばれることを確認
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1')
+    })
+  })
+
+  test('Given bulk star with partial failure, shows error toast and keeps successful ones', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    const starArticle = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 'starred', article_id: 'a1' })
+      .mockRejectedValueOnce(new ApiError(500, 'Server error'))
+
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 複数選択モード
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/i }))
+
+    // 2つ選択
+    const checkboxes = screen.getAllByRole('checkbox')
+    await userEvent.click(checkboxes[0])
+    await userEvent.click(checkboxes[1])
+
+    // 一括スター
+    await userEvent.click(screen.getByRole('button', { name: /一括スター|2件を.*スター/i }))
+
+    // エラーが表示される
+    await waitFor(() => {
+      expect(screen.getByText(/エラー|失敗/i)).toBeInTheDocument()
+    })
+
+    // a1 はスター済みタブに表示される（a2 は失敗）
+    function tabs() {
+      return within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    }
+    await userEvent.click(tabs().getByRole('button', { name: /スター済み/i }))
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    expect(screen.queryByText('Next.js 15 Features')).not.toBeInTheDocument()
+  })
+
+  test('Given "キャンセル" clicked in selection mode, clears selection and exits mode', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 複数選択モード開始
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/i }))
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2)
+
+    // キャンセルボタンをクリック
+    const cancelBtn = screen.getByRole('button', { name: /キャンセル/i })
+    await userEvent.click(cancelBtn)
+
+    // チェックボックスが非表示になる（選択モード終了）
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+})

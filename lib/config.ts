@@ -21,6 +21,9 @@ export const KEY_DEFAULT_PLAYBACK_SPEED = 'default_playback_speed'
  */
 export const KEY_THEME = 'theme'
 
+/** Time format preference for article dates ('absolute' | 'relative') */
+export const KEY_TIME_FORMAT = 'time_format'
+
 /** Build a per-podcast position key */
 export function podcastPositionKey(podcastId: string): string {
   return `${KEY_PODCAST_POSITION_PREFIX}:${podcastId}`
