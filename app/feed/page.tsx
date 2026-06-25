@@ -59,6 +59,8 @@ export default function FeedPage() {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<FeedTab>('all')
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   const fetchFeed = useCallback(async () => {
     setLoading(true)
@@ -132,6 +134,60 @@ export default function FeedPage() {
     }
   }
 
+  function handleToggleSelection(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  async function handleBulkStar() {
+    if (selectedIds.size === 0) return
+
+    const idArray = Array.from(selectedIds)
+    const api = createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey })
+
+    // WHY: 一括スター中は対象記事を busy にして個別 Star/Dismiss との二重操作を防ぐ
+    setBusyIds((prev) => new Set([...prev, ...idArray]))
+    try {
+      // WHY: Promise.allSettled で一部失敗しても他の成功を処理
+      const results = await Promise.allSettled(idArray.map((id) => api.starArticle(id)))
+
+      const successful = idArray.filter((id, idx) => results[idx].status === 'fulfilled')
+      const failed = idArray.filter((id, idx) => results[idx].status === 'rejected')
+
+      // 成功した分を starredIds に追加
+      if (successful.length > 0) {
+        setStarredIds((prev) => new Set([...prev, ...successful]))
+        showToast(`${successful.length}件をスターしました`, 'success')
+      }
+
+      // 失敗分を通知
+      if (failed.length > 0) {
+        showToast(`${failed.length}件のスターに失敗しました`, 'error')
+      }
+    } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev)
+        idArray.forEach((id) => next.delete(id))
+        return next
+      })
+      // 選択をクリア、選択モード終了
+      setSelectedIds(new Set())
+      setSelectionMode(false)
+    }
+  }
+
+  function handleCancelSelection() {
+    setSelectedIds(new Set())
+    setSelectionMode(false)
+  }
+
   // WHY: 件数・表示対象は articles と starredIds から都度導出する。
   // Dismiss で記事が消えた際にも別カウンタの同期処理なしで件数が追従するため
   const starredArticles = articles.filter((a) => starredIds.has(a.id))
@@ -172,18 +228,45 @@ export default function FeedPage() {
     }
 
     return (
-      <div className="article-list">
-        {visibleArticles.map((article) => (
-          <ArticleCard
-            key={article.id}
-            article={article}
-            onStar={handleStar}
-            onDismiss={handleDismiss}
-            busy={busyIds.has(article.id)}
-            starred={starredIds.has(article.id)}
-          />
-        ))}
-      </div>
+      <>
+        <div className="article-list">
+          {visibleArticles.map((article) => (
+            <ArticleCard
+              key={article.id}
+              article={article}
+              onStar={handleStar}
+              onDismiss={handleDismiss}
+              busy={busyIds.has(article.id)}
+              starred={starredIds.has(article.id)}
+              selectionMode={selectionMode}
+              isSelected={selectedIds.has(article.id)}
+              onToggleSelect={handleToggleSelection}
+            />
+          ))}
+        </div>
+        {selectionMode && (
+          <div className="bulk-star-footer">
+            {selectedIds.size > 0 && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleBulkStar}
+                aria-label={`${selectedIds.size}件を一括スター`}
+              >
+                {selectedIds.size}件を一括スター
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={handleCancelSelection}
+              aria-label="キャンセル"
+            >
+              キャンセル
+            </button>
+          </div>
+        )}
+      </>
     )
   }
 
@@ -197,6 +280,17 @@ export default function FeedPage() {
           </div>
         </div>
         <div className="header-actions">
+          {!selectionMode && (
+            <button
+              type="button"
+              className="btn btn-icon"
+              onClick={() => setSelectionMode(true)}
+              aria-label="複数選択"
+              title="複数選択"
+            >
+              ☑
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-icon"
