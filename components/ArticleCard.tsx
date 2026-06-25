@@ -1,5 +1,6 @@
 import React from 'react'
-import { formatDate } from '@/lib/format'
+import { formatDate, formatRelativeTime } from '@/lib/format'
+import { useApp } from '@/contexts/AppContext'
 import type { Article } from '@/types/index'
 
 interface ArticleCardProps {
@@ -8,6 +9,9 @@ interface ArticleCardProps {
   onDismiss: (id: string) => void
   busy: boolean
   starred: boolean
+  selectionMode?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (id: string) => void
 }
 
 // デザイン app-ui.html L1489 の塗りスター（starred 時）
@@ -47,15 +51,40 @@ function DismissIcon() {
   )
 }
 
-export function ArticleCard({ article, onStar, onDismiss, busy, starred }: ArticleCardProps) {
+export function ArticleCard({
+  article,
+  onStar,
+  onDismiss,
+  busy,
+  starred,
+  selectionMode = false,
+  isSelected = false,
+  onToggleSelect,
+}: ArticleCardProps) {
+  const { state } = useApp()
+
+  // WHY: now を current time に注入して相対表記を計算する（決定的にテスト可能）
+  const formattedDate = state.timeFormat === 'relative'
+    ? formatRelativeTime(new Date(article.published_at), new Date())
+    : formatDate(article.published_at)
+
   return (
     <div className={starred ? 'article-card starred' : 'article-card'}>
+      {selectionMode && (
+        <div className="article-checkbox">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelect?.(article.id)}
+            aria-label={`${article.title} を選択`}
+          />
+        </div>
+      )}
       <div>
         <div className="article-meta">
           <span className="article-source">{article.source}</span>
           <span className="article-dot">·</span>
-          {/* D28: 相対表記化はせず既存 formatDate の出力を維持する */}
-          <span className="article-date">{formatDate(article.published_at)}</span>
+          <span className="article-date">{formattedDate}</span>
         </div>
         <div className="article-title">
           <a href={article.url} target="_blank" rel="noopener noreferrer">

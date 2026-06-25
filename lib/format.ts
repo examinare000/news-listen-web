@@ -29,3 +29,57 @@ export function formatDate(iso: string): string {
   const min = String(d.getMinutes()).padStart(2, '0')
   return `${month}/${day} ${hh}:${min}`
 }
+
+/**
+ * Formats a Date to relative time in Japanese.
+ * WHY now injection: allows deterministic testing without system time dependency.
+ * @param date - The date to format
+ * @param now - Current time for comparison
+ * @returns Relative time string like "3時間前", "2日前", "1か月前", etc.
+ */
+export function formatRelativeTime(date: Date, now: Date): string {
+  // Guard against invalid dates
+  if (isNaN(date.getTime()) || isNaN(now.getTime())) {
+    return ''
+  }
+
+  const diffMs = now.getTime() - date.getTime()
+
+  // Future date or very recent past (< 60 seconds)
+  if (diffMs < 0) {
+    return 'もうすぐ'
+  }
+  if (diffMs < 60 * 1000) {
+    return 'たった今'
+  }
+
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+  const diffMonth = Math.floor(diffDay / 30)
+  const diffYear = Math.floor(diffDay / 365)
+
+  // Years
+  if (diffYear >= 1) {
+    return `${diffYear}年前`
+  }
+
+  // Months (30日単位)
+  if (diffMonth >= 1) {
+    return `${diffMonth}か月前`
+  }
+
+  // Days
+  if (diffDay >= 1) {
+    return `${diffDay}日前`
+  }
+
+  // Hours
+  if (diffHour >= 1) {
+    return `${diffHour}時間前`
+  }
+
+  // Minutes
+  return `${diffMin}分前`
+}
