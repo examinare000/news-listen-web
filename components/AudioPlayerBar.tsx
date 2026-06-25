@@ -38,7 +38,7 @@ export function AudioPlayerBar() {
   }
 
   return (
-    <footer aria-label="プレイヤー" className="player-bar">
+    <footer aria-label="プレイヤー" className="player-bar" data-testid="audio-player-bar">
       {/* 左: トラック情報（波形アート + タイトル + バッジ/生成日） */}
       <div className="player-track">
         <div className="player-art">

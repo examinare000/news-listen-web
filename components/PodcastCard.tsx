@@ -23,7 +23,10 @@ export function PodcastCard({
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
   return (
-    <div className={playing ? 'podcast-card playing' : 'podcast-card'}>
+    <div
+      className={playing ? 'podcast-card playing' : 'podcast-card'}
+      data-testid={`podcast-card-${podcast.id}`}
+    >
       <div className="podcast-card-top">
         <div className="podcast-badges">
           <DifficultyBadge difficulty={podcast.difficulty} />

@@ -114,6 +114,7 @@ export function ArticleCard({
           disabled={busy}
           aria-pressed={starred}
           aria-label={starred ? 'スター済み' : 'スターする'}
+          data-testid={`star-button-${article.id}`}
         >
           {starred ? <StarFilledIcon /> : <StarOutlineIcon />}
         </button>
