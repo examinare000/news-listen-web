@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect } from 'react'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface ConfirmDialogProps {
   isOpen: boolean
@@ -17,6 +18,8 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen)
+
   // Close on Escape key
   useEffect(() => {
     if (!isOpen) return
@@ -36,6 +39,7 @@ export function ConfirmDialog({
   return (
     <div className="modal-backdrop">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"

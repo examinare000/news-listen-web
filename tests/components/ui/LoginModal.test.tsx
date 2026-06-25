@@ -52,4 +52,10 @@ describe('LoginModal', () => {
       expect(screen.getByText('ユーザーIDまたはパスワードが正しくありません')).toBeInTheDocument(),
     )
   })
+
+  test('focuses username input on mount (focus trap)', () => {
+    render(<LoginModal />)
+    const usernameInput = screen.getByLabelText('ユーザーID')
+    expect(usernameInput).toHaveFocus()
+  })
 })

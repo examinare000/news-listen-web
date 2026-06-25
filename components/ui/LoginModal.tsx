@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { ApiError } from '@/lib/api'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 // 接続設定（SetupModal）の後、未ログイン時に表示するログイン画面。
 // 認証はサーバーサイドセッション（httpOnly Cookie）。成功すると AuthContext が
@@ -13,6 +14,7 @@ export function LoginModal() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const dialogRef = useFocusTrap<HTMLDivElement>()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,7 +39,7 @@ export function LoginModal() {
 
   return (
     <div className="modal-backdrop">
-      <div role="dialog" aria-modal="true" aria-labelledby="login-modal-title" className="modal-box">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="login-modal-title" className="modal-box">
         <div className="modal-logo">
           <div className="logo-icon">
             <svg

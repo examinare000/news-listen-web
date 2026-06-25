@@ -140,4 +140,10 @@ describe('SetupModal', () => {
       expect(checkHealth).toHaveBeenCalled()
     })
   })
+
+  test('focuses base URL input on mount (focus trap)', () => {
+    renderModal()
+    const baseUrlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
+    expect(baseUrlInput).toHaveFocus()
+  })
 })

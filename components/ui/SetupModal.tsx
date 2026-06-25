@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { createApiClient } from '@/lib/api'
+import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface SetupModalProps {
   onConfigure: (baseUrl: string, apiKey: string) => void
@@ -13,6 +14,7 @@ export function SetupModal({ onConfigure }: SetupModalProps) {
   const [urlError, setUrlError] = useState('')
   const [keyError, setKeyError] = useState('')
   const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const dialogRef = useFocusTrap<HTMLDivElement>()
 
   function validate(): boolean {
     let valid = true
@@ -58,7 +60,7 @@ export function SetupModal({ onConfigure }: SetupModalProps) {
 
   return (
     <div className="modal-backdrop">
-      <div role="dialog" aria-modal="true" aria-labelledby="setup-modal-title" className="modal-box">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="setup-modal-title" className="modal-box">
         {/* NavigationBar と同一のロゴ（app-ui.html L1375-1378 をインライン移植） */}
         <div className="modal-logo">
           <div className="logo-icon">
