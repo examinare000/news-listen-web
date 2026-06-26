@@ -4,6 +4,8 @@ import React, { createContext, useCallback, useContext, useEffect, useState } fr
 import type { AuthUser } from '@/types/index'
 import { createApiClient } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
+import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
+import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 
 // 認証状態。サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
@@ -14,11 +16,16 @@ export type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 interface AuthContextValue {
   status: AuthStatus
   user: AuthUser | null
-  /** ログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
+  /** パスワードログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
   /** GET /auth/me で状態を再解決する。 */
   refreshMe: () => Promise<void>
+  /**
+   * Passkey ログイン。port は WebAuthnBrowserPort を受け取る（テストでは fake を注入）。
+   * 失敗時はエラーを throw する（UI 層でキャッチして文言表示）。
+   */
+  loginWithPasskey: (port: WebAuthnBrowserPort) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -72,6 +79,18 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     setStatus('unauthenticated')
   }, [client])
 
+  // WHY: passkey.ts の loginWithPasskey(client, port) を呼ぶ薄いラッパー。
+  //      client は DI（createApiClient）、port は呼び出し側から注入（テスト可能性を確保）。
+  const loginWithPasskey = useCallback(
+    async (port: WebAuthnBrowserPort) => {
+      // 失敗時はエラーがそのまま伝播する。成功時のみ状態を更新する。
+      const res = await passkeyLogin(client(), port)
+      setUser(res.user)
+      setStatus('authenticated')
+    },
+    [client],
+  )
+
   // 接続設定が完了したら /auth/me で認証状態を解決する。未設定時は 'unknown' のまま。
   useEffect(() => {
     if (initialStatus) return // テスト時の固定状態を尊重
@@ -83,7 +102,7 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   }, [state.isRestoring, state.isConfigured, refreshMe, initialStatus])
 
   return (
-    <AuthContext.Provider value={{ status, user, login, logout, refreshMe }}>
+    <AuthContext.Provider value={{ status, user, login, logout, refreshMe, loginWithPasskey }}>
       {children}
     </AuthContext.Provider>
   )

@@ -98,6 +98,30 @@ export interface UserPreferences {
 
 export type UserPreferencesPatch = Partial<UserPreferences>
 
+// ── Passkey / WebAuthn ───────────────────────────────────────────────
+/** POST /auth/passkey/register/options および /auth/passkey/login/options のレスポンス。
+ *  options フィールドは JSON 文字列（backend の options_to_json() 出力）。クライアント側で JSON.parse が必要。 */
+export interface PasskeyOptionsResponse {
+  challenge_id: string
+  options: string
+}
+
+/** GET /auth/passkey/credentials のクレデンシャル要素（public_key は除外）。*/
+export interface PasskeyCredential {
+  credential_id: string
+  username: string
+  name: string | null
+  transports: string[]
+  aaguid: string | null
+  sign_count: number
+  created_at: string       // ISO 8601
+  last_used_at: string | null  // ISO 8601
+}
+
+export interface PasskeyCredentialsListResponse {
+  credentials: PasskeyCredential[]
+}
+
 // ── Web Push 通知 ────────────────────────────────────────────────────
 /** W3C PushSubscription の JSON 表現（backend API に送るボディ）*/
 export interface PushSubscriptionJSON {
