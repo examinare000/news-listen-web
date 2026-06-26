@@ -8,7 +8,7 @@ import * as ErrorModule from '@/app/error'
 import * as GlobalErrorModule from '@/app/global-error'
 
 // Extract the exported functions
-const Error = ErrorModule.default
+const ErrorPage = ErrorModule.default
 const GlobalError = GlobalErrorModule.default
 
 describe('Error boundary (app/error.tsx)', () => {
@@ -17,7 +17,7 @@ describe('Error boundary (app/error.tsx)', () => {
     const testError = new Error('secret-detail-xyz')
 
     render(
-      React.createElement(Error, {
+      React.createElement(ErrorPage, {
         error: testError,
         reset: resetFn,
       }),
@@ -37,7 +37,7 @@ describe('Error boundary (app/error.tsx)', () => {
     const testError = new Error('secret-detail-xyz')
 
     render(
-      React.createElement(Error, {
+      React.createElement(ErrorPage, {
         error: testError,
         reset: resetFn,
       }),
@@ -53,7 +53,7 @@ describe('Error boundary (app/error.tsx)', () => {
     const user = userEvent.setup()
 
     render(
-      React.createElement(Error, {
+      React.createElement(ErrorPage, {
         error: testError,
         reset: resetFn,
       }),
