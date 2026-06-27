@@ -85,6 +85,13 @@ export class MockAudio {
  */
 export function setupMockAudio(): MockAudio {
   const instance = new MockAudio()
-  vi.stubGlobal('Audio', vi.fn(() => instance))
+  // Vitest 4 では new で呼ばれたモックが実装を constructor として実行するため、
+  // アロー関数だと "is not a constructor" になる。通常関数なら new 時にこの戻り値が採用される。
+  vi.stubGlobal(
+    'Audio',
+    vi.fn(function (this: unknown) {
+      return instance
+    }),
+  )
   return instance
 }
