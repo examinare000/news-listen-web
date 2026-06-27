@@ -232,7 +232,8 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
   // 3. Log in
   await page.locator('#login-username').fill('e2e')
   await page.locator('#login-password').fill('e2e-password')
-  await page.getByRole('button', { name: 'ログイン' }).click()
+  // 「Passkey でログイン」ボタンも追加されたため、送信ボタンは完全一致で特定する
+  await page.getByRole('button', { name: 'ログイン', exact: true }).click()
 
   // 4. Lands on feed with the article (root replaces to /feed after auth+onboarding)
   await expect(page).toHaveURL(/\/feed$/)

@@ -1,20 +1,30 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { ApiError } from '@/lib/api'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 
 // 接続設定（SetupModal）の後、未ログイン時に表示するログイン画面。
 // 認証はサーバーサイドセッション（httpOnly Cookie）。成功すると AuthContext が
 // 'authenticated' になり、上位のゲート（app/page.tsx）がフィードへ進める。
 export function LoginModal() {
-  const { login } = useAuth()
+  const { login, loginWithPasskey } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [submittingPasskey, setSubmittingPasskey] = useState(false)
+  const [supportsPasskey, setSupportsPasskey] = useState(true)
   const dialogRef = useFocusTrap<HTMLDivElement>()
+
+  // WHY: WebAuthn 非対応環境（古いブラウザ等）では Passkey ボタンを disabled にし、
+  //      ユーザーが試行できない状態にする。port 経由で判定を集約。
+  useEffect(() => {
+    const port = createRealWebAuthnBrowserPort()
+    setSupportsPasskey(port.supportsWebAuthn())
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -36,6 +46,30 @@ export function LoginModal() {
       setSubmitting(false)
     }
   }
+
+  async function handlePasskeyLogin() {
+    setSubmittingPasskey(true)
+    setError('')
+    try {
+      await loginWithPasskey(createRealWebAuthnBrowserPort())
+    } catch (err) {
+      // WHY: NotAllowedError はユーザーが自発的にキャンセルした場合。
+      //      DOMException は環境によって instanceof Error が false になることがあるため
+      //      name プロパティのみで判定する。
+      //      それ以外の失敗も含め、ユーザー存在やクレデンシャル情報を漏洩しない汎用表現を使う。
+      const errName = err !== null && typeof err === 'object' && 'name' in err
+        ? (err as { name: string }).name
+        : ''
+      const detail =
+        errName === 'NotAllowedError'
+          ? '認証がキャンセルされました'
+          : 'Passkey ログインに失敗しました'
+      setError(detail)
+      setSubmittingPasskey(false)
+    }
+  }
+
+  const isDisabled = submitting || submittingPasskey
 
   return (
     <div className="modal-backdrop">
@@ -96,14 +130,28 @@ export function LoginModal() {
             />
           </div>
 
-          {error && <p className="form-error">{error}</p>}
-
           <div className="modal-actions">
-            <button className="btn btn-primary" type="submit" disabled={submitting}>
+            <button className="btn btn-primary" type="submit" disabled={isDisabled}>
               {submitting ? 'ログイン中…' : 'ログイン'}
             </button>
           </div>
         </form>
+
+        <div className="modal-divider" aria-hidden="true">または</div>
+
+        <div className="modal-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={handlePasskeyLogin}
+            disabled={isDisabled || !supportsPasskey}
+            aria-label={!supportsPasskey ? 'お使いのブラウザは Passkey に対応していません' : undefined}
+          >
+            {submittingPasskey ? '認証中…' : 'Passkey でログイン'}
+          </button>
+        </div>
+
+        {error && <p role="status" className="form-error">{error}</p>}
       </div>
     </div>
   )
