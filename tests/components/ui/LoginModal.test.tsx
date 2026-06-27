@@ -58,4 +58,11 @@ describe('LoginModal', () => {
     const usernameInput = screen.getByLabelText('ユーザーID')
     expect(usernameInput).toHaveFocus()
   })
+
+  test('displays modal-divider with "または" text', () => {
+    render(<LoginModal />)
+    // .modal-divider クラスを持つ要素が存在し、「または」テキストを含む
+    const divider = screen.getByText('または')
+    expect(divider).toHaveClass('modal-divider')
+  })
 })

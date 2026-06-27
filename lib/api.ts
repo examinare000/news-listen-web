@@ -20,6 +20,8 @@ import type {
   UserPreferencesPatch,
   VapidPublicKeyResponse,
   PushSubscriptionJSON,
+  PasskeyOptionsResponse,
+  PasskeyCredentialsListResponse,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -270,6 +272,65 @@ export function createApiClient(config: ApiClientConfig) {
       const encoded = encodeURIComponent(endpoint)
       return request<Record<string, unknown>>(
         `/api/backend/notifications/subscriptions?endpoint=${encoded}`,
+        config,
+        { method: 'DELETE' },
+      )
+    },
+
+    // ── Passkey / WebAuthn ────────────────────────────────────────────
+    // register/options・login/options は認証不要だが credentials:'include' で Cookie を送る。
+    // register/options・register/verify・delete は CSRF 必須（X-CSRF-Token は request() が自動付与）。
+    // login/options・login/verify は CSRF 免除（backend の csrf.py 設定参照）。
+
+    /** 登録オプション取得。要ログイン・CSRF 必須。options は JSON 文字列で返る → 呼び出し側で JSON.parse。 */
+    getPasskeyRegisterOptions() {
+      return request<PasskeyOptionsResponse>(
+        '/api/backend/auth/passkey/register/options',
+        config,
+        { method: 'POST' },
+      )
+    },
+
+    /** 登録検証。要ログイン・CSRF 必須。credential は startRegistration の戻り値をそのまま渡す。 */
+    verifyPasskeyRegistration(challenge_id: string, credential: unknown) {
+      return request<{ status: string }>(
+        '/api/backend/auth/passkey/register/verify',
+        config,
+        { method: 'POST', body: JSON.stringify({ challenge_id, credential }) },
+      )
+    },
+
+    /** ログインオプション取得。認証不要・CSRF 免除。discoverable フロー（username 不送信）。*/
+    getPasskeyLoginOptions() {
+      return request<PasskeyOptionsResponse>(
+        '/api/backend/auth/passkey/login/options',
+        config,
+        { method: 'POST' },
+      )
+    },
+
+    /** ログイン検証。認証不要・CSRF 免除。成功時は httpOnly Cookie セッションを発行し LoginResponse を返す。 */
+    verifyPasskeyLogin(challenge_id: string, credential: unknown) {
+      return request<LoginResponse>(
+        '/api/backend/auth/passkey/login/verify',
+        config,
+        { method: 'POST', body: JSON.stringify({ challenge_id, credential }) },
+      )
+    },
+
+    /** 登録済みクレデンシャル一覧。要ログイン。public_key は含まれない。 */
+    getPasskeyCredentials() {
+      return request<PasskeyCredentialsListResponse>(
+        '/api/backend/auth/passkey/credentials',
+        config,
+        { method: 'GET' },
+      )
+    },
+
+    /** クレデンシャル削除。要ログイン・CSRF 必須。credential_id は encodeURIComponent で安全にエスケープ。 */
+    deletePasskeyCredential(credential_id: string) {
+      return request<{ status: string }>(
+        `/api/backend/auth/passkey/credentials/${encodeURIComponent(credential_id)}`,
         config,
         { method: 'DELETE' },
       )
