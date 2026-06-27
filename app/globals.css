@@ -1339,6 +1339,23 @@ html[data-theme="light"] .theme-name-light { display: inline; }
   line-height: 1.7;
 }
 
+.modal-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modal-divider::before,
+.modal-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
 /* Responsive utility */
 .mt-auto { margin-top: auto; }
 .flex-1  { flex: 1; }
