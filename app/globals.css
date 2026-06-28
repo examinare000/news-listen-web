@@ -227,6 +227,34 @@ html[data-theme="light"] body::before { opacity: .5; }
   margin-top: auto;
   padding: 16px 20px 0;
   border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.sidebar-account-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  /* WHY: ラベルを縮小可能にし長い表示名でもログアウトボタンを押し出さない
+     （.sidebar は overflow:hidden のため、押し出すとボタンが見切れ操作不能になる） */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ログアウトボタンは縮小させず常に全幅を確保する */
+.sidebar-account .btn {
+  flex-shrink: 0;
 }
 
 .sidebar-status {

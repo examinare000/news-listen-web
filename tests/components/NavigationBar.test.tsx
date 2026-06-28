@@ -10,6 +10,18 @@ vi.mock('next/navigation', () => ({
   })),
 }))
 
+// SidebarAccount は useAuth を呼ぶため、デフォルトで authenticated mock を返す
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: vi.fn(() => ({
+    status: 'authenticated',
+    user: { username: 'test', role: 'user' as const, display_name: 'Test User' },
+    logout: vi.fn(),
+    login: vi.fn(),
+    refreshMe: vi.fn(),
+    loginWithPasskey: vi.fn(),
+  })),
+}))
+
 // ==========================================================
 // NavigationBar — サイドバー化（aside.sidebar）+ 4 リンク / aria-current="page"
 // 表示文言はデザイン正本（docs/design/app-ui.html）準拠の日本語
@@ -120,5 +132,20 @@ describe('NavigationBar', () => {
     render(<NavigationBar />)
     // ThemeToggle は role="switch"（現在テーマを aria-checked で公開する）
     expect(screen.getByRole('switch', { name: 'テーマ切替' })).toBeInTheDocument()
+  })
+
+  test('renders the logout button in the sidebar footer when authenticated', async () => {
+    render(<NavigationBar />)
+    // SidebarAccount が認証済みで渡されたため、ログアウトボタンが表示される
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument()
+  })
+
+  test('sidebar footer contains both account section and theme toggle', () => {
+    render(<NavigationBar />)
+    const footer = screen.getByRole('complementary').querySelector('.sidebar-footer')
+    expect(footer).toBeInTheDocument()
+    // ログアウトボタンとテーマ切替スイッチが footer に含まれる
+    expect(footer).toContainElement(screen.getByRole('button', { name: 'ログアウト' }))
+    expect(footer).toContainElement(screen.getByRole('switch', { name: 'テーマ切替' }))
   })
 })
