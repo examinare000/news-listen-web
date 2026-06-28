@@ -1,3 +1,5 @@
+import type { AuthUser } from '@/types/index'
+
 /**
  * Formats a duration in seconds to M:SS or H:MM:SS string.
  * Used for podcast duration display.
@@ -82,4 +84,17 @@ export function formatRelativeTime(date: Date, now: Date): string {
 
   // Minutes
   return `${diffMin}分前`
+}
+
+/**
+ * Formats an authenticated user to a label string.
+ * Used in AccountSection and SidebarAccount to display user info consistently.
+ * @param user - The authenticated user, or null for unauthenticated state
+ * @returns Formatted label like "display_name（username / role）", or "—" if user is null
+ */
+export function formatAuthUserLabel(user: AuthUser | null): string {
+  if (!user) {
+    return '—'
+  }
+  return `${user.display_name}（${user.username} / ${user.role}）`
 }

@@ -1,5 +1,6 @@
 import { describe, test, expect } from 'vitest'
-import { formatDuration, formatDate, formatRelativeTime } from '@/lib/format'
+import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel } from '@/lib/format'
+import type { AuthUser } from '@/types/index'
 
 // ==========================================================
 // formatDuration(seconds: number): string
@@ -207,5 +208,33 @@ describe('formatRelativeTime', () => {
     const now = new Date('2026-06-10T09:00:00Z')
     const invalid = new Date('invalid')
     expect(() => formatRelativeTime(invalid, now)).not.toThrow()
+  })
+})
+
+// ==========================================================
+// formatAuthUserLabel(user: AuthUser | null): string
+// ユーザー認証ラベルの表示形式を共通化。AccountSection と SidebarAccount で流用。
+// ==========================================================
+describe('formatAuthUserLabel', () => {
+  test('Given authenticated user, returns formatted label "display_name（username / role）"', () => {
+    const user: AuthUser = {
+      username: 'taro',
+      role: 'user',
+      display_name: '山田太郎',
+    }
+    expect(formatAuthUserLabel(user)).toBe('山田太郎（taro / user）')
+  })
+
+  test('Given admin user, returns formatted label with admin role', () => {
+    const user: AuthUser = {
+      username: 'admin-alice',
+      role: 'admin',
+      display_name: 'Alice Admin',
+    }
+    expect(formatAuthUserLabel(user)).toBe('Alice Admin（admin-alice / admin）')
+  })
+
+  test('Given null user, returns "—"', () => {
+    expect(formatAuthUserLabel(null)).toBe('—')
   })
 })
