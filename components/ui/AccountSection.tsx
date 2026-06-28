@@ -7,13 +7,15 @@ import { createApiClient } from '@/lib/api'
 import { ApiError } from '@/lib/api'
 import { registerPasskey } from '@/lib/passkey'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { formatAuthUserLabel } from '@/lib/format'
+import { LogoutButton } from '@/components/ui/LogoutButton'
 import type { PasskeyCredential } from '@/types/index'
 
 // 設定画面の「アカウント」セクション。プロフィール（表示名）編集・パスワード変更・
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
 export function AccountSection() {
-  const { user, logout, refreshMe } = useAuth()
+  const { user, refreshMe } = useAuth()
   const client = createApiClient()
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
@@ -141,12 +143,10 @@ export function AccountSection() {
         <div>
           <div className="settings-row-label">ログイン中</div>
           <div className="settings-row-desc">
-            {user ? `${user.display_name}（${user.username} / ${user.role}）` : '—'}
+            {formatAuthUserLabel(user)}
           </div>
         </div>
-        <button className="btn btn-ghost" onClick={logout} aria-label="ログアウト">
-          ログアウト
-        </button>
+        <LogoutButton />
       </div>
 
       {/* 表示名 */}
