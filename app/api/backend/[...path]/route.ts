@@ -2,16 +2,22 @@
  * BFF proxy: forwards requests from the frontend to the backend API.
  *
  * Security:
- * - Validates X-Backend-Base-Url scheme (http/https only) to prevent SSRF
- * - Does NOT add secrets to requests — the API key is forwarded from the header
+ * - Reads backend URL and API key from server-only environment variables (BACKEND_BASE_URL, BACKEND_API_KEY)
+ * - Validates BACKEND_BASE_URL scheme (http/https only) to prevent SSRF
+ * - Injects the API key from env (not from request headers)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 
 type Context = { params: Promise<{ path: string[] }> }
 
-function getBackendUrl(req: NextRequest, pathSegments: string[]): string | null {
-  const baseUrl = req.headers.get('X-Backend-Base-Url')
+interface BackendConfig {
+  baseUrl: string
+  path: string
+}
+
+function getBackendUrl(pathSegments: string[]): BackendConfig | null {
+  const baseUrl = process.env.BACKEND_BASE_URL
   if (!baseUrl) return null
 
   // SSRF mitigation: only allow http and https schemes
@@ -24,25 +30,28 @@ function getBackendUrl(req: NextRequest, pathSegments: string[]): string | null 
     return null
   }
 
-  // Reconstruct the target URL preserving query string
-  const requestUrl = new URL(req.url)
+  // Reconstruct the target URL preserving query string (get it from request inside forward())
   const joinedPath = pathSegments.join('/')
-  const search = requestUrl.search // includes leading '?'
-  return `${baseUrl.replace(/\/$/, '')}/${joinedPath}${search}`
+  return { baseUrl, path: joinedPath }
 }
 
 async function forward(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
-  const targetUrl = getBackendUrl(req, pathSegments)
+  const backendConfig = getBackendUrl(pathSegments)
 
-  if (!targetUrl) {
+  if (!backendConfig) {
     return NextResponse.json(
-      { detail: 'Missing or invalid X-Backend-Base-Url header' },
-      { status: 400 },
+      { detail: 'Server misconfiguration: BACKEND_BASE_URL is not set' },
+      { status: 500 },
     )
   }
 
-  // Build forwarded headers (pass through X-API-Key; strip Next.js-internal headers)
-  const apiKey = req.headers.get('X-API-Key')
+  // Construct target URL with query string from request
+  const requestUrl = new URL(req.url)
+  const search = requestUrl.search // includes leading '?'
+  const targetUrl = `${backendConfig.baseUrl.replace(/\/$/, '')}/${backendConfig.path}${search}`
+
+  // Build forwarded headers (inject X-API-Key from env; strip Next.js-internal headers)
+  const apiKey = process.env.BACKEND_API_KEY
   const forwardedHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
   }
