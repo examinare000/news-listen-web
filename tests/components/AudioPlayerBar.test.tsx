@@ -342,7 +342,7 @@ describe('Speed selector', () => {
       </AppProvider>
     )
 
-    const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i }) as HTMLSelectElement
+    const speedSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /速度|speed/i })
     expect(Number(speedSelect.value)).toBe(1.5)
   })
 })

@@ -20,7 +20,7 @@ vi.mock('@/lib/api', () => ({
 }))
 
 const authOverride = vi.hoisted(() => ({
-  current: { username: 'admin', role: 'admin', display_name: 'Admin' } as { username: string; role: string; display_name: string },
+  current: { username: 'admin', role: 'admin', display_name: 'Admin' },
 }))
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({ status: 'authenticated', user: authOverride.current, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),

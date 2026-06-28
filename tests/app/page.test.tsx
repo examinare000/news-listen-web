@@ -27,7 +27,7 @@ vi.mock('@/contexts/AppContext', async (importOriginal) => {
 
 // 認証状態は useAuth をモックして制御する（AuthProvider の /auth/me 実呼び出しを避ける）。
 // 既定は 'authenticated' とし、設定済みテストが従来どおりフィードへ進むようにする。
-const authStatusOverride = vi.hoisted(() => ({ current: 'authenticated' as string }))
+const authStatusOverride = vi.hoisted(() => ({ current: 'authenticated' }))
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     status: authStatusOverride.current,
