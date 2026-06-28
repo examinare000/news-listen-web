@@ -117,7 +117,7 @@ describe('SettingsPage — save settings', () => {
     await userEvent.type(urlInput, 'https://new-api.example.com')
 
     // API キー欄は aria-label で特定する（アカウント欄のパスワード入力と区別するため）
-    const apiKeyInput = screen.getByLabelText('API Key') as HTMLInputElement
+    const apiKeyInput = screen.getByLabelText('API Key')
     await userEvent.clear(apiKeyInput)
     await userEvent.type(apiKeyInput, 'new-key')
 
@@ -239,7 +239,7 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
     renderSettingsPage()
 
     await waitFor(() => {
-      const diffSelect = screen.getByRole('combobox', { name: /難易度/i })
+      const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
       expect(diffSelect).toBeInTheDocument()
     })
   })
@@ -285,7 +285,7 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
     renderSettingsPage()
 
     await waitFor(() => {
-      const diffSelect = screen.getByRole('combobox', { name: /難易度/i }) as HTMLSelectElement
+      const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
       expect(diffSelect.value).toBe('ielts_7')
     })
   })
@@ -329,7 +329,7 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
     renderSettingsPage()
 
     await waitFor(() => {
-      const diffSelect = screen.getByRole('combobox', { name: /難易度/i }) as HTMLSelectElement
+      const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
       expect(diffSelect.value).toBe('toeic_600')
     })
   })

@@ -244,7 +244,7 @@ describe('ended event', () => {
 
     const saved = localStorage.getItem('podcast_position:p1')
     // 終了後は 0 にリセット
-    expect(saved === null || JSON.parse(saved!) === 0).toBe(true)
+    expect(saved === null || JSON.parse(saved) === 0).toBe(true)
   })
 })
 
