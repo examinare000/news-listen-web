@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
 import type { AuthUser, UserRole } from '@/types/index'
@@ -10,9 +9,8 @@ import type { AuthUser, UserRole } from '@/types/index'
 // 管理者用ユーザー管理画面。一覧・作成・ロール変更・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
 export default function AdminUsersPage() {
-  const { state } = useApp()
   const { user, status } = useAuth()
-  const client = createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey })
+  const client = createApiClient()
 
   const [users, setUsers] = useState<AuthUser[]>([])
   const [loadError, setLoadError] = useState('')
@@ -34,9 +32,7 @@ export default function AdminUsersPage() {
     } catch {
       setLoadError('ユーザー一覧の取得に失敗しました')
     }
-    // client は毎レンダリング生成されるが baseUrl/apiKey に依存。依存は state を使用。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.baseUrl, state.apiKey])
+  }, [])
 
   useEffect(() => {
     if (status === 'authenticated' && isAdmin) {

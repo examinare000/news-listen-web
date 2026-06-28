@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect, useCallback } from 'react'
-import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
 import { createApiClient, ApiError } from '@/lib/api'
@@ -49,7 +48,6 @@ const tabCountStyle: React.CSSProperties = {
 }
 
 export default function FeedPage() {
-  const { state } = useApp()
   const { showToast } = useToast()
 
   const [articles, setArticles] = useState<Article[]>([])
@@ -66,7 +64,7 @@ export default function FeedPage() {
     setLoading(true)
     setErrorMessage(null)
     try {
-      const data = await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).getFeed()
+      const data = await createApiClient().getFeed()
       setArticles(data.articles)
       setFeedDate(data.date ?? null)
     } catch (err) {
@@ -84,7 +82,7 @@ export default function FeedPage() {
     } finally {
       setLoading(false)
     }
-  }, [state.baseUrl, state.apiKey])
+  }, [])
 
   useEffect(() => {
     fetchFeed()
@@ -93,7 +91,7 @@ export default function FeedPage() {
   async function handleStar(id: string) {
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).starArticle(id)
+      await createApiClient().starArticle(id)
       setStarredIds((prev) => new Set(prev).add(id))
       showToast('Star しました', 'success')
     } catch (err) {
@@ -119,7 +117,7 @@ export default function FeedPage() {
   async function handleDismiss(id: string) {
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).dismissArticle(id)
+      await createApiClient().dismissArticle(id)
       setArticles((prev) => prev.filter((a) => a.id !== id))
     } catch (err) {
       if (err instanceof ApiError) {
@@ -150,7 +148,7 @@ export default function FeedPage() {
     if (selectedIds.size === 0) return
 
     const idArray = Array.from(selectedIds)
-    const api = createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey })
+    const api = createApiClient()
 
     // WHY: 一括スター中は対象記事を busy にして個別 Star/Dismiss との二重操作を防ぐ
     setBusyIds((prev) => new Set([...prev, ...idArray]))

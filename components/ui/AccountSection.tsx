@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
 import { ApiError } from '@/lib/api'
@@ -14,9 +13,8 @@ import type { PasskeyCredential } from '@/types/index'
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
 export function AccountSection() {
-  const { state } = useApp()
   const { user, logout, refreshMe } = useAuth()
-  const client = createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey })
+  const client = createApiClient()
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
   const [profileMsg, setProfileMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -40,7 +38,7 @@ export function AccountSection() {
     } catch {
       // ロード失敗はサイレント（初回表示なので致命的ではない）
     }
-  }, [state.baseUrl, state.apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadCredentials()

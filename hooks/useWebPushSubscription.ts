@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useApp } from '@/contexts/AppContext'
 import { createApiClient } from '@/lib/api'
 import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
 import { urlBase64ToUint8Array } from '@/lib/webpush'
@@ -29,7 +28,6 @@ interface UseWebPushSubscriptionResult {
 export function useWebPushSubscription({
   port: portProp,
 }: UseWebPushSubscriptionOptions = {}): UseWebPushSubscriptionResult {
-  const { state: appState } = useApp()
   const [pushState, setPushState] = useState<PushSubscriptionState>('unsubscribed')
   // ポートはレンダリングをまたいで同一インスタンスを保持
   const [port] = useState<PushBrowserPort>(() => portProp ?? createRealPushBrowserPort())
@@ -59,7 +57,7 @@ export function useWebPushSubscription({
       }
     }
 
-    init()
+    void init()
     return () => { cancelled = true }
   }, [port])
 
@@ -81,7 +79,7 @@ export function useWebPushSubscription({
       await port.registerServiceWorker('/sw.js')
 
       // VAPID 公開鍵取得
-      const client = createApiClient({ baseUrl: appState.baseUrl, apiKey: appState.apiKey })
+      const client = createApiClient()
       const { public_key } = await client.getVapidPublicKey()
       const applicationServerKey = urlBase64ToUint8Array(public_key)
 
@@ -95,11 +93,11 @@ export function useWebPushSubscription({
     } catch {
       setPushState('error')
     }
-  }, [port, appState.baseUrl, appState.apiKey])
+  }, [port])
 
   const unsubscribe = useCallback(async () => {
     try {
-      const client = createApiClient({ baseUrl: appState.baseUrl, apiKey: appState.apiKey })
+      const client = createApiClient()
       const existing = await port.getExistingSubscription()
       if (existing) {
         await port.unsubscribe(existing.endpoint)
@@ -109,7 +107,7 @@ export function useWebPushSubscription({
     } catch {
       setPushState('error')
     }
-  }, [port, appState.baseUrl, appState.apiKey])
+  }, [port])
 
   return { state: pushState, subscribe, unsubscribe }
 }

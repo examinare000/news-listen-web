@@ -52,7 +52,7 @@ export default function PodcastPage() {
 
   const fetchPodcasts = useCallback(async () => {
     try {
-      const data = await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).getPodcasts()
+      const data = await createApiClient().getPodcasts()
       setPodcasts(data.podcasts)
       return data
     } catch (err) {
@@ -63,7 +63,7 @@ export default function PodcastPage() {
     } finally {
       setLoading(false)
     }
-  }, [state.baseUrl, state.apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPodcasts()

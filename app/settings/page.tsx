@@ -23,64 +23,36 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
 ]
 
 export default function SettingsPage() {
-  const { state, configure, dispatch, setTimeFormat } = useApp()
-
-  const [newBaseUrl, setNewBaseUrl] = useState(state.baseUrl)
-  const [newApiKey, setNewApiKey] = useState('')
-  const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const { state, dispatch, setTimeFormat } = useApp()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>('toeic_600')
-  const [loading, setLoading] = useState(true)
 
   // Load preferences on mount (C群#13)
   useEffect(() => {
     const loadPreferences = async () => {
       try {
-        const prefs = await createApiClient({
-          baseUrl: state.baseUrl,
-          apiKey: state.apiKey,
-        }).getPreferences()
+        const prefs = await createApiClient().getPreferences()
         setDefaultDifficulty(prefs.default_difficulty)
       } catch {
         // Fallback to toeic_600 if fetch fails
         setDefaultDifficulty('toeic_600')
-      } finally {
-        setLoading(false)
       }
     }
-    loadPreferences()
-  }, [state.baseUrl, state.apiKey])
+    void loadPreferences()
+  }, [])
 
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
     setDefaultDifficulty(newDifficulty)
     try {
-      await createApiClient({
-        baseUrl: state.baseUrl,
-        apiKey: state.apiKey,
-      }).updatePreferences({ default_difficulty: newDifficulty })
+      await createApiClient().updatePreferences({ default_difficulty: newDifficulty })
     } catch (err) {
       // Fail silently: keep UI updated even if API fails
       // (Non-fatal for playback experience)
       if (err instanceof ApiError) {
         // Optionally log but don't show to user
       }
-    }
-  }
-
-  async function handleSave() {
-    // Preserve existing API key when the field is left blank
-    configure(newBaseUrl, newApiKey || state.apiKey)
-  }
-
-  async function handleTest() {
-    const client = createApiClient({ baseUrl: newBaseUrl || state.baseUrl, apiKey: newApiKey || state.apiKey })
-    try {
-      await client.checkHealth()
-      setTestStatus('success')
-    } catch {
-      setTestStatus('error')
     }
   }
 
@@ -178,7 +150,6 @@ export default function SettingsPage() {
               className="select-input"
               value={defaultDifficulty}
               onChange={(e) => handleDifficultyChange(e.target.value as DifficultyLevel)}
-              disabled={loading}
             >
               {DIFFICULTY_OPTIONS.map((d) => (
                 <option key={d} value={d}>
@@ -189,102 +160,9 @@ export default function SettingsPage() {
           </div>
         </section>
 
-        {/* セクション 3: API 接続設定 */}
-        <section className="settings-section">
-          <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
-              🔌
-            </div>
-            <h2 className="settings-section-title">API 接続設定</h2>
-          </div>
 
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">API エンドポイント URL</div>
-              {/* API キーの修正導線がここにあることを明示する（初回設定後の変更経路） */}
-              <div className="settings-row-desc">
-                API の接続先 URL と API キーはここでいつでも変更できます。API
-                キー欄を空欄のまま保存すると、既存のキーを保持します。
-              </div>
-              <div className="settings-row-desc">現在の API URL: {state.baseUrl}</div>
-            </div>
-          </div>
-          <div style={{ padding: '0 20px 16px' }}>
-            {/* 視覚ラベルは settings-row-label が担うため、入力欄自体は aria-label で命名する */}
-            <input
-              id="settings-base-url"
-              className="form-input"
-              type="text"
-              value={newBaseUrl}
-              onChange={(e) => setNewBaseUrl(e.target.value)}
-              placeholder="https://..."
-              aria-label="Base URL"
-            />
-          </div>
-
-          <div className="settings-row">
-            <div>
-              <div className="settings-row-label">API キー</div>
-              <div className="settings-row-desc">
-                認証キー（localStorage に保存）— 現在: <span>設定済み</span>
-              </div>
-            </div>
-          </div>
-          <div style={{ padding: '0 20px 16px', display: 'flex', gap: 8 }}>
-            <input
-              id="settings-api-key"
-              className="form-input"
-              type="password"
-              value={newApiKey}
-              onChange={(e) => setNewApiKey(e.target.value)}
-              placeholder="新しいキーを入力"
-              aria-label="API Key"
-            />
-            <button className="btn btn-ghost" style={{ flexShrink: 0 }} onClick={handleTest} aria-label="接続テスト">
-              接続テスト
-            </button>
-          </div>
-
-          {testStatus === 'success' && (
-            <div className="form-success" style={{ padding: '0 20px 12px' }}>
-              接続成功しました
-            </div>
-          )}
-          {testStatus === 'error' && (
-            <div className="form-error" style={{ padding: '0 20px 12px' }}>
-              接続に失敗しました
-            </div>
-          )}
-
-          <div
-            style={{
-              padding: '12px 20px',
-              background: 'rgba(240,160,48,.06)',
-              borderTop: '1px solid var(--border)',
-              fontSize: 12,
-              color: 'var(--text-muted)',
-              display: 'flex',
-              gap: 8,
-              alignItems: 'flex-start',
-            }}
-          >
-            <span style={{ color: 'var(--amber)', fontSize: 14, lineHeight: 1 }} aria-hidden="true">
-              ⚠
-            </span>
-            {/* WHY 表記: 「Cookie」だと既存テストの /ok/i 接続成功判定に誤マッチするためカタカナ表記 */}
-            API キーは localStorage に保存されます。XSS への注意が必要です。Phase 2 で httpOnly
-            クッキーへ移行予定。
-          </div>
-        </section>
-
-        {/* セクション 4: プッシュ通知 */}
+        {/* セクション 3: プッシュ通知 */}
         <PushNotificationSection />
-
-        <div style={{ textAlign: 'right', paddingTop: 4 }}>
-          <button className="btn btn-primary" onClick={handleSave} aria-label="保存">
-            変更を保存
-          </button>
-        </div>
       </div>
     </>
   )
