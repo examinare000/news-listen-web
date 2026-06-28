@@ -1,11 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { createApiClient, ApiError } from '@/lib/api'
 
-const BASE_URL = 'https://api.example.com'
-const API_KEY = 'test-api-key'
-
 function makeClient() {
-  return createApiClient({ baseUrl: BASE_URL, apiKey: API_KEY })
+  return createApiClient()
 }
 
 function mockFetchOk(body: unknown) {

@@ -26,7 +26,7 @@ const SAMPLE_SOURCES = [
 
 function renderSubscriptionsPage() {
   return render(
-    <AppProvider initialState={{ isConfigured: true, baseUrl: 'https://api.example.com', apiKey: 'key' }}>
+    <AppProvider>
       <ToastProvider>
         <SubscriptionsPage />
       </ToastProvider>

@@ -1,11 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { createApiClient, ApiError } from '@/lib/api'
 
-const BASE_URL = 'https://api.example.com'
-const API_KEY = 'test-api-key'
-
 function makeClient() {
-  return createApiClient({ baseUrl: BASE_URL, apiKey: API_KEY })
+  return createApiClient()
 }
 
 function mockFetchOk(body: unknown, status = 200) {
@@ -65,11 +62,21 @@ describe('getFeed', () => {
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          'X-API-Key': API_KEY,
-          'X-Backend-Base-Url': BASE_URL,
+          'Content-Type': 'application/json',
         }),
       })
     )
+  })
+
+  test('does NOT send X-API-Key or X-Backend-Base-Url headers (injected by BFF)', async () => {
+    mockFetchOk({ articles: [], date: '2026-06-10' })
+    const client = makeClient()
+    await client.getFeed()
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const headers = (call[1] as RequestInit).headers as Record<string, string>
+    expect(headers['X-API-Key']).toBeUndefined()
+    expect(headers['X-Backend-Base-Url']).toBeUndefined()
   })
 
   test('returns response containing articles and date fields (interface contract)', async () => {
@@ -367,8 +374,7 @@ describe('getPreferences', () => {
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          'X-API-Key': API_KEY,
-          'X-Backend-Base-Url': BASE_URL,
+          'Content-Type': 'application/json',
         }),
       })
     )
@@ -419,8 +425,6 @@ describe('updatePreferences', () => {
       expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({
-          'X-API-Key': API_KEY,
-          'X-Backend-Base-Url': BASE_URL,
           'Content-Type': 'application/json',
         }),
         body: JSON.stringify({ default_difficulty: 'eiken_2' }),
@@ -478,8 +482,6 @@ describe('updatePosition', () => {
       expect.objectContaining({
         method: 'PATCH',
         headers: expect.objectContaining({
-          'X-API-Key': API_KEY,
-          'X-Backend-Base-Url': BASE_URL,
           'Content-Type': 'application/json',
         }),
         body: JSON.stringify({ position_seconds: 150 }),
@@ -533,14 +535,15 @@ describe('updatePosition', () => {
 
 // ==========================================================
 describe('Security: API key is not logged', () => {
-  test('console.log is not called with API key during normal operations', async () => {
+  test('console.log is not called during normal operations', async () => {
     mockFetchOk({ articles: [], date: '2026-06-10' })
     const consoleSpy = vi.spyOn(console, 'log')
     const client = makeClient()
     await client.getFeed()
 
-    const allArgs = consoleSpy.mock.calls.flat().join(' ')
-    expect(allArgs).not.toContain(API_KEY)
+    // API key is now stored in server-only env vars, not in client-side calls
+    // This test verifies no sensitive data is inadvertently logged
+    expect(consoleSpy).not.toHaveBeenCalled()
   })
 })
 
@@ -660,8 +663,7 @@ describe('getVapidPublicKey', () => {
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({
-          'X-API-Key': API_KEY,
-          'X-Backend-Base-Url': BASE_URL,
+          'Content-Type': 'application/json',
         }),
       })
     )
@@ -694,7 +696,7 @@ describe('subscribePush', () => {
       '/api/backend/notifications/subscriptions',
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ 'X-API-Key': API_KEY }),
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       })
     )
   })
@@ -727,7 +729,7 @@ describe('unsubscribePush', () => {
       '/api/backend/notifications/subscriptions?endpoint=https%3A%2F%2Ffcm.googleapis.com%2Ffcm%2Fsend%2Ftest',
       expect.objectContaining({
         method: 'DELETE',
-        headers: expect.objectContaining({ 'X-API-Key': API_KEY }),
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
       })
     )
   })

@@ -33,9 +33,9 @@ vi.mock('@/contexts/AuthContext', () => ({
   }),
 }))
 
-function renderSettingsPage(baseUrl = 'https://api.example.com') {
+function renderSettingsPage() {
   return render(
-    <AppProvider initialState={{ isConfigured: true, baseUrl, apiKey: 'stored-key' }}>
+    <AppProvider>
       <ToastProvider>
         <SettingsPage />
       </ToastProvider>
@@ -52,25 +52,6 @@ beforeEach(() => {
 // Settings 画面 — 表示
 // ==========================================================
 describe('SettingsPage — display', () => {
-  test('Shows current baseUrl', async () => {
-    renderSettingsPage('https://my-api.example.com')
-    expect(screen.getByText(/https:\/\/my-api.example.com/)).toBeInTheDocument()
-  })
-
-  test('Does NOT display the actual apiKey value (security: masked)', async () => {
-    renderSettingsPage()
-    // 実際のキー値が表示されていないこと
-    expect(screen.queryByText('stored-key')).not.toBeInTheDocument()
-    // 「設定済み」などのマスク表示がある
-    expect(screen.getByText(/設定済み|設定されています/i)).toBeInTheDocument()
-  })
-
-  test('apiKey re-input field has type="password"', () => {
-    renderSettingsPage()
-    // type="password" の入力欄が存在すること
-    expect(document.querySelector('input[type="password"]')).toBeInTheDocument()
-  })
-
   test('Displays difficulty selector label', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
@@ -91,12 +72,6 @@ describe('SettingsPage — display', () => {
     })
   })
 
-  test('Shows guidance that the API URL and key can be edited here', async () => {
-    // API キーの修正導線がここにあることを明示する案内
-    renderSettingsPage()
-    expect(screen.getByText(/ここでいつでも変更できます/)).toBeInTheDocument()
-  })
-
   test('Renders speed selector with 8 options', async () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
@@ -108,45 +83,6 @@ describe('SettingsPage — display', () => {
 // Settings 画面 — 設定保存
 // ==========================================================
 describe('SettingsPage — save settings', () => {
-  test('Given new baseUrl and apiKey saved, calls configure() and updates localStorage', async () => {
-    renderSettingsPage()
-
-    // 新しい URL を入力
-    const urlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
-    await userEvent.clear(urlInput)
-    await userEvent.type(urlInput, 'https://new-api.example.com')
-
-    // API キー欄は aria-label で特定する（アカウント欄のパスワード入力と区別するため）
-    const apiKeyInput = screen.getByLabelText('API Key')
-    await userEvent.clear(apiKeyInput)
-    await userEvent.type(apiKeyInput, 'new-key')
-
-    await userEvent.click(screen.getByRole('button', { name: /保存|save/i }))
-
-    await waitFor(() => {
-      expect(localStorage.getItem('api_base_url')).toBe(JSON.stringify('https://new-api.example.com'))
-      expect(localStorage.getItem('api_key')).toBe(JSON.stringify('new-key'))
-    })
-  })
-
-  test('Given API key field is left blank on save, preserves the existing API key', async () => {
-    renderSettingsPage()
-
-    // URL を変更するが API キー欄は空のまま保存
-    const urlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
-    await userEvent.clear(urlInput)
-    await userEvent.type(urlInput, 'https://updated-api.example.com')
-
-    await userEvent.click(screen.getByRole('button', { name: /保存|save/i }))
-
-    await waitFor(() => {
-      // URL は更新される
-      expect(localStorage.getItem('api_base_url')).toBe(JSON.stringify('https://updated-api.example.com'))
-      // API キーは既存のもの（'stored-key'）が保持される
-      expect(localStorage.getItem('api_key')).toBe(JSON.stringify('stored-key'))
-    })
-  })
-
   test('Given speed changed, updates localStorage', async () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
@@ -167,7 +103,7 @@ describe('SettingsPage — save settings', () => {
     }
 
     render(
-      <AppProvider initialState={{ isConfigured: true, baseUrl: 'https://api.example.com', apiKey: 'key' }}>
+      <AppProvider>
         <ToastProvider>
           <SettingsPage />
           <TestConsumer />
@@ -193,28 +129,15 @@ describe('SettingsPage — restyle (section card structure)', () => {
     expect(screen.getByText('アプリの動作をカスタマイズ')).toBeInTheDocument()
   })
 
-  test('Shows section titles "Podcast 生成" and "API 接続設定"', () => {
+  test('Shows section title "Podcast 生成"', () => {
     renderSettingsPage()
     expect(screen.getByText('Podcast 生成')).toBeInTheDocument()
-    expect(screen.getByText('API 接続設定')).toBeInTheDocument()
   })
 
   test('Speed selector is decorated with .select-input', () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
     expect(speedSelect.classList.contains('select-input')).toBe(true)
-  })
-
-  test('Base URL input is decorated with .form-input', () => {
-    renderSettingsPage()
-    const urlInput = screen.getByRole('textbox', { name: /base.*url|API.*URL/i })
-    expect(urlInput.classList.contains('form-input')).toBe(true)
-  })
-
-  test('Save button is decorated with .btn-primary', () => {
-    renderSettingsPage()
-    const saveButton = screen.getByRole('button', { name: /保存|save/i })
-    expect(saveButton.classList.contains('btn-primary')).toBe(true)
   })
 })
 
@@ -357,40 +280,3 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
   })
 })
 
-// ==========================================================
-// Settings 画面 — 接続テストボタン
-// ==========================================================
-describe('SettingsPage — connection test', () => {
-  test('Renders a connection test button', async () => {
-    renderSettingsPage()
-    expect(screen.getByRole('button', { name: /接続テスト|connection test|テスト/i })).toBeInTheDocument()
-  })
-
-  test('Given connection test succeeds, shows success indicator', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      checkHealth: vi.fn().mockResolvedValue({ status: 'ok' }),
-    } as unknown as ReturnType<typeof createApiClient>)
-
-    renderSettingsPage()
-    await userEvent.click(screen.getByRole('button', { name: /接続テスト|connection test|テスト/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/成功|接続できました|ok/i)).toBeInTheDocument()
-    })
-  })
-
-  test('Given connection test fails, shows failure indicator', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      checkHealth: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
-    } as unknown as ReturnType<typeof createApiClient>)
-
-    renderSettingsPage()
-    await userEvent.click(screen.getByRole('button', { name: /接続テスト|connection test|テスト/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText(/失敗|接続できません|エラー/i)).toBeInTheDocument()
-    })
-  })
-})

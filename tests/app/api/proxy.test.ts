@@ -51,12 +51,11 @@ beforeEach(() => {
 // 正常系: リクエスト転送
 // ==========================================================
 describe('GET — forwards request to backend', () => {
-  test('forwards path segments to X-Backend-Base-Url', async () => {
+  test('forwards path segments using BACKEND_BASE_URL env var', async () => {
     mockBackendOk({ status: 'ok' })
-    const req = makeRequest('GET', 'health', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'secret',
-    })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'secret')
+    const req = makeRequest('GET', 'health')
 
     const res = await GET(asNextRequest(req), makeContext(['health']))
 
@@ -66,26 +65,27 @@ describe('GET — forwards request to backend', () => {
     expect(forwardedUrl).toContain('health')
   })
 
-  test('passes through X-API-Key header to backend', async () => {
+  test('injects X-API-Key from BACKEND_API_KEY env var (ignores request header)', async () => {
     mockBackendOk({ articles: [], date: '2026-06-10' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'env-secret-key')
     const req = makeRequest('GET', 'feed', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'my-key',
+      'X-API-Key': 'request-key-ignored',
     })
 
     await GET(asNextRequest(req), makeContext(['feed']))
 
     const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
     const headers = forwardedInit.headers as Record<string, string>
-    expect(headers['X-API-Key'] ?? (new Headers(forwardedInit.headers)).get('X-API-Key')).toBe('my-key')
+    expect(headers['X-API-Key'] ?? (new Headers(forwardedInit.headers)).get('X-API-Key')).toBe('env-secret-key')
   })
 
   test('preserves query string in forwarded URL', async () => {
     mockBackendOk({ sources: [] })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const urlWithQuery = 'settings/sources?url=' + encodeURIComponent('https://example.com')
-    const req = makeRequest('GET', urlWithQuery, {
-      'X-Backend-Base-Url': 'https://api.example.com',
-    })
+    const req = makeRequest('GET', urlWithQuery)
 
     await GET(asNextRequest(req), makeContext(['settings', 'sources']))
 
@@ -97,11 +97,10 @@ describe('GET — forwards request to backend', () => {
 describe('POST — forwards request body', () => {
   test('forwards POST body to backend', async () => {
     mockBackendOk({ sources: [{ name: 'HN', url: 'https://news.ycombinator.com/rss' }] })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const body = JSON.stringify({ name: 'HN', url: 'https://news.ycombinator.com/rss' })
-    const req = makeRequest('POST', 'settings/sources', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
-    }, body)
+    const req = makeRequest('POST', 'settings/sources', {}, body)
 
     const res = await POST(asNextRequest(req), makeContext(['settings', 'sources']))
 
@@ -112,11 +111,10 @@ describe('POST — forwards request body', () => {
 describe('DELETE — forwards request', () => {
   test('forwards DELETE to backend', async () => {
     mockBackendOk({ sources: [] })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const encodedUrl = encodeURIComponent('https://example.com/rss')
-    const req = makeRequest('DELETE', `settings/sources?url=${encodedUrl}`, {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
-    })
+    const req = makeRequest('DELETE', `settings/sources?url=${encodedUrl}`)
 
     const res = await DELETE(asNextRequest(req), makeContext(['settings', 'sources']))
 
@@ -181,64 +179,57 @@ describe('Pass-through of backend status codes', () => {
 })
 
 // ==========================================================
-// 異常系: X-Backend-Base-Url 欠落 → 400
+// 異常系: BACKEND_BASE_URL env 未設定 → 500
 // ==========================================================
-describe('Missing X-Backend-Base-Url header', () => {
-  test('returns 400 when X-Backend-Base-Url header is absent', async () => {
-    const req = makeRequest('GET', 'feed', {
-      'X-API-Key': 'key',
-      // X-Backend-Base-Url を意図的に省略
-    })
+describe('Missing BACKEND_BASE_URL env', () => {
+  test('returns 500 when BACKEND_BASE_URL env is not set', async () => {
+    vi.stubEnv('BACKEND_BASE_URL', '')
+    const req = makeRequest('GET', 'feed')
 
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(500)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.detail).toContain('BACKEND_BASE_URL')
   })
 })
 
 // ==========================================================
-// 異常系: 不正スキーム → 400 (SSRF 緩和)
+// 異常系: 不正スキーム → 500 (SSRF 緩和)
 // ==========================================================
-describe('Invalid scheme in X-Backend-Base-Url', () => {
-  test('returns 400 for ftp:// scheme', async () => {
-    const req = makeRequest('GET', 'feed', {
-      'X-Backend-Base-Url': 'ftp://evil.example.com',
-      'X-API-Key': 'key',
-    })
+describe('Invalid scheme in BACKEND_BASE_URL env', () => {
+  test('returns 500 for ftp:// scheme', async () => {
+    vi.stubEnv('BACKEND_BASE_URL', 'ftp://evil.example.com')
+    const req = makeRequest('GET', 'feed')
 
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(500)
   })
 
-  test('returns 400 for file:// scheme', async () => {
-    const req = makeRequest('GET', 'health', {
-      'X-Backend-Base-Url': 'file:///etc/passwd',
-      'X-API-Key': 'key',
-    })
+  test('returns 500 for file:// scheme', async () => {
+    vi.stubEnv('BACKEND_BASE_URL', 'file:///etc/passwd')
+    const req = makeRequest('GET', 'health')
 
     const res = await GET(asNextRequest(req), makeContext(['health']))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(500)
   })
 
-  test('returns 400 for relative URL (no scheme)', async () => {
-    const req = makeRequest('GET', 'feed', {
-      'X-Backend-Base-Url': '/relative/path',
-      'X-API-Key': 'key',
-    })
+  test('returns 500 for relative URL (no scheme)', async () => {
+    vi.stubEnv('BACKEND_BASE_URL', '/relative/path')
+    const req = makeRequest('GET', 'feed')
 
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(500)
   })
 
   test('accepts http:// scheme', async () => {
     mockBackendOk({ status: 'ok' })
-    const req = makeRequest('GET', 'health', {
-      'X-Backend-Base-Url': 'http://api.example.com',
-      'X-API-Key': 'key',
-    })
+    vi.stubEnv('BACKEND_BASE_URL', 'http://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'health')
 
     const res = await GET(asNextRequest(req), makeContext(['health']))
 
@@ -247,10 +238,9 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
 
   test('accepts https:// scheme', async () => {
     mockBackendOk({ status: 'ok' })
-    const req = makeRequest('GET', 'health', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
-    })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'health')
 
     const res = await GET(asNextRequest(req), makeContext(['health']))
 
@@ -264,10 +254,12 @@ describe('Invalid scheme in X-Backend-Base-Url', () => {
 describe('PATCH — forwards request', () => {
   test('forwards PATCH body to backend', async () => {
     mockBackendOk({ username: 'alice', role: 'user', display_name: 'New' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const req = makeRequest(
       'PATCH',
       'auth/me',
-      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      {},
       JSON.stringify({ display_name: 'New' }),
     )
     const res = await PATCH(asNextRequest(req), makeContext(['auth', 'me']))
@@ -283,10 +275,12 @@ describe('PATCH — forwards request', () => {
 describe('PUT — forwards request', () => {
   test('forwards PUT body to backend (settings/preferences)', async () => {
     mockBackendOk({ default_difficulty: 'toeic_900' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const req = makeRequest(
       'PUT',
       'settings/preferences',
-      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      {},
       JSON.stringify({ default_difficulty: 'toeic_900' }),
     )
     const res = await PUT(asNextRequest(req), makeContext(['settings', 'preferences']))
@@ -302,9 +296,9 @@ describe('PUT — forwards request', () => {
 describe('Session cookie relay', () => {
   test('forwards incoming Cookie header to backend', async () => {
     mockBackendOk({ username: 'alice', role: 'user', display_name: 'Alice' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const req = makeRequest('GET', 'auth/me', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
       Cookie: 'nl_session=raw-token',
     })
 
@@ -316,6 +310,8 @@ describe('Session cookie relay', () => {
   })
 
   test('relays backend Set-Cookie to the browser response', async () => {
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -331,7 +327,7 @@ describe('Session cookie relay', () => {
     const req = makeRequest(
       'POST',
       'auth/login',
-      { 'X-Backend-Base-Url': 'https://api.example.com', 'X-API-Key': 'key' },
+      {},
       JSON.stringify({ username: 'alice', password: 'pw' }),
     )
 
@@ -350,10 +346,9 @@ describe('Session cookie relay', () => {
 describe('Backend unreachable', () => {
   test('returns 502 when backend fetch rejects (network error)', async () => {
     mockBackendNetworkError()
-    const req = makeRequest('GET', 'feed', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
-    })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'feed')
 
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
@@ -367,9 +362,9 @@ describe('Backend unreachable', () => {
 describe('CSRF token forwarding', () => {
   test('forwards X-CSRF-Token header to backend when present', async () => {
     mockBackendOk({ status: 'ok' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const req = makeRequest('POST', 'settings/sources', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
       'X-CSRF-Token': 'csrf-token-123',
     }, JSON.stringify({ name: 'HN' }))
 
@@ -382,10 +377,9 @@ describe('CSRF token forwarding', () => {
 
   test('does not add X-CSRF-Token header when absent from request', async () => {
     mockBackendOk({ status: 'ok' })
-    const req = makeRequest('POST', 'settings/sources', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
-    }, JSON.stringify({ name: 'HN' }))
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('POST', 'settings/sources', {}, JSON.stringify({ name: 'HN' }))
 
     await POST(asNextRequest(req), makeContext(['settings', 'sources']))
 
@@ -396,9 +390,9 @@ describe('CSRF token forwarding', () => {
 
   test('forwards X-CSRF-Token on state-changing methods (PATCH)', async () => {
     mockBackendOk({ username: 'alice' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const req = makeRequest('PATCH', 'auth/me', {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
       'X-CSRF-Token': 'csrf-abc',
     }, JSON.stringify({ display_name: 'New' }))
 
@@ -411,10 +405,10 @@ describe('CSRF token forwarding', () => {
 
   test('forwards X-CSRF-Token on DELETE', async () => {
     mockBackendOk({ sources: [] })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
     const encodedUrl = encodeURIComponent('https://example.com/rss')
     const req = makeRequest('DELETE', `settings/sources?url=${encodedUrl}`, {
-      'X-Backend-Base-Url': 'https://api.example.com',
-      'X-API-Key': 'key',
       'X-CSRF-Token': 'csrf-xyz',
     })
 
