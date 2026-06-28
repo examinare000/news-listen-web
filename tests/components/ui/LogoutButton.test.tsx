@@ -1,0 +1,83 @@
+import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import React from 'react'
+import { LogoutButton } from '@/components/ui/LogoutButton'
+
+const mockLogout = vi.fn()
+
+vi.mock('@/contexts/AuthContext', () => ({
+  useAuth: vi.fn(),
+}))
+
+async function setupUseAuth() {
+  const { useAuth } = await import('@/contexts/AuthContext')
+  vi.mocked(useAuth).mockReturnValue({
+    status: 'authenticated',
+    user: { username: 'alice', role: 'user', display_name: 'Alice' },
+    logout: mockLogout,
+    login: vi.fn(),
+    refreshMe: vi.fn(),
+    loginWithPasskey: vi.fn(),
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  // clearAllMocks は実装をリセットしないため、遅延 impl のテスト間漏れを防ぐ
+  mockLogout.mockReset()
+})
+
+describe('LogoutButton', () => {
+  test('renders a button labeled ログアウト', async () => {
+    await setupUseAuth()
+    render(<LogoutButton />)
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toBeInTheDocument()
+  })
+
+  test('applies a custom className when provided', async () => {
+    await setupUseAuth()
+    render(<LogoutButton className="btn btn-primary" />)
+    expect(screen.getByRole('button', { name: 'ログアウト' })).toHaveClass('btn', 'btn-primary')
+  })
+
+  test('clicking calls logout once', async () => {
+    await setupUseAuth()
+    render(<LogoutButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'ログアウト' }))
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1))
+  })
+
+  test('is disabled while logout is in progress', async () => {
+    await setupUseAuth()
+    let resolveLogout: () => void = () => {}
+    mockLogout.mockImplementation(() => new Promise<void>((r) => { resolveLogout = r }))
+
+    render(<LogoutButton />)
+    const btn = screen.getByRole('button', { name: 'ログアウト' })
+    expect(btn).not.toHaveAttribute('disabled')
+
+    await userEvent.click(btn)
+    expect(btn).toHaveAttribute('disabled')
+
+    // 進行中の logout を解決し、状態更新を act 内でフラッシュして警告を防ぐ
+    resolveLogout()
+    await waitFor(() => expect(btn).not.toHaveAttribute('disabled'))
+  })
+
+  test('double-click does not call logout twice', async () => {
+    await setupUseAuth()
+    let resolveLogout: () => void = () => {}
+    mockLogout.mockImplementation(() => new Promise<void>((r) => { resolveLogout = r }))
+
+    render(<LogoutButton />)
+    const btn = screen.getByRole('button', { name: 'ログアウト' })
+    await userEvent.click(btn)
+    await userEvent.click(btn)
+
+    expect(mockLogout).toHaveBeenCalledTimes(1)
+
+    resolveLogout()
+    await waitFor(() => expect(btn).not.toHaveAttribute('disabled'))
+  })
+})

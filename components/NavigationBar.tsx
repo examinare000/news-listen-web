@@ -4,6 +4,7 @@ import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
+import { SidebarAccount } from '@/components/ui/SidebarAccount'
 
 // アイコン SVG は docs/design/app-ui.html L1388-1414 をインライン移植
 // WHY: アイコンライブラリを導入しない方針（依存追加ゼロ・デザイン正本と完全一致）
@@ -138,6 +139,7 @@ export function NavigationBar() {
       </nav>
 
       <div className="sidebar-footer">
+        <SidebarAccount />
         <ThemeToggle />
       </div>
     </aside>
