@@ -19,16 +19,13 @@ import { useToast } from '@/components/ui/Toast'
  * identical in both locations (spec §10.3 L209 "一覧と同フロー").
  */
 export function useStartPodcast(): (podcastId: string) => Promise<void> {
-  const { state, dispatch } = useApp()
+  const { dispatch } = useApp()
   const player = useAudioPlayerContext()
   const { showToast } = useToast()
 
   return async function startPodcast(podcastId: string): Promise<void> {
     try {
-      const fresh = await createApiClient({
-        baseUrl: state.baseUrl,
-        apiKey: state.apiKey,
-      }).getPodcast(podcastId)
+      const fresh = await createApiClient().getPodcast(podcastId)
 
       // Resolve resume position: server (B群#12) takes priority over local
       // WHY: audioPlayerContext provides onPositionSave callback for sync; we only choose position here

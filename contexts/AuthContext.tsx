@@ -43,8 +43,8 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   const [status, setStatus] = useState<AuthStatus>(initialStatus ?? 'unknown')
 
   const client = useCallback(
-    () => createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }),
-    [state.baseUrl, state.apiKey],
+    () => createApiClient(),
+    [],
   )
 
   const refreshMe = useCallback(async () => {
@@ -91,15 +91,12 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     [client],
   )
 
-  // 接続設定が完了したら /auth/me で認証状態を解決する。未設定時は 'unknown' のまま。
+  // restore 完了後に /auth/me で認証状態を解決する。
   useEffect(() => {
     if (initialStatus) return // テスト時の固定状態を尊重
-    if (state.isRestoring || !state.isConfigured) {
-      setStatus('unknown')
-      return
-    }
-    refreshMe()
-  }, [state.isRestoring, state.isConfigured, refreshMe, initialStatus])
+    if (state.isRestoring) return // restore 中は待つ
+    void refreshMe() // eslint-disable-line @typescript-eslint/no-floating-promises
+  }, [state.isRestoring, refreshMe, initialStatus])
 
   return (
     <AuthContext.Provider value={{ status, user, login, logout, refreshMe, loginWithPasskey }}>

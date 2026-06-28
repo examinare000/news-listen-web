@@ -33,11 +33,11 @@ function Consumer() {
 
 function renderAuth() {
   return render(
-    <AppProvider initialState={{ isConfigured: true, isRestoring: false, baseUrl: 'x', apiKey: 'y' }}>
+    <AppProvider>
       <AuthProvider>
         <Consumer />
       </AuthProvider>
-    </AppProvider>,
+    </AppProvider>
   )
 }
 

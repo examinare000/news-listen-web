@@ -65,9 +65,6 @@ beforeEach(() => {
 function renderPodcastPage(extraState = {}) {
   return render(
     <AppProvider initialState={{
-      isConfigured: true,
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
       ...extraState,
     }}>
       <ToastProvider>

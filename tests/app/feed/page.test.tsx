@@ -40,11 +40,7 @@ const SAMPLE_ARTICLES = [
 
 function renderFeedPage() {
   return render(
-    <AppProvider initialState={{
-      isConfigured: true,
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-    }}>
+    <AppProvider>
       <ToastProvider>
         <FeedPage />
       </ToastProvider>

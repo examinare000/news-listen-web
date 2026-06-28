@@ -67,12 +67,11 @@ function PasskeyConsumer() {
 function renderAuth() {
   return render(
     <AppProvider
-      initialState={{ isConfigured: true, isRestoring: false, baseUrl: 'x', apiKey: 'y' }}
     >
       <AuthProvider>
         <PasskeyConsumer />
       </AuthProvider>
-    </AppProvider>,
+    </AppProvider>
   )
 }
 

@@ -35,21 +35,13 @@ export class ApiError extends Error {
   }
 }
 
-interface ApiClientConfig {
-  baseUrl: string
-  apiKey: string
-}
-
 /** Shared fetch wrapper that normalizes errors to ApiError */
 async function request<T>(
   path: string,
-  config: ApiClientConfig,
   init: RequestInit = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-API-Key': config.apiKey,
-    'X-Backend-Base-Url': config.baseUrl,
     ...(init.headers as Record<string, string>),
   }
 
@@ -88,16 +80,15 @@ async function request<T>(
   return response.json() as Promise<T>
 }
 
-export function createApiClient(config: ApiClientConfig) {
+export function createApiClient() {
   return {
     getFeed() {
-      return request<FeedResponse>('/api/backend/feed', config, { method: 'GET' })
+      return request<FeedResponse>('/api/backend/feed', { method: 'GET' })
     },
 
     starArticle(id: string) {
       return request<{ status: string; article_id: string }>(
         `/api/backend/articles/${id}/star`,
-        config,
         { method: 'POST' },
       )
     },
@@ -105,23 +96,21 @@ export function createApiClient(config: ApiClientConfig) {
     dismissArticle(id: string) {
       return request<{ status: string; article_id: string }>(
         `/api/backend/articles/${id}/dismiss`,
-        config,
         { method: 'POST' },
       )
     },
 
     getPodcasts() {
-      return request<PodcastsResponse>('/api/backend/podcasts', config, { method: 'GET' })
+      return request<PodcastsResponse>('/api/backend/podcasts', { method: 'GET' })
     },
 
     getPodcast(id: string) {
-      return request<Podcast>(`/api/backend/podcasts/${id}`, config, { method: 'GET' })
+      return request<Podcast>(`/api/backend/podcasts/${id}`, { method: 'GET' })
     },
 
     updatePosition(id: string, positionSeconds: number) {
       return request<Podcast>(
         `/api/backend/podcasts/${id}/position`,
-        config,
         {
           method: 'PATCH',
           body: JSON.stringify({ position_seconds: positionSeconds }),
@@ -130,13 +119,12 @@ export function createApiClient(config: ApiClientConfig) {
     },
 
     getSources() {
-      return request<SourcesResponse>('/api/backend/settings/sources', config, { method: 'GET' })
+      return request<SourcesResponse>('/api/backend/settings/sources', { method: 'GET' })
     },
 
     addSource(name: string, url: string) {
       return request<SourcesResponse>(
         '/api/backend/settings/sources',
-        config,
         { method: 'POST', body: JSON.stringify({ name, url }) },
       )
     },
@@ -145,7 +133,6 @@ export function createApiClient(config: ApiClientConfig) {
       const encoded = encodeURIComponent(url)
       return request<SourcesResponse>(
         `/api/backend/settings/sources?url=${encoded}`,
-        config,
         { method: 'DELETE' },
       )
     },
@@ -153,7 +140,6 @@ export function createApiClient(config: ApiClientConfig) {
     getFeaturedSources() {
       return request<FeaturedSourcesResponse>(
         '/api/backend/settings/featured-sources',
-        config,
         { method: 'GET' },
       )
     },
@@ -161,7 +147,6 @@ export function createApiClient(config: ApiClientConfig) {
     getOnboardingStatus() {
       return request<OnboardingStatusResponse>(
         '/api/backend/settings/onboarding',
-        config,
         { method: 'GET' },
       )
     },
@@ -169,51 +154,50 @@ export function createApiClient(config: ApiClientConfig) {
     completeOnboarding() {
       return request<OnboardingStatusResponse>(
         '/api/backend/settings/onboarding/complete',
-        config,
         { method: 'POST' },
       )
     },
 
     getPreferences() {
-      return request<UserPreferences>('/api/backend/settings/preferences', config, { method: 'GET' })
+      return request<UserPreferences>('/api/backend/settings/preferences', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {
-      return request<UserPreferences>('/api/backend/settings/preferences', config, {
+      return request<UserPreferences>('/api/backend/settings/preferences', {
         method: 'PUT',
         body: JSON.stringify(patch),
       })
     },
 
     checkHealth() {
-      return request<{ status: string }>('/api/backend/health', config, { method: 'GET' })
+      return request<{ status: string }>('/api/backend/health', { method: 'GET' })
     },
 
     // ── 認証（セッション） ──────────────────────────────────────
     login(username: string, password: string) {
-      return request<LoginResponse>('/api/backend/auth/login', config, {
+      return request<LoginResponse>('/api/backend/auth/login', {
         method: 'POST',
         body: JSON.stringify({ username, password }),
       })
     },
 
     logout() {
-      return request<{ status: string }>('/api/backend/auth/logout', config, { method: 'POST' })
+      return request<{ status: string }>('/api/backend/auth/logout', { method: 'POST' })
     },
 
     getMe() {
-      return request<AuthUser>('/api/backend/auth/me', config, { method: 'GET' })
+      return request<AuthUser>('/api/backend/auth/me', { method: 'GET' })
     },
 
     updateProfile(displayName: string) {
-      return request<AuthUser>('/api/backend/auth/me', config, {
+      return request<AuthUser>('/api/backend/auth/me', {
         method: 'PATCH',
         body: JSON.stringify({ display_name: displayName }),
       })
     },
 
     changePassword(currentPassword: string, newPassword: string) {
-      return request<{ status: string }>('/api/backend/auth/password', config, {
+      return request<{ status: string }>('/api/backend/auth/password', {
         method: 'POST',
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
       })
@@ -221,11 +205,11 @@ export function createApiClient(config: ApiClientConfig) {
 
     // ── 管理者によるユーザー管理 ────────────────────────────────
     listUsers() {
-      return request<UserListResponse>('/api/backend/admin/users', config, { method: 'GET' })
+      return request<UserListResponse>('/api/backend/admin/users', { method: 'GET' })
     },
 
     createUser(input: { username: string; password: string; display_name?: string; role?: UserRole }) {
-      return request<AuthUser>('/api/backend/admin/users', config, {
+      return request<AuthUser>('/api/backend/admin/users', {
         method: 'POST',
         body: JSON.stringify(input),
       })
@@ -235,7 +219,7 @@ export function createApiClient(config: ApiClientConfig) {
       username: string,
       patch: { role?: UserRole; new_password?: string; display_name?: string },
     ) {
-      return request<AuthUser>(`/api/backend/admin/users/${encodeURIComponent(username)}`, config, {
+      return request<AuthUser>(`/api/backend/admin/users/${encodeURIComponent(username)}`, {
         method: 'PATCH',
         body: JSON.stringify(patch),
       })
@@ -244,7 +228,6 @@ export function createApiClient(config: ApiClientConfig) {
     deleteUser(username: string) {
       return request<{ status: string; username: string }>(
         `/api/backend/admin/users/${encodeURIComponent(username)}`,
-        config,
         { method: 'DELETE' },
       )
     },
@@ -253,7 +236,6 @@ export function createApiClient(config: ApiClientConfig) {
     getVapidPublicKey() {
       return request<VapidPublicKeyResponse>(
         '/api/backend/notifications/vapid-public-key',
-        config,
         { method: 'GET' },
       )
     },
@@ -261,7 +243,6 @@ export function createApiClient(config: ApiClientConfig) {
     subscribePush(subscription: PushSubscriptionJSON) {
       return request<Record<string, unknown>>(
         '/api/backend/notifications/subscriptions',
-        config,
         { method: 'POST', body: JSON.stringify(subscription) },
       )
     },
@@ -272,7 +253,6 @@ export function createApiClient(config: ApiClientConfig) {
       const encoded = encodeURIComponent(endpoint)
       return request<Record<string, unknown>>(
         `/api/backend/notifications/subscriptions?endpoint=${encoded}`,
-        config,
         { method: 'DELETE' },
       )
     },
@@ -286,7 +266,6 @@ export function createApiClient(config: ApiClientConfig) {
     getPasskeyRegisterOptions() {
       return request<PasskeyOptionsResponse>(
         '/api/backend/auth/passkey/register/options',
-        config,
         { method: 'POST' },
       )
     },
@@ -295,7 +274,6 @@ export function createApiClient(config: ApiClientConfig) {
     verifyPasskeyRegistration(challenge_id: string, credential: unknown) {
       return request<{ status: string }>(
         '/api/backend/auth/passkey/register/verify',
-        config,
         { method: 'POST', body: JSON.stringify({ challenge_id, credential }) },
       )
     },
@@ -304,7 +282,6 @@ export function createApiClient(config: ApiClientConfig) {
     getPasskeyLoginOptions() {
       return request<PasskeyOptionsResponse>(
         '/api/backend/auth/passkey/login/options',
-        config,
         { method: 'POST' },
       )
     },
@@ -313,7 +290,6 @@ export function createApiClient(config: ApiClientConfig) {
     verifyPasskeyLogin(challenge_id: string, credential: unknown) {
       return request<LoginResponse>(
         '/api/backend/auth/passkey/login/verify',
-        config,
         { method: 'POST', body: JSON.stringify({ challenge_id, credential }) },
       )
     },
@@ -322,7 +298,6 @@ export function createApiClient(config: ApiClientConfig) {
     getPasskeyCredentials() {
       return request<PasskeyCredentialsListResponse>(
         '/api/backend/auth/passkey/credentials',
-        config,
         { method: 'GET' },
       )
     },
@@ -331,7 +306,6 @@ export function createApiClient(config: ApiClientConfig) {
     deletePasskeyCredential(credential_id: string) {
       return request<{ status: string }>(
         `/api/backend/auth/passkey/credentials/${encodeURIComponent(credential_id)}`,
-        config,
         { method: 'DELETE' },
       )
     },

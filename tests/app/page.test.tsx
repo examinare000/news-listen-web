@@ -1,6 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import React from 'react'
 import RootPage from '@/app/page'
 import { AppProvider } from '@/contexts/AppContext'
@@ -58,31 +57,6 @@ function renderRootPage(initialState: Record<string, unknown> = {}) {
   )
 }
 
-// ==========================================================
-// Entry Gate — 未設定状態 (spec §10.1-c)
-// ==========================================================
-describe('RootPage — unconfigured', () => {
-  test('Given not configured and restore complete, shows SetupModal', async () => {
-    // isRestoring: false を渡すことで復元完了後の状態を直接テスト
-    // (testing-library は useEffect をフラッシュするため isRestoring: true は中間状態にすぎない)
-    renderRootPage({ isConfigured: false, isRestoring: false })
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-  })
-
-  test('Given no credentials in localStorage, shows SetupModal after restore', async () => {
-    // localStorage は空のため、AppProvider の復元 effect は RESTORE_DONE のみ dispatch
-    // → isConfigured: false のまま → SetupModal 表示
-    renderRootPage()
-
-    await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
-    })
-    expect(mockReplace).not.toHaveBeenCalled()
-  })
-})
 
 // ==========================================================
 // Entry Gate — 復元中スケルトン (spec §10.1-a)
@@ -90,9 +64,9 @@ describe('RootPage — unconfigured', () => {
 describe('RootPage — restoring', () => {
   test('Given isRestoring, shows card-shaped skeleton placeholders', () => {
     useAppOverride.current = () => ({
-      state: { isRestoring: true, isConfigured: false },
+      state: { isRestoring: true },
       dispatch: vi.fn(),
-      configure: vi.fn(),
+      setTimeFormat: vi.fn(),
     })
 
     render(<RootPage />)
@@ -107,32 +81,34 @@ describe('RootPage — restoring', () => {
 })
 
 // ==========================================================
-// Entry Gate — 設定済み状態 (spec §10.1-b)
+// Entry Gate — 認証完了状態 (spec §10.1-b)
 // ==========================================================
-describe('RootPage — configured', () => {
-  test('Given configured and restore complete, calls router.replace("/feed")', async () => {
-    renderRootPage({ isConfigured: true, isRestoring: false })
+describe('RootPage — authenticated', () => {
+  test('Given restore complete and authenticated, calls router.replace("/feed")', async () => {
+    authStatusOverride.current = 'authenticated'
+    renderRootPage({ isRestoring: false })
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith('/feed')
     })
   })
 
-  test('Given configured, does NOT show SetupModal', async () => {
-    renderRootPage({ isConfigured: true, isRestoring: false })
+  test('Given authenticated, does NOT show LoginModal', async () => {
+    authStatusOverride.current = 'authenticated'
+    renderRootPage({ isRestoring: false })
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalled())
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'ログイン' })).not.toBeInTheDocument()
   })
 })
 
 // ==========================================================
-// Entry Gate — 設定済みだが未ログイン → LoginModal
+// Entry Gate — 復元完了だが未ログイン → LoginModal
 // ==========================================================
-describe('RootPage — configured but unauthenticated', () => {
-  test('Given configured and unauthenticated, shows LoginModal and does not redirect', async () => {
+describe('RootPage — unauthenticated', () => {
+  test('Given unauthenticated, shows LoginModal and does not redirect', async () => {
     authStatusOverride.current = 'unauthenticated'
-    renderRootPage({ isConfigured: true, isRestoring: false })
+    renderRootPage({ isRestoring: false })
 
     await waitFor(() => {
       expect(screen.getByRole('dialog', { name: 'ログイン' })).toBeInTheDocument()
@@ -140,9 +116,9 @@ describe('RootPage — configured but unauthenticated', () => {
     expect(mockReplace).not.toHaveBeenCalled()
   })
 
-  test('Given configured and auth unknown, renders nothing (resolving)', async () => {
+  test('Given auth unknown, renders nothing (resolving)', async () => {
     authStatusOverride.current = 'unknown'
-    renderRootPage({ isConfigured: true, isRestoring: false })
+    renderRootPage({ isRestoring: false })
 
     // ログイン画面もフィード遷移も発生しない（/auth/me 解決待ち）
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -150,22 +126,3 @@ describe('RootPage — configured but unauthenticated', () => {
   })
 })
 
-// ==========================================================
-// Entry Gate — SetupModal から設定保存後に遷移 (spec §10.1-c → b)
-// ==========================================================
-describe('RootPage — configure via modal', () => {
-  test('Given SetupModal onConfigure called, persists credentials to localStorage', async () => {
-    renderRootPage({ isConfigured: false, isRestoring: false })
-
-    await waitFor(() => screen.getByRole('dialog'))
-
-    await userEvent.type(screen.getByLabelText(/Base URL/i), 'https://api.example.com')
-    await userEvent.type(screen.getByLabelText(/API Key/i), 'my-api-key')
-    await userEvent.click(screen.getByRole('button', { name: /保存|save/i }))
-
-    await waitFor(() => {
-      expect(localStorage.getItem('api_base_url')).toBe(JSON.stringify('https://api.example.com'))
-      expect(localStorage.getItem('api_key')).toBe(JSON.stringify('my-api-key'))
-    })
-  })
-})

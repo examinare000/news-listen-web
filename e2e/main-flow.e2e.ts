@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test'
 import * as fs from 'fs'
 import * as path from 'path'
-import { KEY_API_BASE_URL, KEY_API_KEY } from '@/lib/config'
 
 /**
  * Main flow E2E test: ログイン → フィード(一覧表示) → Star(トースト/スター状態) → /podcast へ遷移 → 再生
@@ -200,24 +199,7 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
     })
   })
 
-  // Pre-seed config localStorage to enable API calls
-  await page.addInitScript(
-    ({ baseUrl, apiKey, keyApiBaseUrl, keyApiKey }) => {
-      const config = {
-        [keyApiBaseUrl]: baseUrl,
-        [keyApiKey]: apiKey,
-      }
-      Object.entries(config).forEach(([key, value]) => {
-        localStorage.setItem(key, JSON.stringify(value))
-      })
-    },
-    {
-      baseUrl: 'http://e2e.test',
-      apiKey: 'e2e-key',
-      keyApiBaseUrl: KEY_API_BASE_URL,
-      keyApiKey: KEY_API_KEY,
-    },
-  )
+  // API credentials are now server-only (env vars) — no client-side config needed
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // Test flow steps: フィード → Star → /podcast → 再生

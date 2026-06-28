@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
@@ -26,7 +25,6 @@ function TrashIcon() {
 }
 
 export default function SubscriptionsPage() {
-  const { state } = useApp()
   const { showToast } = useToast()
 
   const [sources, setSources] = useState<Source[]>([])
@@ -55,8 +53,8 @@ export default function SubscriptionsPage() {
   const recommended = featured.filter((site) => !subscribedUrls.has(site.url))
 
   const makeClient = useCallback(
-    () => createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }),
-    [state.baseUrl, state.apiKey],
+    () => createApiClient(),
+    [],
   )
 
   const fetchSources = useCallback(async () => {

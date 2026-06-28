@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
@@ -34,7 +33,6 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 }
 
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
-  const { state } = useApp()
   const { showToast } = useToast()
   const startPodcast = useStartPodcast()
 
@@ -52,7 +50,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
     async function fetch() {
       try {
-        const data = await createApiClient({ baseUrl: state.baseUrl, apiKey: state.apiKey }).getPodcast(podcastId!)
+        const data = await createApiClient().getPodcast(podcastId!)
         setPodcast(data)
       } catch (err) {
         if (err instanceof ApiError && err.status === 404) {
@@ -66,7 +64,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     }
 
     fetch()
-  }, [podcastId, state.baseUrl, state.apiKey]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [podcastId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePlay() {
     if (!podcast) return

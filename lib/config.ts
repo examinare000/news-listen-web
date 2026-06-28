@@ -1,11 +1,5 @@
 // localStorage key constants — single source of truth to prevent key typos
 
-/** API base URL configured by the user */
-export const KEY_API_BASE_URL = 'api_base_url'
-
-/** API key configured by the user */
-export const KEY_API_KEY = 'api_key'
-
 /** Audio player volume (0.0–1.0). Falls back to 1.0 when absent or invalid. */
 export const KEY_PLAYER_VOLUME = 'player_volume'
 

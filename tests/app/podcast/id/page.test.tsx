@@ -44,7 +44,7 @@ beforeEach(() => {
 
 function renderDetailPage(params = { id: 'p1' }) {
   return render(
-    <AppProvider initialState={{ isConfigured: true, baseUrl: 'https://api.example.com', apiKey: 'key' }}>
+    <AppProvider>
       <ToastProvider>
         <AudioPlayerProvider>
           <PodcastDetailPage params={Promise.resolve(params)} />

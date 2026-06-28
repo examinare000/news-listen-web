@@ -2,18 +2,15 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
 import type { Podcast } from '@/types/index'
-import { KEY_API_BASE_URL, KEY_API_KEY, KEY_DEFAULT_PLAYBACK_SPEED, KEY_TIME_FORMAT } from '@/lib/config'
+import { KEY_DEFAULT_PLAYBACK_SPEED, KEY_TIME_FORMAT } from '@/lib/config'
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 
 export interface AppState {
-  isConfigured: boolean
-  /** True until the localStorage restore effect has completed (prevents flash of SetupModal). */
+  /** True until the localStorage restore effect has completed (prevents flash of UI). */
   isRestoring: boolean
-  baseUrl: string
-  apiKey: string
   currentPodcast: Podcast | null
   playbackSpeed: number
   /** Time format for article dates: 'absolute' (M/D HH:MM) or 'relative' (3時間前) */
@@ -23,10 +20,7 @@ export interface AppState {
 }
 
 const DEFAULT_STATE: AppState = {
-  isConfigured: false,
   isRestoring: true,
-  baseUrl: '',
-  apiKey: '',
   currentPodcast: null,
   playbackSpeed: 1.0,
   timeFormat: 'absolute',
@@ -37,7 +31,6 @@ const DEFAULT_STATE: AppState = {
 // ---------------------------------------------------------------------------
 
 type Action =
-  | { type: 'CONFIGURE'; baseUrl: string; apiKey: string }
   | { type: 'RESTORE_DONE' }
   | { type: 'SET_PODCAST'; podcast: Podcast }
   | { type: 'SET_SPEED'; speed: number }
@@ -45,8 +38,6 @@ type Action =
 
 function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
-    case 'CONFIGURE':
-      return { ...state, isConfigured: true, isRestoring: false, baseUrl: action.baseUrl, apiKey: action.apiKey }
     case 'RESTORE_DONE':
       return { ...state, isRestoring: false }
     case 'SET_PODCAST':
@@ -67,7 +58,6 @@ function reducer(state: AppState, action: Action): AppState {
 interface AppContextValue {
   state: AppState
   dispatch: React.Dispatch<Action>
-  configure: (baseUrl: string, apiKey: string) => void
   setTimeFormat: (timeFormat: 'absolute' | 'relative') => void
 }
 
@@ -91,9 +81,9 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
   const [state, dispatch] = useReducer(reducer, mergedInitial)
 
   // Restore persisted settings from localStorage on mount.
-  // RESTORE_DONE is always dispatched so isRestoring clears even if no credentials exist.
+  // RESTORE_DONE is always dispatched so isRestoring clears.
   useEffect(() => {
-    // Restore default playback speed regardless of credential state (spec §10.5).
+    // Restore default playback speed regardless of state (spec §10.5).
     // Invalid or absent values fall back to the default 1.0.
     try {
       const rawSpeed = localStorage.getItem(KEY_DEFAULT_PLAYBACK_SPEED)
@@ -121,31 +111,7 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
       // Corrupted storage — stay at default timeFormat 'absolute'
     }
 
-    try {
-      const rawUrl = localStorage.getItem(KEY_API_BASE_URL)
-      const rawKey = localStorage.getItem(KEY_API_KEY)
-      if (rawUrl && rawKey) {
-        const baseUrl = JSON.parse(rawUrl) as string
-        const apiKey = JSON.parse(rawKey) as string
-        if (baseUrl && apiKey) {
-          dispatch({ type: 'CONFIGURE', baseUrl, apiKey })
-          return
-        }
-      }
-    } catch {
-      // Corrupted storage — stay unconfigured
-    }
     dispatch({ type: 'RESTORE_DONE' })
-  }, [])
-
-  const configure = useCallback((baseUrl: string, apiKey: string) => {
-    try {
-      localStorage.setItem(KEY_API_BASE_URL, JSON.stringify(baseUrl))
-      localStorage.setItem(KEY_API_KEY, JSON.stringify(apiKey))
-    } catch {
-      // Storage write failure is non-fatal
-    }
-    dispatch({ type: 'CONFIGURE', baseUrl, apiKey })
   }, [])
 
   const setTimeFormat = useCallback((timeFormat: 'absolute' | 'relative') => {
@@ -158,7 +124,7 @@ export function AppProvider({ children, initialState }: AppProviderProps) {
   }, [])
 
   return (
-    <AppContext.Provider value={{ state, dispatch, configure, setTimeFormat }}>
+    <AppContext.Provider value={{ state, dispatch, setTimeFormat }}>
       {children}
     </AppContext.Provider>
   )

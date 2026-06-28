@@ -30,11 +30,6 @@ const SAMPLE_PODCAST: Podcast = {
 // 初期状態
 // ==========================================================
 describe('Initial state', () => {
-  test('isConfigured is false before configure() is called', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-    expect(result.current.state.isConfigured).toBe(false)
-  })
-
   test('currentPodcast is null initially', () => {
     const { result } = renderHook(() => useApp(), { wrapper })
     expect(result.current.state.currentPodcast).toBeNull()
@@ -53,73 +48,17 @@ describe('useApp outside Provider', () => {
   })
 })
 
-// ==========================================================
-// configure() — API 設定の保存と isConfigured
-// ==========================================================
-describe('configure action', () => {
-  test('sets isConfigured to true after configure(baseUrl, apiKey)', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    act(() => {
-      result.current.configure('https://api.example.com', 'my-key')
-    })
-
-    expect(result.current.state.isConfigured).toBe(true)
-  })
-
-  test('persists baseUrl and apiKey to localStorage', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    act(() => {
-      result.current.configure('https://api.example.com', 'my-key')
-    })
-
-    expect(localStorage.getItem('api_base_url')).toBe(JSON.stringify('https://api.example.com'))
-    expect(localStorage.getItem('api_key')).toBe(JSON.stringify('my-key'))
-  })
-})
 
 // ==========================================================
-// localStorage 復元 — マウント時に復元 / 復元前は isConfigured: false
+// localStorage 復元 — マウント時に復元完了
 // ==========================================================
 describe('localStorage restore on mount', () => {
-  test('restores isConfigured=true when stored credentials exist', () => {
-    localStorage.setItem('api_base_url', JSON.stringify('https://api.example.com'))
-    localStorage.setItem('api_key', JSON.stringify('stored-key'))
-
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    // useEffect 内の復元後に isConfigured が true になる
-    // act は useEffect を同期的に実行する
-    expect(result.current.state.isConfigured).toBe(true)
-  })
-
-  test('isConfigured remains false before restoration completes (hydration safety)', () => {
-    // 復元を遅延させる手段がないため、
-    // 少なくとも localStorage に値がない場合は false のまま、というテストで保証する
-    localStorage.clear()
-    const { result } = renderHook(() => useApp(), { wrapper })
-    expect(result.current.state.isConfigured).toBe(false)
-  })
-
-  test('isRestoring becomes false after restore effect completes (credentials found)', () => {
-    localStorage.setItem('api_base_url', JSON.stringify('https://api.example.com'))
-    localStorage.setItem('api_key', JSON.stringify('stored-key'))
-
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    // CONFIGURE also clears isRestoring
-    expect(result.current.state.isRestoring).toBe(false)
-    expect(result.current.state.isConfigured).toBe(true)
-  })
-
-  test('isRestoring becomes false after restore effect completes (no credentials)', () => {
+  test('isRestoring becomes false after restore effect completes', () => {
     localStorage.clear()
     const { result } = renderHook(() => useApp(), { wrapper })
 
-    // RESTORE_DONE clears isRestoring even when no credentials exist
+    // RESTORE_DONE clears isRestoring
     expect(result.current.state.isRestoring).toBe(false)
-    expect(result.current.state.isConfigured).toBe(false)
   })
 })
 

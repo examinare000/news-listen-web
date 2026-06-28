@@ -6,8 +6,6 @@ import type { FeaturedSource } from '@/types/index'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface OnboardingSourcesModalProps {
-  baseUrl: string
-  apiKey: string
   /** 完了/スキップ後（completeOnboarding 済み）に呼ばれる。呼び出し側で /feed へ遷移する。 */
   onDone: () => void
 }
@@ -15,11 +13,11 @@ interface OnboardingSourcesModalProps {
 /**
  * 初回ログイン時の「おすすめサイト追加」ステップ。
  *
- * API 設定完了後、まだオンボーディング未完了のユーザーにのみ表示される（出し分けは app/page.tsx）。
+ * ログイン完了後、まだオンボーディング未完了のユーザーにのみ表示される（出し分けは app/page.tsx）。
  * おすすめサイトをワンクリックで即購読でき、「完了」/「スキップ」で completeOnboarding を呼ぶ。
  */
-export function OnboardingSourcesModal({ baseUrl, apiKey, onDone }: OnboardingSourcesModalProps) {
-  const client = createApiClient({ baseUrl, apiKey })
+export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) {
+  const client = createApiClient()
 
   const [featured, setFeatured] = useState<FeaturedSource[]>([])
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
@@ -40,9 +38,7 @@ export function OnboardingSourcesModal({ baseUrl, apiKey, onDone }: OnboardingSo
     return () => {
       cancelled = true
     }
-    // baseUrl/apiKey が変わらない限り 1 回だけ取得する
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, apiKey])
+  }, [])
 
   async function handleSubscribe(site: FeaturedSource) {
     setSubscribingId(site.id)

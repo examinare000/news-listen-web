@@ -28,9 +28,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 function renderPage() {
   return render(
-    <AppProvider initialState={{ isConfigured: true, isRestoring: false, baseUrl: 'x', apiKey: 'y' }}>
+    <AppProvider>
       <AdminUsersPage />
-    </AppProvider>,
+    </AppProvider>
   )
 }
 
