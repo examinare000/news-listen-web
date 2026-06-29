@@ -10,6 +10,7 @@ import type {
   PodcastsResponse,
   SourcesResponse,
   Podcast,
+  FeaturedSource,
   FeaturedSourcesResponse,
   OnboardingStatusResponse,
   AuthUser,
@@ -228,6 +229,35 @@ export function createApiClient() {
     deleteUser(username: string) {
       return request<{ status: string; username: string }>(
         `/api/backend/admin/users/${encodeURIComponent(username)}`,
+        { method: 'DELETE' },
+      )
+    },
+
+    // ── 管理者によるおすすめサイト管理 ────────────────────────────────
+    listFeaturedSites() {
+      return request<FeaturedSourcesResponse>('/api/backend/admin/featured-sites', { method: 'GET' })
+    },
+
+    createFeaturedSite(input: { name: string; url: string; thumbnail_url?: string; description?: string }) {
+      return request<FeaturedSource>('/api/backend/admin/featured-sites', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+    },
+
+    updateFeaturedSite(
+      id: string,
+      input: { name: string; url: string; thumbnail_url?: string; description?: string },
+    ) {
+      return request<FeaturedSource>(`/api/backend/admin/featured-sites/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      })
+    },
+
+    deleteFeaturedSite(id: string) {
+      return request<{ status: string; id: string }>(
+        `/api/backend/admin/featured-sites/${encodeURIComponent(id)}`,
         { method: 'DELETE' },
       )
     },

@@ -534,6 +534,205 @@ describe('updatePosition', () => {
 })
 
 // ==========================================================
+// 管理者専用: おすすめサイト管理 CRUD
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+describe('listFeaturedSites', () => {
+  test('sends GET to /api/backend/admin/featured-sites', async () => {
+    mockFetchOk({ sites: [] })
+    const client = makeClient()
+    await (client as any).listFeaturedSites()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/admin/featured-sites',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns FeaturedSourcesResponse with sites array', async () => {
+    const response = {
+      sites: [
+        { id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com', thumbnail_url: null, description: null },
+      ],
+    }
+    mockFetchOk(response)
+    const client = makeClient()
+    const result = await (client as any).listFeaturedSites()
+
+    expect(result.sites).toHaveLength(1)
+    expect(result.sites[0].name).toBe('Hacker News')
+  })
+
+  test('throws ApiError on 403 Forbidden (non-admin)', async () => {
+    mockFetchError(403, 'Only admin users can access this endpoint')
+    const client = makeClient()
+
+    await expect((client as any).listFeaturedSites()).rejects.toThrow(ApiError)
+  })
+})
+
+describe('createFeaturedSite', () => {
+  test('sends POST to /api/backend/admin/featured-sites with input body', async () => {
+    mockFetchOk({ id: 'new-site', name: 'New Site', url: 'https://example.com' }, 201)
+    const client = makeClient()
+    const input = { name: 'New Site', url: 'https://example.com', description: 'A new site' }
+    await (client as any).createFeaturedSite(input)
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/admin/featured-sites',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+    )
+  })
+
+  test('does not send order field in body', async () => {
+    mockFetchOk({ id: 'new', name: 'Site', url: 'https://example.com' }, 201)
+    const client = makeClient()
+    await (client as any).createFeaturedSite({ name: 'Site', url: 'https://example.com' })
+
+    const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
+    const bodyStr = ((call[1] as unknown) as RequestInit).body as string
+    const body = JSON.parse(bodyStr) as Record<string, unknown>
+    expect(body.order).toBeUndefined()
+  })
+
+  test('returns created FeaturedSource', async () => {
+    const created = {
+      id: 'new',
+      name: 'Test Site',
+      url: 'https://test.com',
+      thumbnail_url: 'https://test.com/thumb.png',
+      description: 'Test',
+    }
+    mockFetchOk(created, 201)
+    const client = makeClient()
+    const result = await (client as any).createFeaturedSite({ name: 'Test Site', url: 'https://test.com' })
+
+    expect(result.id).toBe('new')
+    expect(result.name).toBe('Test Site')
+  })
+
+  test('throws ApiError on 409 Conflict (duplicate id)', async () => {
+    mockFetchError(409, 'Site with this ID already exists')
+    const client = makeClient()
+
+    await expect((client as any).createFeaturedSite({ name: 'Dup', url: 'https://dup.com' })).rejects.toThrow(
+      ApiError
+    )
+  })
+})
+
+describe('updateFeaturedSite', () => {
+  test('sends PUT to /api/backend/admin/featured-sites/{id} with update body', async () => {
+    mockFetchOk({ id: 'hn', name: 'Updated HN', url: 'https://hn.com' })
+    const client = makeClient()
+    const input = { name: 'Updated HN', url: 'https://hn.com' }
+    await (client as any).updateFeaturedSite('hn', input)
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/admin/featured-sites/hn',
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify(input),
+      })
+    )
+  })
+
+  test('encodes id in path', async () => {
+    mockFetchOk({ id: 'site-with/slash', name: 'Site', url: 'https://example.com' })
+    const client = makeClient()
+    await (client as any).updateFeaturedSite('site-with/slash', { name: 'Site', url: 'https://example.com' })
+
+    const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    expect(url).toContain(encodeURIComponent('site-with/slash'))
+    expect(url).not.toContain('site-with/slash')
+  })
+
+  test('returns updated FeaturedSource', async () => {
+    const updated = {
+      id: 'hn',
+      name: 'Hacker News',
+      url: 'https://updated.hn.com',
+      thumbnail_url: 'https://hn.com/thumb.png',
+      description: 'Updated description',
+    }
+    mockFetchOk(updated)
+    const client = makeClient()
+    const result = await (client as any).updateFeaturedSite('hn', {
+      name: 'Hacker News',
+      url: 'https://updated.hn.com',
+    })
+
+    expect(result.id).toBe('hn')
+    expect(result.url).toBe('https://updated.hn.com')
+  })
+
+  test('throws ApiError on 404 Not Found', async () => {
+    mockFetchError(404, 'Site not found')
+    const client = makeClient()
+
+    await expect((client as any).updateFeaturedSite('nonexistent', { name: 'N', url: 'https://n.com' })).rejects.toThrow(
+      ApiError
+    )
+  })
+})
+
+describe('deleteFeaturedSite', () => {
+  test('sends DELETE to /api/backend/admin/featured-sites/{id}', async () => {
+    mockFetchOk({ status: 'deleted', id: 'hn' })
+    const client = makeClient()
+    await (client as any).deleteFeaturedSite('hn')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/admin/featured-sites/hn',
+      expect.objectContaining({ method: 'DELETE' })
+    )
+  })
+
+  test('encodes id in path', async () => {
+    mockFetchOk({ status: 'deleted', id: 'site-with/slash' })
+    const client = makeClient()
+    await (client as any).deleteFeaturedSite('site-with/slash')
+
+    const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
+    const url = call[0] as string
+    expect(url).toContain(encodeURIComponent('site-with/slash'))
+    expect(url).not.toContain('site-with/slash')
+  })
+
+  test('returns status and id', async () => {
+    const response = { status: 'deleted', id: 'hn' }
+    mockFetchOk(response)
+    const client = makeClient()
+    const result = await (client as any).deleteFeaturedSite('hn')
+
+    expect(result.status).toBe('deleted')
+    expect(result.id).toBe('hn')
+  })
+
+  test('throws ApiError on 404 Not Found', async () => {
+    mockFetchError(404, 'Site not found')
+    const client = makeClient()
+
+    await expect((client as any).deleteFeaturedSite('nonexistent')).rejects.toThrow(ApiError)
+  })
+
+  test('injects CSRF token for DELETE request', async () => {
+    mockFetchOk({ status: 'deleted', id: 'hn' })
+    document.cookie = 'csrf_token=delete-token'
+    const client = makeClient()
+    await (client as any).deleteFeaturedSite('hn')
+
+    const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
+    const headers = ((call[1] as unknown) as RequestInit).headers as Record<string, string>
+    expect(headers['X-CSRF-Token']).toBe('delete-token')
+  })
+})
+/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+
+// ==========================================================
 describe('Security: API key is not logged', () => {
   test('console.log is not called during normal operations', async () => {
     mockFetchOk({ articles: [], date: '2026-06-10' })
