@@ -135,14 +135,13 @@ describe('AdminFeaturedSitesPage', () => {
     await waitFor(() => expect(screen.getByText(/一覧の取得に失敗しました/)).toBeInTheDocument())
   })
 
-  test('does not reload list for non-admin after status change', async () => {
+  test('loads on admin mount but not when mounted as non-admin', async () => {
     renderPage()
     await waitFor(() => expect(listFeaturedSites).toHaveBeenCalled())
 
-    // Clear mock to check if it's called again
+    // 非admin で改めてマウントした場合は一覧取得しないことを確認する
     vi.clearAllMocks()
     authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
-    // Re-render (simulate status change)
     renderPage()
     expect(listFeaturedSites).not.toHaveBeenCalled()
   })
