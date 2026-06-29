@@ -5,9 +5,19 @@ import React from 'react'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 
 const mockLogout = vi.fn()
+const mockReplace = vi.fn()
+const mockPush = vi.fn()
 
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
+}))
+
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({
+    replace: mockReplace,
+    push: mockPush,
+  })),
+  usePathname: vi.fn(() => '/'),
 }))
 
 async function setupUseAuth() {
@@ -26,6 +36,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   // clearAllMocks は実装をリセットしないため、遅延 impl のテスト間漏れを防ぐ
   mockLogout.mockReset()
+  mockReplace.mockReset()
+  mockPush.mockReset()
 })
 
 describe('LogoutButton', () => {
@@ -79,5 +91,57 @@ describe('LogoutButton', () => {
 
     resolveLogout()
     await waitFor(() => expect(btn).not.toHaveAttribute('disabled'))
+  })
+
+  test('calls router.replace("/") after logout resolves', async () => {
+    await setupUseAuth()
+    let resolveLogout: () => void = () => {}
+    mockLogout.mockImplementation(() => new Promise<void>((r) => { resolveLogout = r }))
+
+    render(<LogoutButton />)
+    const btn = screen.getByRole('button', { name: 'ログアウト' })
+
+    await userEvent.click(btn)
+    // logout は呼ばれたが、まだ Promise 未解決なので replace は呼ばれていない
+    expect(mockLogout).toHaveBeenCalledTimes(1)
+    expect(mockReplace).not.toHaveBeenCalled()
+
+    // logout Promise を解決
+    resolveLogout()
+    // replace が呼ばれるのを待つ
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1))
+    expect(mockReplace).toHaveBeenCalledWith('/')
+  })
+
+  test('uses replace not push for redirect after logout', async () => {
+    await setupUseAuth()
+    let resolveLogout: () => void = () => {}
+    mockLogout.mockImplementation(() => new Promise<void>((r) => { resolveLogout = r }))
+
+    render(<LogoutButton />)
+    await userEvent.click(screen.getByRole('button', { name: 'ログアウト' }))
+
+    resolveLogout()
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1))
+
+    expect(mockPush).not.toHaveBeenCalled()
+  })
+
+  test('double-click calls router.replace only once', async () => {
+    await setupUseAuth()
+    let resolveLogout: () => void = () => {}
+    mockLogout.mockImplementation(() => new Promise<void>((r) => { resolveLogout = r }))
+
+    render(<LogoutButton />)
+    const btn = screen.getByRole('button', { name: 'ログアウト' })
+
+    await userEvent.click(btn)
+    await userEvent.click(btn)
+
+    expect(mockLogout).toHaveBeenCalledTimes(1)
+    expect(mockReplace).not.toHaveBeenCalled()
+
+    resolveLogout()
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1))
   })
 })

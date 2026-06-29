@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useRouter } from 'next/navigation'
 
 interface LogoutButtonProps {
   className?: string
@@ -14,6 +15,7 @@ interface LogoutButtonProps {
  */
 export function LogoutButton({ className = 'btn btn-ghost' }: LogoutButtonProps) {
   const { logout } = useAuth()
+  const router = useRouter()
   const [pending, setPending] = useState(false)
 
   async function handleLogout() {
@@ -23,6 +25,9 @@ export function LogoutButton({ className = 'btn btn-ghost' }: LogoutButtonProps)
     setPending(true)
     try {
       await logout()
+      // ログアウト完了後、ログインページへ遷移する。
+      // WHY replace: ログアウト後の戻るボタンで保護ページへ戻られないようにする（堅牢性）。
+      router.replace('/')
     } finally {
       setPending(false)
     }
