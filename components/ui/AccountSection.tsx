@@ -314,15 +314,27 @@ export function AccountSection() {
 
       {/* 管理者導線 */}
       {user?.role === 'admin' && (
-        <div className="settings-row">
-          <div>
-            <div className="settings-row-label">ユーザー管理</div>
-            <div className="settings-row-desc">ユーザーの一覧・作成・削除（管理者のみ）</div>
+        <>
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">ユーザー管理</div>
+              <div className="settings-row-desc">ユーザーの一覧・作成・削除（管理者のみ）</div>
+            </div>
+            <Link className="btn btn-ghost" href="/admin/users" aria-label="ユーザー管理を開く">
+              開く
+            </Link>
           </div>
-          <Link className="btn btn-ghost" href="/admin/users" aria-label="ユーザー管理を開く">
-            開く
-          </Link>
-        </div>
+
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">おすすめサイト管理</div>
+              <div className="settings-row-desc">おすすめサイトの追加・編集・削除（管理者のみ）</div>
+            </div>
+            <Link className="btn btn-ghost" href="/admin/featured-sites" aria-label="おすすめサイト管理を開く">
+              開く
+            </Link>
+          </div>
+        </>
       )}
     </section>
   )
