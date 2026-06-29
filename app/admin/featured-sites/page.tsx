@@ -29,6 +29,7 @@ export default function AdminFeaturedSitesPage() {
   const [editUrl, setEditUrl] = useState('')
   const [editThumbnail, setEditThumbnail] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editError, setEditError] = useState('')
 
   // 削除確認
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -76,6 +77,7 @@ export default function AdminFeaturedSitesPage() {
   }
 
   function handleEditClick(site: FeaturedSource) {
+    setEditError('')
     setEditingId(site.id)
     setEditName(site.name)
     setEditUrl(site.url)
@@ -89,12 +91,13 @@ export default function AdminFeaturedSitesPage() {
     setEditUrl('')
     setEditThumbnail('')
     setEditDescription('')
+    setEditError('')
   }
 
   async function handleEditSave(id: string) {
-    setFormError('')
+    setEditError('')
     if (!editName || !editUrl) {
-      setFormError('サイト名と URL を入力してください')
+      setEditError('サイト名と URL を入力してください')
       return
     }
     try {
@@ -107,7 +110,7 @@ export default function AdminFeaturedSitesPage() {
       handleEditCancel()
       await reload()
     } catch {
-      setFormError('サイト更新に失敗しました')
+      setEditError('サイト更新に失敗しました')
     }
   }
 
@@ -125,7 +128,7 @@ export default function AdminFeaturedSitesPage() {
       handleDeleteCancel()
       await reload()
     } catch {
-      setLoadError(`サイトの削除に失敗しました`)
+      setLoadError('サイトの削除に失敗しました')
     }
   }
 
@@ -239,6 +242,7 @@ export default function AdminFeaturedSitesPage() {
                         aria-label={`${site.name} の説明`}
                         style={{ minHeight: '80px' }}
                       />
+                      {editError && <p className="form-error">{editError}</p>}
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                         <button className="btn btn-ghost" onClick={handleEditCancel} aria-label="キャンセル">
                           キャンセル
