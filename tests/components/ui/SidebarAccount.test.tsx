@@ -24,6 +24,8 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(),
 }))
 
+// next/navigation は tests/setup.ts のグローバルモックで賄う（LogoutButton の useRouter 用）。
+
 async function mockUseAuth(overrides: Record<string, unknown>) {
   const { useAuth } = await import('@/contexts/AuthContext')
   vi.mocked(useAuth).mockReturnValue({

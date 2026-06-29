@@ -86,6 +86,8 @@ vi.mock('next/link', () => ({
     React.createElement('a', props, children),
 }))
 
+// next/navigation は tests/setup.ts のグローバルモックで賄う（LogoutButton の useRouter 用）。
+
 const FAKE_CRED: PasskeyCredential = {
   credential_id: 'cred-abc-123',
   username: 'alice',
