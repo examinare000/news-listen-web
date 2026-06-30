@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel } from '@/lib/format'
+import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter } from '@/lib/format'
 import type { AuthUser } from '@/types/index'
 
 // ==========================================================
@@ -236,5 +236,24 @@ describe('formatAuthUserLabel', () => {
 
   test('Given null user, returns "—"', () => {
     expect(formatAuthUserLabel(null)).toBe('—')
+  })
+})
+
+describe('formatRetryAfter (#82)', () => {
+  test('undefined / 0 以下は null', () => {
+    expect(formatRetryAfter(undefined)).toBeNull()
+    expect(formatRetryAfter(0)).toBeNull()
+    expect(formatRetryAfter(-5)).toBeNull()
+  })
+  test('60秒未満は「まもなく」', () => {
+    expect(formatRetryAfter(30)).toBe('まもなく')
+  })
+  test('分・時間で丸める', () => {
+    expect(formatRetryAfter(90)).toBe('約2分後')
+    expect(formatRetryAfter(3600)).toBe('約1時間後')
+    expect(formatRetryAfter(43200)).toBe('約12時間後')
+  })
+  test('境界（3599秒）は「約60分後」ではなく「約1時間後」', () => {
+    expect(formatRetryAfter(3599)).toBe('約1時間後')
   })
 })

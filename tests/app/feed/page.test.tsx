@@ -13,7 +13,11 @@ vi.mock('@/lib/api', () => ({
     dismissArticle: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
+    constructor(
+      public status: number,
+      public detail: string,
+      public retryAfterSeconds?: number,
+    ) {
       super(detail)
     }
   },
@@ -160,6 +164,25 @@ describe('FeedPage — Star', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/API キー/)).toBeInTheDocument()
+    })
+  })
+
+  test('Given star returns 429, shows generation-limit toast with retry time (#82)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      // 43200 秒 = 約12時間後
+      starArticle: vi.fn().mockRejectedValue(new ApiError(429, 'Daily limit reached', 43200)),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/本日の生成上限に達しました（約12時間後に可能）/)).toBeInTheDocument()
     })
   })
 })
