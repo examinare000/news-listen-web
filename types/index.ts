@@ -122,6 +122,26 @@ export interface PasskeyCredentialsListResponse {
   credentials: PasskeyCredential[]
 }
 
+// ── ログイン中のデバイス/セッション（issue #84） ─────────────────────────
+export interface Session {
+  /** セッション識別子（トークンの SHA-256 ハッシュ・失効 API で指定）。 */
+  id: string
+  /** User-Agent 由来のデバイス表示名。 */
+  device_label: string | null
+  created_at: string // ISO 8601
+  last_used_at: string | null // ISO 8601
+  /** このセッションが現在のデバイスか（サーバ算出）。 */
+  current: boolean
+}
+
+export interface SessionsListResponse {
+  sessions: Session[]
+}
+
+export interface RevokeSessionsResponse {
+  revoked_count: number
+}
+
 // ── Web Push 通知 ────────────────────────────────────────────────────
 /** W3C PushSubscription の JSON 表現（backend API に送るボディ）*/
 export interface PushSubscriptionJSON {

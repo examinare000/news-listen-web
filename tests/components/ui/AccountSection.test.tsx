@@ -11,6 +11,9 @@ const {
   mockChangePassword,
   mockGetPasskeyCredentials,
   mockDeletePasskeyCredential,
+  mockGetSessions,
+  mockRevokeSession,
+  mockRevokeOtherSessions,
   mockRegisterPasskey,
   mockLogout,
   mockRefreshMe,
@@ -19,6 +22,9 @@ const {
   mockChangePassword: vi.fn(),
   mockGetPasskeyCredentials: vi.fn(),
   mockDeletePasskeyCredential: vi.fn(),
+  mockGetSessions: vi.fn(),
+  mockRevokeSession: vi.fn(),
+  mockRevokeOtherSessions: vi.fn(),
   mockRegisterPasskey: vi.fn(),
   mockLogout: vi.fn(),
   mockRefreshMe: vi.fn(),
@@ -42,6 +48,9 @@ vi.mock('@/lib/api', () => ({
     changePassword: mockChangePassword,
     getPasskeyCredentials: mockGetPasskeyCredentials,
     deletePasskeyCredential: mockDeletePasskeyCredential,
+    getSessions: mockGetSessions,
+    revokeSession: mockRevokeSession,
+    revokeOtherSessions: mockRevokeOtherSessions,
   })),
   ApiError: class ApiError extends Error {
     constructor(
@@ -102,6 +111,91 @@ const FAKE_CRED: PasskeyCredential = {
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetPasskeyCredentials.mockResolvedValue({ credentials: [] })
+  mockGetSessions.mockResolvedValue({ sessions: [] })
+  mockRevokeSession.mockResolvedValue({ status: 'ok' })
+  mockRevokeOtherSessions.mockResolvedValue({ revoked_count: 0 })
+})
+
+const SESSIONS = {
+  sessions: [
+    {
+      id: 'sid-current',
+      device_label: 'Chrome on macOS',
+      created_at: '2026-06-01T00:00:00Z',
+      last_used_at: '2026-06-30T12:00:00Z',
+      current: true,
+    },
+    {
+      id: 'sid-other',
+      device_label: 'Safari on iOS',
+      created_at: '2026-05-01T00:00:00Z',
+      last_used_at: null,
+      current: false,
+    },
+  ],
+}
+
+describe('AccountSection — ログイン中のデバイス（#84）', () => {
+  test('セッション一覧を表示し、現在のデバイスにバッジを付ける', async () => {
+    mockGetSessions.mockResolvedValue(SESSIONS)
+    render(<AccountSection />)
+
+    expect(await screen.findByText('Chrome on macOS')).toBeInTheDocument()
+    expect(screen.getByText('Safari on iOS')).toBeInTheDocument()
+    expect(screen.getByText('現在のデバイス')).toBeInTheDocument()
+  })
+
+  test('現在のデバイスには個別ログアウトボタンが無く、他デバイスにはある', async () => {
+    mockGetSessions.mockResolvedValue(SESSIONS)
+    render(<AccountSection />)
+
+    await screen.findByText('Safari on iOS')
+    // 他デバイスの個別ログアウト
+    expect(
+      screen.getByRole('button', { name: /デバイスをログアウト: Safari on iOS/ }),
+    ).toBeInTheDocument()
+    // 現在のデバイスの個別ログアウトは無い
+    expect(
+      screen.queryByRole('button', { name: /デバイスをログアウト: Chrome on macOS/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  test('個別ログアウトは確認後に revokeSession を呼ぶ', async () => {
+    mockGetSessions.mockResolvedValue(SESSIONS)
+    render(<AccountSection />)
+
+    await screen.findByText('Safari on iOS')
+    await userEvent.click(
+      screen.getByRole('button', { name: /デバイスをログアウト: Safari on iOS/ }),
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Safari on iOS をログアウト/ }))
+
+    await waitFor(() => expect(mockRevokeSession).toHaveBeenCalledWith('sid-other'))
+  })
+
+  test('「他のデバイスからログアウト」は確認後に revokeOtherSessions を呼び件数を表示', async () => {
+    mockGetSessions.mockResolvedValue(SESSIONS)
+    mockRevokeOtherSessions.mockResolvedValue({ revoked_count: 2 })
+    render(<AccountSection />)
+
+    await screen.findByText('Safari on iOS')
+    await userEvent.click(screen.getByRole('button', { name: '他のデバイスからログアウト' }))
+    // 確認ステップ
+    await userEvent.click(
+      screen.getByRole('button', { name: '他のデバイスからログアウトを実行' }),
+    )
+
+    await waitFor(() => expect(mockRevokeOtherSessions).toHaveBeenCalled())
+    expect(await screen.findByText(/他の 2 台のデバイスからログアウトしました/)).toBeInTheDocument()
+  })
+
+  test('他デバイスが無ければ一括ログアウトボタンは無効', async () => {
+    mockGetSessions.mockResolvedValue({ sessions: [SESSIONS.sessions[0]] }) // current のみ
+    render(<AccountSection />)
+
+    await screen.findByText('Chrome on macOS')
+    expect(screen.getByRole('button', { name: '他のデバイスからログアウト' })).toBeDisabled()
+  })
 })
 
 describe('AccountSection — Passkey 登録', () => {
