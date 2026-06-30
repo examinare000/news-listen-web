@@ -1,15 +1,25 @@
 'use client'
 
+import { useEffect } from 'react'
+import { reportClientError } from '@/lib/reportClientError'
+
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string }
   reset: () => void
 }) {
-  // WHY: like error.tsx, never leak error.message / error.stack / error.digest to UI.
-  // This boundary handles root layout initialization failures.
-  // TODO 監視基盤へ送る場合はここ
-  // Do NOT log sensitive error details
+  // WHY: like error.tsx, never leak error.message / error.stack / error.digest to UI/console.
+  // ルートレイアウト初期化失敗を扱う。監視基盤(backend /client-errors)へのみ送り、backend が scrub する（issue #83）。
+  useEffect(() => {
+    reportClientError({
+      source: 'web',
+      kind: 'global',
+      message: error.message,
+      context: error.digest ? { digest: error.digest } : undefined,
+    })
+  }, [error])
 
   return (
     <html lang="ja">
