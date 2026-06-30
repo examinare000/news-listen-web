@@ -1,15 +1,26 @@
 'use client'
 
+import { useEffect } from 'react'
+import { reportClientError } from '@/lib/reportClientError'
+
 export default function Error({
+  error,
   reset,
 }: {
   error: Error & { digest?: string }
   reset: () => void
 }) {
   // WHY: the error object may contain sensitive stack traces or digests;
-  // never log or render these to the UI. Log handling deferred to monitoring platform.
-  // TODO 監視基盤へ送る場合はここ
-  // Do NOT log error.message / error.stack / error.digest — they may leak internals
+  // never log or render these to the UI. UI/console には出さず、監視基盤(backend /client-errors)へのみ送る。
+  // backend の scrub() が PII/秘密を送出時に伏せる（no-leak 契約は UI/console が対象・issue #83）。
+  useEffect(() => {
+    reportClientError({
+      source: 'web',
+      kind: 'render',
+      message: error.message,
+      context: error.digest ? { digest: error.digest } : undefined,
+    })
+  }, [error])
 
   // WHY: 既存の empty-state デザイントークンを再利用し、独自クラスを増やさず統一感を保つ
   return (

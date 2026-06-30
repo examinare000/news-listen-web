@@ -8,6 +8,7 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { NavigationBar } from '@/components/NavigationBar'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { PushRegistrar } from '@/components/PushRegistrar'
+import { ClientErrorReporter } from '@/components/ClientErrorReporter'
 import './globals.css'
 
 // フォントは next/font/local で app/fonts/ の woff2（latin サブセット）からセルフホストする。
@@ -75,6 +76,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   <AudioPlayerBar />
                 </div>
                 <PushRegistrar />
+                <ClientErrorReporter />
               </AudioPlayerProvider>
             </ToastProvider>
           </AuthProvider>
