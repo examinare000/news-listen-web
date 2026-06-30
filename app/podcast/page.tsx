@@ -7,6 +7,7 @@ import { PodcastCard } from '@/components/PodcastCard'
 import { getSavedPosition } from '@/hooks/useAudioPlayer'
 import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
+import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { createApiClient, ApiError } from '@/lib/api'
 import type { Podcast } from '@/types/index'
 
@@ -45,6 +46,8 @@ export default function PodcastPage() {
   const { state } = useApp()
   const { showToast } = useToast()
   const startPodcast = useStartPodcast()
+  // 連続再生のキュー操作（issue #81）。
+  const { playNextInQueue, addToQueue } = useAudioPlayerContext()
 
   const [podcasts, setPodcasts] = useState<Podcast[]>([])
   const [loading, setLoading] = useState(true)
@@ -114,6 +117,8 @@ export default function PodcastPage() {
               key={podcast.id}
               podcast={podcast}
               onPlay={handlePlay}
+              onPlayNext={(p) => { void playNextInQueue(p) }}
+              onAddToQueue={(p) => { void addToQueue(p) }}
               savedPosition={savedPosition > 0 ? savedPosition : undefined}
               // 再生中強調（D24）: 判定はページ責務（PodcastCard を Context 非依存に保つ）
               playing={state.currentPodcast?.id === podcast.id}

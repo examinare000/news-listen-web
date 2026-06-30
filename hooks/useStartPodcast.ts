@@ -1,47 +1,20 @@
 'use client'
 
-import { useApp } from '@/contexts/AppContext'
 import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
-import { getSavedPosition } from '@/hooks/useAudioPlayer'
-import { resolveResumePosition } from '@/lib/playbackPosition'
-import { createApiClient, ApiError } from '@/lib/api'
-import { useToast } from '@/components/ui/Toast'
 
 /**
  * Returns a `startPodcast(podcastId)` callback implementing the canonical
- * podcast play-start flow:
+ * podcast play-start flow. Delegates to the queue-aware provider so that
+ * starting playback also establishes the playback queue (issue #81):
  *   1. Re-fetch fresh podcast data (signed audio URL may expire — spec §9 L151)
  *   2. Restore saved playback position (spec §10.3 L201)
- *   3. Load and start the audio
+ *   3. Load and start the audio; set this episode as the queue's current
  *   4. Update AppContext
  *
  * Both the list page and the detail page use this hook so the flow is
  * identical in both locations (spec §10.3 L209 "一覧と同フロー").
  */
 export function useStartPodcast(): (podcastId: string) => Promise<void> {
-  const { dispatch } = useApp()
-  const player = useAudioPlayerContext()
-  const { showToast } = useToast()
-
-  return async function startPodcast(podcastId: string): Promise<void> {
-    try {
-      const fresh = await createApiClient().getPodcast(podcastId)
-
-      // Resolve resume position: server (B群#12) takes priority over local
-      // WHY: audioPlayerContext provides onPositionSave callback for sync; we only choose position here
-      const localPosition = getSavedPosition(fresh.id)
-      const resumePosition = resolveResumePosition(fresh.playback_position_seconds, localPosition)
-
-      player.load(fresh.audio_url, resumePosition, fresh.id)
-      await player.play()
-      dispatch({ type: 'SET_PODCAST', podcast: fresh })
-    } catch (err) {
-      if (err instanceof ApiError) {
-        showToast(`再生できませんでした (${err.status})`, 'error')
-      } else {
-        // player.play() may reject with NotAllowedError (autoplay policy) or other DOMExceptions
-        showToast('再生できませんでした', 'error')
-      }
-    }
-  }
+  const { playById } = useAudioPlayerContext()
+  return playById
 }

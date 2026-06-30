@@ -12,6 +12,9 @@ interface PodcastCardProps {
   // 再生中判定は親ページの責務（currentPodcast?.id === podcast.id）。
   // WHY: Context 非依存の純粋コンポーネントに保ちテストを軽くする（ArticleCard と同方針）
   playing?: boolean
+  // 連続再生の導線（issue #81）。親ページがキュー操作を注入する（未指定なら非表示）。
+  onPlayNext?: (podcast: Podcast) => void
+  onAddToQueue?: (podcast: Podcast) => void
 }
 
 export function PodcastCard({
@@ -19,6 +22,8 @@ export function PodcastCard({
   onPlay,
   savedPosition,
   playing = false,
+  onPlayNext,
+  onAddToQueue,
 }: PodcastCardProps) {
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
@@ -54,6 +59,39 @@ export function PodcastCard({
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
         </button>
+        {/* 連続再生の導線（issue #81）。注入時のみ表示。 */}
+        {(onPlayNext || onAddToQueue) && (
+          <div className="podcast-queue-actions">
+            {onPlayNext && (
+              <button
+                type="button"
+                className="ctrl-btn"
+                aria-label="次に再生"
+                title="次に再生"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onPlayNext(podcast)
+                }}
+              >
+                次に再生
+              </button>
+            )}
+            {onAddToQueue && (
+              <button
+                type="button"
+                className="ctrl-btn"
+                aria-label="キューに追加"
+                title="キューに追加"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onAddToQueue(podcast)
+                }}
+              >
+                ＋キュー
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <Link href={`/podcast/${podcast.id}`}>
