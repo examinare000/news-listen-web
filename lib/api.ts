@@ -23,6 +23,8 @@ import type {
   PushSubscriptionJSON,
   PasskeyOptionsResponse,
   PasskeyCredentialsListResponse,
+  SessionsListResponse,
+  RevokeSessionsResponse,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -338,6 +340,26 @@ export function createApiClient() {
         `/api/backend/auth/passkey/credentials/${encodeURIComponent(credential_id)}`,
         { method: 'DELETE' },
       )
+    },
+
+    /** 自分の有効セッション（ログイン中デバイス）一覧。要ログイン。issue #84。 */
+    getSessions() {
+      return request<SessionsListResponse>('/api/backend/auth/sessions', { method: 'GET' })
+    },
+
+    /** セッションを個別失効。要ログイン・CSRF 必須。他人/不在は 404。 */
+    revokeSession(session_id: string) {
+      return request<{ status: string }>(
+        `/api/backend/auth/sessions/${encodeURIComponent(session_id)}`,
+        { method: 'DELETE' },
+      )
+    },
+
+    /** 現在以外のセッションを一括失効（他のデバイスからログアウト）。要ログイン・CSRF 必須。 */
+    revokeOtherSessions() {
+      return request<RevokeSessionsResponse>('/api/backend/auth/sessions/revoke-others', {
+        method: 'POST',
+      })
     },
   }
 }

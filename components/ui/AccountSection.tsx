@@ -9,7 +9,7 @@ import { registerPasskey } from '@/lib/passkey'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import { formatAuthUserLabel } from '@/lib/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
-import type { PasskeyCredential } from '@/types/index'
+import type { PasskeyCredential, Session } from '@/types/index'
 
 // 設定画面の「アカウント」セクション。プロフィール（表示名）編集・パスワード変更・
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
@@ -33,6 +33,14 @@ export function AccountSection() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [supportsPasskey, setSupportsPasskey] = useState(true)
 
+  // ログイン中のデバイス（セッション）state — issue #84。
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessionsMsg, setSessionsMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
+  const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null)
+  const [revokingOthers, setRevokingOthers] = useState(false)
+  const [confirmingRevokeOthers, setConfirmingRevokeOthers] = useState(false)
+
   const loadCredentials = useCallback(async () => {
     try {
       const res = await client.getPasskeyCredentials()
@@ -42,9 +50,22 @@ export function AccountSection() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const loadSessions = useCallback(async () => {
+    try {
+      const res = await client.getSessions()
+      setSessions(res.sessions)
+    } catch {
+      // ロード失敗はサイレント（初回表示なので致命的ではない）
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     loadCredentials()
   }, [loadCredentials])
+
+  useEffect(() => {
+    loadSessions()
+  }, [loadSessions])
 
   // WHY: WebAuthn 非対応環境では Passkey 登録ボタンを disabled にする。port 経由で判定を集約。
   useEffect(() => {
@@ -127,6 +148,45 @@ export function AccountSection() {
       setPasskeyMsg({ kind: 'error', text: 'Passkey の削除に失敗しました' })
     } finally {
       setDeletingCredentialId(null)
+    }
+  }
+
+  // ── デバイス/セッション失効（issue #84） ──────────────────────────────
+  function handleRevokeClick(sessionId: string) {
+    setConfirmingRevokeId(sessionId)
+  }
+
+  function handleRevokeCancel() {
+    setConfirmingRevokeId(null)
+  }
+
+  async function handleRevokeConfirm(sessionId: string) {
+    setConfirmingRevokeId(null)
+    setRevokingSessionId(sessionId)
+    setSessionsMsg(null)
+    try {
+      await client.revokeSession(sessionId)
+      await loadSessions()
+      setSessionsMsg({ kind: 'ok', text: 'デバイスからログアウトしました' })
+    } catch {
+      setSessionsMsg({ kind: 'error', text: 'ログアウトに失敗しました' })
+    } finally {
+      setRevokingSessionId(null)
+    }
+  }
+
+  async function handleRevokeOthersConfirm() {
+    setConfirmingRevokeOthers(false)
+    setRevokingOthers(true)
+    setSessionsMsg(null)
+    try {
+      const res = await client.revokeOtherSessions()
+      await loadSessions()
+      setSessionsMsg({ kind: 'ok', text: `他の ${res.revoked_count} 台のデバイスからログアウトしました` })
+    } catch {
+      setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
+    } finally {
+      setRevokingOthers(false)
     }
   }
 
@@ -309,6 +369,134 @@ export function AccountSection() {
           style={{ padding: '0 20px 12px' }}
         >
           {passkeyMsg.text}
+        </div>
+      )}
+
+      {/* ログイン中のデバイス（issue #84） */}
+      <div className="settings-row">
+        <div>
+          <div className="settings-row-label">ログイン中のデバイス</div>
+          <div className="settings-row-desc">
+            このアカウントでログイン中の端末。不審なものは個別に、または一括でログアウトできます
+          </div>
+        </div>
+        <button
+          className="btn btn-ghost"
+          onClick={() => setConfirmingRevokeOthers(true)}
+          disabled={revokingOthers || sessions.filter((s) => !s.current).length === 0}
+          aria-label="他のデバイスからログアウト"
+        >
+          {revokingOthers ? '処理中…' : '他のデバイスからログアウト'}
+        </button>
+      </div>
+
+      {/* 一括ログアウトの確認（破壊的操作のため確認ステップを挟む） */}
+      {confirmingRevokeOthers && (
+        <div style={{ padding: '0 20px 12px' }}>
+          <div className="settings-row-label" style={{ color: 'var(--red)' }}>
+            現在のデバイス以外をすべてログアウトしますか？
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <button
+              className="btn btn-ghost"
+              onClick={() => setConfirmingRevokeOthers(false)}
+              disabled={revokingOthers}
+              aria-label="キャンセル"
+            >
+              キャンセル
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleRevokeOthersConfirm}
+              disabled={revokingOthers}
+              aria-label="他のデバイスからログアウトを実行"
+            >
+              {revokingOthers ? '処理中…' : 'ログアウトする'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {sessions.length === 0 ? (
+        <div className="settings-row-desc" style={{ padding: '0 20px 12px', color: 'var(--text-muted, #888)' }}>
+          ログイン中のデバイスはありません
+        </div>
+      ) : (
+        sessions.map((s) => (
+          <div key={s.id}>
+            {confirmingRevokeId === s.id ? (
+              <div className="settings-row">
+                <div>
+                  <div className="settings-row-label" style={{ color: 'var(--red)' }}>
+                    ログアウトしますか？
+                  </div>
+                  <div className="settings-row-desc">
+                    {s.device_label ?? '不明なデバイス'} をログアウトすると、その端末では再ログインが必要になります。
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="settings-row">
+                <div>
+                  <div className="settings-row-label">
+                    {s.device_label ?? '不明なデバイス'}
+                    {s.current && (
+                      <span className="badge" style={{ marginLeft: 8 }}>
+                        現在のデバイス
+                      </span>
+                    )}
+                  </div>
+                  <div className="settings-row-desc">
+                    ログイン: {new Date(s.created_at).toLocaleDateString('ja-JP')}
+                    {s.last_used_at && (
+                      <>　最終利用: {new Date(s.last_used_at).toLocaleDateString('ja-JP')}</>
+                    )}
+                  </div>
+                </div>
+                {/* 現在のデバイスはこのUIから失効しない（＝ログアウト操作）。他デバイスのみ個別失効可能。 */}
+                {!s.current && (
+                  <button
+                    className="btn btn-ghost"
+                    onClick={() => handleRevokeClick(s.id)}
+                    disabled={revokingSessionId !== null}
+                    aria-label={`デバイスをログアウト: ${s.device_label ?? '不明なデバイス'}`}
+                  >
+                    ログアウト
+                  </button>
+                )}
+              </div>
+            )}
+
+            {confirmingRevokeId === s.id && (
+              <div style={{ padding: '0 20px 12px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button
+                  className="btn btn-ghost"
+                  onClick={handleRevokeCancel}
+                  disabled={revokingSessionId === s.id}
+                  aria-label="キャンセル"
+                >
+                  キャンセル
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => handleRevokeConfirm(s.id)}
+                  disabled={revokingSessionId === s.id}
+                  aria-label={`${s.device_label ?? '不明なデバイス'} をログアウト`}
+                >
+                  {revokingSessionId === s.id ? '処理中…' : 'ログアウトする'}
+                </button>
+              </div>
+            )}
+          </div>
+        ))
+      )}
+
+      {sessionsMsg && (
+        <div
+          className={sessionsMsg.kind === 'ok' ? 'form-success' : 'form-error'}
+          style={{ padding: '0 20px 12px' }}
+        >
+          {sessionsMsg.text}
         </div>
       )}
 
