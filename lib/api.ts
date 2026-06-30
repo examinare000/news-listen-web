@@ -32,6 +32,8 @@ export class ApiError extends Error {
   constructor(
     public readonly status: number,
     public readonly detail: string,
+    // Retry-After ヘッダ（秒）。429 等でサーバが提示した場合のみ設定（issue #82）。
+    public readonly retryAfterSeconds?: number,
   ) {
     super(detail)
     this.name = 'ApiError'
@@ -77,7 +79,11 @@ async function request<T>(
     } catch {
       // Non-JSON body — keep 'Unknown error'
     }
-    throw new ApiError(response.status, detail)
+    // Retry-After（秒）があれば ApiError に載せる（429 上限の「次回可能時刻」表示用・issue #82）。
+    // 一部のテスト用 fetch モックは headers を持たないため optional chaining で安全に読む。
+    const retryRaw = response.headers?.get?.('Retry-After') ?? null
+    const retryAfterSeconds = retryRaw !== null && /^\d+$/.test(retryRaw) ? Number(retryRaw) : undefined
+    throw new ApiError(response.status, detail, retryAfterSeconds)
   }
 
   return response.json() as Promise<T>

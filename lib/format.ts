@@ -17,6 +17,20 @@ export function formatDuration(seconds: number): string {
 }
 
 /**
+ * Retry-After 秒数を「次回可能時刻」のおおまかな日本語表記に整形する（issue #82）。
+ * 例: 30 → "まもなく", 3600 → "約1時間後", 43200 → "約12時間後"。
+ * undefined/0 以下なら null（時間情報なし）。
+ */
+export function formatRetryAfter(seconds: number | undefined): string | null {
+  if (seconds === undefined || seconds <= 0) return null
+  if (seconds < 60) return 'まもなく'
+  const minutes = Math.ceil(seconds / 60)
+  if (minutes < 60) return `約${minutes}分後`
+  const hours = Math.ceil(seconds / 3600)
+  return `約${hours}時間後`
+}
+
+/**
  * Formats an ISO 8601 date string to "M/D HH:MM" using local time.
  * Returns empty string for invalid input (new Date() never throws on strings).
  */
