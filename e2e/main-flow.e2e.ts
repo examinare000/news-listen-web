@@ -243,7 +243,7 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
   // 7. Click play button on PodcastCard
   const playButton = page
     .getByTestId('podcast-card-p1')
-    .getByRole('button', { name: '再生' })
+    .getByRole('button', { name: '再生', exact: true })
   await playButton.click()
 
   // 8. AudioPlayerBar reflects playing state

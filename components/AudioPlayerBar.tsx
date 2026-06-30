@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
@@ -15,6 +15,8 @@ export function AudioPlayerBar() {
   const { currentPodcast } = state
 
   const player = useAudioPlayerContext()
+  // 再生待ちキューパネルの開閉（issue #81）。
+  const [showQueue, setShowQueue] = useState(false)
 
   // Sync AppContext.playbackSpeed → audio.playbackRate whenever the speed changes
   // (includes initial mount with restored default speed and settings-page updates).
@@ -114,6 +116,18 @@ export function AudioPlayerBar() {
           >
             +30
           </button>
+
+          {/* 次へ（連続再生・issue #81）。待機列があるときのみ表示。 */}
+          {player.upNext.length > 0 && (
+            <button
+              className="ctrl-btn"
+              onClick={() => void player.skipToNext()}
+              aria-label="次のエピソードへ"
+              title="次へ"
+            >
+              次へ
+            </button>
+          )}
         </div>
 
         <div className="player-progress">
@@ -147,8 +161,63 @@ export function AudioPlayerBar() {
         </div>
       </div>
 
-      {/* 右: 音量 + 速度（シャッフルは D19 により実装しない） */}
+      {/* 右: 再生待ち + 音量 + 速度（シャッフルは D19 により実装しない） */}
       <div className="player-extra">
+        {/* 再生待ちキュー（issue #81）: 確認・並べ替え・削除。 */}
+        <button
+          type="button"
+          className="ctrl-btn"
+          onClick={() => setShowQueue((v) => !v)}
+          aria-label="プレイリスト"
+          aria-expanded={showQueue}
+          title="プレイリスト"
+        >
+          ☰{player.upNext.length > 0 ? ` ${player.upNext.length}` : ''}
+        </button>
+        {showQueue && (
+          <div className="queue-panel" role="region" aria-label="プレイリスト">
+            {player.upNext.length === 0 ? (
+              <p className="queue-empty">再生待ちはありません</p>
+            ) : (
+              <ol className="queue-list">
+                {player.upNext.map((p, i) => (
+                  <li key={p.id} className="queue-item">
+                    <span className="queue-item-title">{p.japanese_intro_text.slice(0, 40)}</span>
+                    <span className="queue-item-actions">
+                      <button
+                        type="button"
+                        className="ctrl-btn"
+                        onClick={() => player.reorderQueue(i, i - 1)}
+                        disabled={i === 0}
+                        aria-label="上へ"
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        className="ctrl-btn"
+                        onClick={() => player.reorderQueue(i, i + 1)}
+                        disabled={i === player.upNext.length - 1}
+                        aria-label="下へ"
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        className="ctrl-btn"
+                        onClick={() => player.removeFromQueue(p.id)}
+                        aria-label="キューから削除"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+
         <input
           type="range"
           min={0}

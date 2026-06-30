@@ -14,6 +14,9 @@ interface UseAudioPlayerOptions {
   // Callback to save position to backend (network call)
   // WHY: Hook does not import fetch to keep it pure; server sync is caller's responsibility
   onPositionSave?: (podcastId: string, seconds: number) => void
+  // Called when the current episode finishes playing (issue #81: auto-advance to queue's next).
+  // WHY: queue/advance logic belongs in the provider, not in this pure audio hook.
+  onEnded?: () => void
 }
 
 interface AudioPlayerState {
@@ -74,9 +77,11 @@ export function useAudioPlayer(
   // Stable refs for the callbacks to avoid re-running effects when they change
   const onErrorRef = useRef(opts?.onError)
   const onPositionSaveRef = useRef(opts?.onPositionSave)
+  const onEndedRef = useRef(opts?.onEnded)
   useEffect(() => {
     onErrorRef.current = opts?.onError
     onPositionSaveRef.current = opts?.onPositionSave
+    onEndedRef.current = opts?.onEnded
   })
 
   // Single audio element shared across the hook's lifetime
@@ -127,6 +132,8 @@ export function useAudioPlayer(
         onPositionSaveRef.current?.(podcastIdRef.current, 0)
       }
       audio.currentTime = 0
+      // issue #81: notify the queue to auto-advance to the next episode (if any).
+      onEndedRef.current?.()
     }
 
     const handleError = () => {

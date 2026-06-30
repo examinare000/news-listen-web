@@ -138,7 +138,7 @@ describe('PodcastPage — play with fresh URL', () => {
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    await userEvent.click(screen.getByRole('button', { name: '再生' }))
 
     // 一覧取得時の audio_url を使わず、getPodcast を呼び直すこと
     expect(getPodcast).toHaveBeenCalledWith(SAMPLE_PODCASTS[0].id)
@@ -156,7 +156,7 @@ describe('PodcastPage — play with fresh URL', () => {
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
+    await userEvent.click(screen.getByRole('button', { name: '再生' }))
 
     await waitFor(() => {
       // 保存済み位置 120 が currentTime に反映される

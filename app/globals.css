@@ -1525,3 +1525,76 @@ button.feed-tab {
   white-space: nowrap;
   border: 0;
 }
+
+/* ── 再生待ちキュー（プレイリスト / issue #81） ─────────────────────── */
+/* 既存トークン（--bg-overlay / --border / --text-* / --radius）を再利用する。 */
+.podcast-queue-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.podcast-queue-actions .ctrl-btn {
+  width: auto;
+  height: auto;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.player-extra .ctrl-btn {
+  width: auto;
+  height: auto;
+  min-width: 32px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+}
+.queue-panel {
+  position: absolute;
+  right: 16px;
+  bottom: 72px;
+  width: min(360px, 90vw);
+  max-height: 50vh;
+  overflow-y: auto;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  padding: 10px 12px;
+  z-index: 60;
+}
+.queue-empty {
+  color: var(--text-secondary);
+  font-size: 12px;
+  margin: 8px 4px;
+}
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.queue-item-title {
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.queue-item-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.queue-item-actions .ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
