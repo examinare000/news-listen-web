@@ -4,7 +4,16 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
 import { createApiClient, ApiError } from '@/lib/api'
+import { formatRetryAfter } from '@/lib/format'
 import type { Article } from '@/types/index'
+
+// 生成上限超過（429）時のユーザー向けメッセージ（issue #82）。次回可能時刻があれば併記する。
+function generationLimitMessage(retryAfterSeconds: number | undefined): string {
+  const when = formatRetryAfter(retryAfterSeconds)
+  return when
+    ? `本日の生成上限に達しました（${when}に可能）`
+    : '本日の生成上限に達しました'
+}
 
 type FeedTab = 'all' | 'starred'
 
@@ -101,6 +110,8 @@ export default function FeedPage() {
           setArticles((prev) => prev.filter((a) => a.id !== id))
         } else if (err.status === 401) {
           showToast('API キーが正しくありません', 'error')
+        } else if (err.status === 429) {
+          showToast(generationLimitMessage(err.retryAfterSeconds), 'error')
         } else {
           showToast(`エラーが発生しました (${err.status})`, 'error')
         }
@@ -165,9 +176,17 @@ export default function FeedPage() {
         showToast(`${successful.length}件をスターしました`, 'success')
       }
 
-      // 失敗分を通知
+      // 失敗分を通知。生成上限（429）が含まれていれば上限メッセージを優先する（issue #82）。
       if (failed.length > 0) {
-        showToast(`${failed.length}件のスターに失敗しました`, 'error')
+        const limit = results.find(
+          (r): r is PromiseRejectedResult =>
+            r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 429,
+        )
+        if (limit) {
+          showToast(generationLimitMessage((limit.reason as ApiError).retryAfterSeconds), 'error')
+        } else {
+          showToast(`${failed.length}件のスターに失敗しました`, 'error')
+        }
       }
     } finally {
       setBusyIds((prev) => {

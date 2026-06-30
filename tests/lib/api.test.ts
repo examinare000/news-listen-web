@@ -33,6 +33,43 @@ function mockFetchNetworkError() {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 }
 
+function mockFetchErrorWithRetryAfter(status: number, detail: string, retryAfter: string) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status,
+      headers: { get: (k: string) => (k === 'Retry-After' ? retryAfter : null) },
+      json: () => Promise.resolve({ detail }),
+      text: () => Promise.resolve(JSON.stringify({ detail })),
+    }),
+  )
+}
+
+describe('ApiError Retry-After (#82)', () => {
+  test('429 の Retry-After ヘッダを ApiError.retryAfterSeconds に載せる', async () => {
+    mockFetchErrorWithRetryAfter(429, 'Daily limit reached', '43200')
+    try {
+      await makeClient().starArticle('a1')
+      throw new Error('should have thrown')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError)
+      expect((e as ApiError).status).toBe(429)
+      expect((e as ApiError).retryAfterSeconds).toBe(43200)
+    }
+  })
+
+  test('Retry-After 不在なら retryAfterSeconds は undefined', async () => {
+    mockFetchError(404, 'Article not found')
+    try {
+      await makeClient().starArticle('a1')
+      throw new Error('should have thrown')
+    } catch (e) {
+      expect((e as ApiError).retryAfterSeconds).toBeUndefined()
+    }
+  })
+})
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
