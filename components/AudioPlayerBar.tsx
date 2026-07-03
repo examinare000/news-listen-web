@@ -6,6 +6,7 @@ import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
+import { podcastTitle } from '@/lib/podcastTitle'
 
 // 波形アートのバー本数（デザイン正本 app-ui.html L1944〜1950 と同じ 5 本）
 const WAVEFORM_BAR_COUNT = 5
@@ -26,7 +27,7 @@ export function AudioPlayerBar() {
 
   if (!currentPodcast) return null
 
-  const intro50 = currentPodcast.japanese_intro_text.slice(0, 50)
+  const trackTitle = podcastTitle(currentPodcast, 50)
 
   async function handlePlayPause() {
     if (player.isPlaying) {
@@ -59,7 +60,7 @@ export function AudioPlayerBar() {
           </div>
         </div>
         <div className="player-info">
-          <div className="player-title">{intro50}</div>
+          <div className="player-title">{trackTitle}</div>
           <div className="player-subtitle">
             <DifficultyBadge difficulty={currentPodcast.difficulty} />
             <span>{formatDate(currentPodcast.created_at)}</span>
@@ -182,7 +183,7 @@ export function AudioPlayerBar() {
               <ol className="queue-list">
                 {player.upNext.map((p, i) => (
                   <li key={p.id} className="queue-item">
-                    <span className="queue-item-title">{p.japanese_intro_text.slice(0, 40)}</span>
+                    <span className="queue-item-title">{podcastTitle(p, 40)}</span>
                     <span className="queue-item-actions">
                       <button
                         type="button"
