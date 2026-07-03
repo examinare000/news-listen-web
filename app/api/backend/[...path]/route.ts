@@ -9,6 +9,11 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 
+// Vercel Function のデフォルト実行上限（300秒）のままだとバックエンド障害時に
+// 無駄なコンピュートを消費し続ける。下の fetch タイムアウト（25秒）より長い値にして、
+// Function が強制終了される前に必ず制御された 504 応答を返せるようにする。
+export const maxDuration = 30
+
 type Context = { params: Promise<{ path: string[] }> }
 
 interface BackendConfig {
@@ -33,6 +38,13 @@ function getBackendUrl(pathSegments: string[]): BackendConfig | null {
   // Reconstruct the target URL preserving query string (get it from request inside forward())
   const joinedPath = pathSegments.join('/')
   return { baseUrl, path: joinedPath }
+}
+
+// AbortSignal.timeout() が期限切れ時に投げる例外は DOMException('TimeoutError')。
+// 明示的な abort() 呼び出しも DOMException('AbortError') になるため、どちらもタイムアウト
+// 応答（504）として扱い、単純なネットワーク到達不能（502）と区別する。
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof DOMException && (err.name === 'TimeoutError' || err.name === 'AbortError')
 }
 
 async function forward(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
@@ -77,8 +89,14 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
       method: req.method,
       headers: forwardedHeaders,
       body,
+      // maxDuration（30秒）より短い期限で打ち切り、Function が強制終了される前に
+      // 制御された 504 応答をクライアントへ返す。
+      signal: AbortSignal.timeout(25_000),
     })
-  } catch {
+  } catch (err) {
+    if (isTimeoutError(err)) {
+      return NextResponse.json({ detail: 'Backend timeout' }, { status: 504 })
+    }
     return NextResponse.json({ detail: 'Backend unreachable' }, { status: 502 })
   }
 
