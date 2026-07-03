@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import type { NextRequest } from 'next/server'
 // NOTE: Next.js の catch-all ルートファイルは [...path] をブラケット含みでインポートする
-import { GET, POST, PUT, PATCH, DELETE } from '@/app/api/backend/[...path]/route'
+import { GET, POST, PUT, PATCH, DELETE, maxDuration } from '@/app/api/backend/[...path]/route'
 
 // パターン B: 型キャストのみ（ランタイム挙動を変えずに型エラーを解消）
 const asNextRequest = (req: Request) => req as unknown as NextRequest
@@ -353,6 +353,76 @@ describe('Backend unreachable', () => {
     const res = await GET(asNextRequest(req), makeContext(['feed']))
 
     expect(res.status).toBe(502)
+  })
+})
+
+// ==========================================================
+// Vercel Function タイムアウト設定
+// ==========================================================
+describe('maxDuration export', () => {
+  test('exports maxDuration of 30 seconds (default 300s から短縮しコンピュート浪費を防ぐ)', () => {
+    expect(maxDuration).toBe(30)
+  })
+})
+
+// ==========================================================
+// 異常系: バックエンドタイムアウト → 504
+// ==========================================================
+describe('Backend timeout', () => {
+  test('returns 504 with "Backend timeout" detail when fetch rejects with TimeoutError', async () => {
+    // AbortSignal.timeout() がタイムアウト時に投げる例外は DOMException('TimeoutError')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new DOMException('The operation timed out.', 'TimeoutError'))
+    )
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'feed')
+
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
+
+    expect(res.status).toBe(504)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.detail).toBe('Backend timeout')
+  })
+
+  test('returns 504 when fetch rejects with AbortError (manual abort semantics)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new DOMException('The operation was aborted.', 'AbortError'))
+    )
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'feed')
+
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
+
+    expect(res.status).toBe(504)
+  })
+
+  test('non-timeout network errors still return 502 (not misclassified as timeout)', async () => {
+    mockBackendNetworkError()
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'feed')
+
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
+
+    expect(res.status).toBe(502)
+    const body = await res.json() as Record<string, unknown>
+    expect(body.detail).toBe('Backend unreachable')
+  })
+
+  test('passes an AbortSignal to fetch so the backend request is bounded', async () => {
+    mockBackendOk({ status: 'ok' })
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    const req = makeRequest('GET', 'feed')
+
+    await GET(asNextRequest(req), makeContext(['feed']))
+
+    const forwardedInit = vi.mocked(fetch).mock.calls[0][1] as RequestInit
+    expect(forwardedInit.signal).toBeInstanceOf(AbortSignal)
   })
 })
 
