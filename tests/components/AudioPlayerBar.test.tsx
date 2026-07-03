@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { AppProvider } from '@/contexts/AppContext'
-import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
+import { AudioPlayerProvider, useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { Podcast } from '@/types/index'
 import { setupMockAudio } from '../helpers/mockAudio'
@@ -67,10 +67,18 @@ describe('AudioPlayerBar visibility', () => {
 // コンテンツ表示
 // ==========================================================
 describe('AudioPlayerBar content', () => {
-  test('Displays first 50 characters of japanese_intro_text', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const introFirst50 = SAMPLE_PODCAST.japanese_intro_text.slice(0, 50)
-    expect(screen.getByText(new RegExp(introFirst50.slice(0, 20)))).toBeInTheDocument()
+  test('Displays first 50 characters of japanese_intro_text, truncating the rest', () => {
+    // 60 字超の intro を使って "50 字で切られる" ことを実検証する
+    const longIntro = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんあいうえお'
+    // longIntro は 45 字 × 以上あり確実に 50 字超
+    const podcast: Podcast = { ...SAMPLE_PODCAST, japanese_intro_text: longIntro }
+    renderWithContext(podcast)
+    const expected = longIntro.slice(0, 50)
+    // 正確に 50 字の文字列が表示されている（getByText は要素の全テキストと完全一致するため
+    // 全文が表示されていれば expected と一致せずここで失敗し、truncation を実証できる）
+    expect(screen.getByText(expected)).toBeInTheDocument()
+    // 全文（51 字以上）は要素テキストとして現れない
+    expect(screen.queryByText(longIntro)).not.toBeInTheDocument()
   })
 
   test('Renders DifficultyBadge for current podcast difficulty', () => {
@@ -315,6 +323,85 @@ describe('Seekbar progress fill (T02)', () => {
     const volumeSlider = screen.getByRole('slider', { name: '音量' })
     // 音量スライダーには --seek-fill を付与しない（スコープ外）
     expect(volumeSlider.style.getPropertyValue('--seek-fill')).toBe('')
+  })
+})
+
+// ==========================================================
+// title フィールドによるタイトル表示切替（issue: podcast-title-display）
+// ==========================================================
+describe('AudioPlayerBar title display (podcastTitle fallback)', () => {
+  test('Given podcast with title, player-title shows title instead of japanese_intro_text slice', () => {
+    const podcast: Podcast = {
+      ...SAMPLE_PODCAST,
+      title: 'AIが要約した今日のニュース',
+      japanese_intro_text: 'これは長い日本語のイントロテキストです。テストのために書かれた文章です。',
+    }
+    renderWithContext(podcast)
+    expect(screen.getByText('AIが要約した今日のニュース')).toBeInTheDocument()
+  })
+
+  test('Given podcast with empty title, player-title falls back to first 50 chars of japanese_intro_text', () => {
+    const intro = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
+    const podcast: Podcast = {
+      ...SAMPLE_PODCAST,
+      title: '',
+      japanese_intro_text: intro,
+    }
+    renderWithContext(podcast)
+    expect(screen.getByText(intro.slice(0, 50))).toBeInTheDocument()
+  })
+
+  test('Given podcast without title field, player-title falls back to first 50 chars of japanese_intro_text', () => {
+    const intro = 'いいいいいいいいいいうううううううううううえええええええええええおおおおおおおおおおあああああああああああ'
+    const podcast: Podcast = {
+      ...SAMPLE_PODCAST,
+      japanese_intro_text: intro,
+    }
+    // title フィールドなし（SAMPLE_PODCAST に title を追加していない）
+    renderWithContext(podcast)
+    expect(screen.getByText(intro.slice(0, 50))).toBeInTheDocument()
+  })
+
+  test('Given queue item has title, queue panel shows title via podcastTitle(p, 40)', async () => {
+    const queuePodcast: Podcast = {
+      ...SAMPLE_PODCAST,
+      id: 'q1',
+      title: 'キューに追加されたタイトル',
+      // japanese_intro_text は 40 字を超える長文（title があるので表示されないはず）
+      japanese_intro_text: 'これはキューに入ったポッドキャストのイントロテキストです。四十字を超えているためタイトルがない場合は切り詰められます。',
+    }
+
+    // addToQueue → playById → createApiClient().getPodcast() が fetch を呼ぶが
+    // テスト環境にサーバはないため失敗させる。
+    // setQueueState は fetch より先に同期実行されるため upNext は fetch 失敗後も残る。
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
+
+    // QueuePrimer: AudioPlayerProvider 内でキューにアイテムを追加するラッパー
+    function QueuePrimer() {
+      const player = useAudioPlayerContext()
+      React.useEffect(() => {
+        void player.addToQueue(queuePodcast)
+      }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      return null
+    }
+
+    render(
+      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
+        <ToastProvider>
+          <AudioPlayerProvider>
+            <QueuePrimer />
+            <AudioPlayerBar />
+          </AudioPlayerProvider>
+        </ToastProvider>
+      </AppProvider>
+    )
+
+    // setQueueState が反映されてキューボタン "☰ 1" が現れるまで待つ
+    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
+    await userEvent.click(queueBtn)
+
+    // キューパネルに title が表示されることを確認（japanese_intro_text.slice(0,40) ではない）
+    expect(screen.getByText('キューに追加されたタイトル')).toBeInTheDocument()
   })
 })
 
