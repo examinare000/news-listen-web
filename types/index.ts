@@ -30,6 +30,9 @@ export interface Podcast {
   article_ids: string[]
   difficulty: DifficultyLevel
   audio_url: string
+  /** ニュース内容を1センテンスに要約した日本語タイトル（backend 追加フィールド）。
+   *  既存データや未デプロイ環境では空文字または欠落するため optional。 */
+  title?: string
   japanese_intro_text: string
   duration_seconds: number
   created_at: string
