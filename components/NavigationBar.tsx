@@ -8,7 +8,8 @@ import { SidebarAccount } from '@/components/ui/SidebarAccount'
 import { useAuth } from '@/contexts/AuthContext'
 
 // アイコン SVG は docs/design/app-ui.html L1388-1414 をインライン移植
-// WHY: アイコンライブラリを導入しない方針（依存追加ゼロ・デザイン正本と完全一致）
+// WHY: アイコンライブラリを導入しない方針（依存追加ゼロ）。NAV_ITEMS はデザイン正本と
+// 完全一致。admin 限定の「おすすめサイト管理」の星アイコンは正本未定義のため独自追加
 const NAV_ITEMS = [
   {
     label: 'フィード',
