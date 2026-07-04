@@ -86,6 +86,12 @@ async function request<T>(
     throw new ApiError(response.status, detail, retryAfterSeconds)
   }
 
+  // 204 No Content: body が存在しないため response.json() を呼ぶと実際の fetch では
+  // SyntaxError になる（例: DELETE /auth/me の退会成功応答）。
+  if (response.status === 204) {
+    return undefined as T
+  }
+
   return response.json() as Promise<T>
 }
 
@@ -209,6 +215,18 @@ export function createApiClient() {
       return request<{ status: string }>('/api/backend/auth/password', {
         method: 'POST',
         body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+      })
+    },
+
+    /**
+     * アカウント削除（退会）。要ログイン・CSRF 必須（request() が自動付与）。
+     * 成功時（204）はサーバー側でセッション Cookie が失効するため戻り値は無い。
+     * 403 = パスワード不一致 / 401 = 未認証 / 409 = 最後の管理者のため削除不可（呼び出し側で判定）。
+     */
+    deleteAccount(currentPassword: string) {
+      return request<void>('/api/backend/auth/me', {
+        method: 'DELETE',
+        body: JSON.stringify({ current_password: currentPassword }),
       })
     },
 
