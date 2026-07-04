@@ -29,6 +29,18 @@ function mockFetchError(status: number, detail: string) {
   )
 }
 
+function mockFetchErrorBody(status: number, body: unknown) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: false,
+      status,
+      json: () => Promise.resolve(body),
+      text: () => Promise.resolve(JSON.stringify(body)),
+    })
+  )
+}
+
 function mockFetchNetworkError() {
   vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
 }
@@ -377,12 +389,77 @@ describe('ApiError normalization', () => {
   })
 
   describe('Given 422 response (validation error)', () => {
-    test('throws ApiError with status 422', async () => {
+    test('throws ApiError with status 422 and string detail', async () => {
       mockFetchError(422, 'value is not a valid URL')
       const client = makeClient()
 
       await expect(client.addSource('Bad', 'not-a-url')).rejects.toMatchObject({
         status: 422,
+        detail: 'value is not a valid URL',
+      })
+    })
+
+    test('throws ApiError with array detail (first msg)', async () => {
+      mockFetchErrorBody(422, {
+        detail: [
+          { msg: 'password must be at least 12 characters long', type: 'value_error' },
+        ],
+      })
+      const client = makeClient()
+
+      await expect(client.changePassword('old', 'short')).rejects.toMatchObject({
+        status: 422,
+        detail: 'password must be at least 12 characters long',
+      })
+    })
+
+    test('throws ApiError with array detail and removes "Value error, " prefix', async () => {
+      mockFetchErrorBody(422, {
+        detail: [
+          { msg: 'Value error, custom validation failed', type: 'value_error' },
+        ],
+      })
+      const client = makeClient()
+
+      await expect(client.changePassword('old', 'fail')).rejects.toMatchObject({
+        status: 422,
+        detail: 'custom validation failed',
+      })
+    })
+
+    test('throws ApiError with "Value error, password must be at least 12 characters long" → removes prefix', async () => {
+      mockFetchErrorBody(422, {
+        detail: [
+          { msg: 'Value error, password must be at least 12 characters long', type: 'value_error' },
+        ],
+      })
+      const client = makeClient()
+
+      await expect(client.changePassword('old', 'short')).rejects.toMatchObject({
+        status: 422,
+        detail: 'password must be at least 12 characters long',
+      })
+    })
+
+    test('throws ApiError with empty array detail → "Unknown error"', async () => {
+      mockFetchErrorBody(422, { detail: [] })
+      const client = makeClient()
+
+      await expect(client.changePassword('old', 'fail')).rejects.toMatchObject({
+        status: 422,
+        detail: 'Unknown error',
+      })
+    })
+
+    test('throws ApiError with array detail missing msg field → "Unknown error"', async () => {
+      mockFetchErrorBody(422, {
+        detail: [{ type: 'value_error' }],
+      })
+      const client = makeClient()
+
+      await expect(client.changePassword('old', 'fail')).rejects.toMatchObject({
+        status: 422,
+        detail: 'Unknown error',
       })
     })
   })

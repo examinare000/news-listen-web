@@ -132,6 +132,7 @@ beforeEach(() => {
   // （LogoutButton.test.tsx と同じ理由）。
   mockRouterReplace.mockReset()
   mockDeleteAccount.mockReset()
+  mockChangePassword.mockReset()
 })
 
 const SESSIONS = {
@@ -367,6 +368,167 @@ describe('AccountSection — Passkey 削除', () => {
 
     await waitFor(() => expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2))
     await screen.findByText(/登録済みの passkey はありません/i)
+  })
+})
+
+describe('AccountSection — パスワード変更', () => {
+  test('11文字のパスワード送信は前ブロックで拒否', async () => {
+    render(<AccountSection />)
+
+    await userEvent.type(
+      screen.getByLabelText('現在のパスワード'),
+      'current-password'
+    )
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), 'Abc12345678')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('新しいパスワードは12文字以上にしてください')
+    )
+    expect(mockChangePassword).not.toHaveBeenCalled()
+  })
+
+  test('12文字で2クラスのみのパスワード送信は前ブロックで拒否', async () => {
+    render(<AccountSection />)
+
+    await userEvent.type(
+      screen.getByLabelText('現在のパスワード'),
+      'current-password'
+    )
+    // 大文字・数字のみ（小文字・記号なし・12文字）
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), 'ABCD12345678')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('小文字・大文字・数字・記号のうち3種類以上を含めてください')
+    )
+    expect(mockChangePassword).not.toHaveBeenCalled()
+  })
+
+  test('空白を含む12文字2クラスのパスワード送信は前ブロックで拒否（backend と一致）', async () => {
+    render(<AccountSection />)
+
+    await userEvent.type(
+      screen.getByLabelText('現在のパスワード'),
+      'current-password'
+    )
+    // 大文字・小文字・空白のみ（数字・記号なし・12文字）— 空白は記号に数えない
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), 'MyPassword Is')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('小文字・大文字・数字・記号のうち3種類以上を含めてください')
+    )
+    expect(mockChangePassword).not.toHaveBeenCalled()
+  })
+
+  test('現在のパスワード空のまま送信時は前ブロックで拒否', async () => {
+    render(<AccountSection />)
+
+    // 現在のパスワードを入力しない
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), 'Abcd1234567!')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('現在のパスワードを入力してください')
+    )
+    expect(mockChangePassword).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    [
+      'password must be at least 12 characters long',
+      '新しいパスワードは12文字以上にしてください',
+    ],
+    [
+      'password must contain at least 3 of: lowercase, uppercase, digit, symbol',
+      '小文字・大文字・数字・記号のうち3種類以上を含めてください',
+    ],
+    ['password is too common', 'よく使われるパスワードのため使用できません'],
+    [
+      'password must not contain the username',
+      'ユーザー名を含むパスワードは使用できません',
+    ],
+  ])(
+    '422 %s → 日本語対訳を表示',
+    async (englishDetail, japaneseExpected) => {
+      const { ApiError } = await import('@/lib/api')
+      mockChangePassword.mockRejectedValue(new ApiError(422, englishDetail))
+      render(<AccountSection />)
+
+      await userEvent.type(
+        screen.getByLabelText('現在のパスワード'),
+        'current-password'
+      )
+      await userEvent.type(
+        screen.getByLabelText('新しいパスワード'),
+        'Abcd1234567!'
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+      await waitFor(() => screen.getByText(japaneseExpected))
+      expect(mockChangePassword).toHaveBeenCalled()
+    }
+  )
+
+  test('422 未知 detail → 原文付き文言を表示', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockChangePassword.mockRejectedValue(new ApiError(422, 'unknown error detail'))
+    render(<AccountSection />)
+
+    await userEvent.type(
+      screen.getByLabelText('現在のパスワード'),
+      'current-password'
+    )
+    await userEvent.type(
+      screen.getByLabelText('新しいパスワード'),
+      'Abcd1234567!'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('パスワード変更に失敗しました（unknown error detail）')
+    )
+  })
+
+  test('400 → 「現在のパスワードが正しくありません」を表示', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockChangePassword.mockRejectedValue(new ApiError(400, 'Invalid password'))
+    render(<AccountSection />)
+
+    await userEvent.type(
+      screen.getByLabelText('現在のパスワード'),
+      'wrong-password'
+    )
+    await userEvent.type(
+      screen.getByLabelText('新しいパスワード'),
+      'Abcd1234567!'
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('現在のパスワードが正しくありません')
+    )
+  })
+
+  test('成功後は成功文言を表示し入力をクリア', async () => {
+    mockChangePassword.mockResolvedValue({ status: 'ok' })
+    render(<AccountSection />)
+
+    const currentPwInput = screen.getByLabelText('現在のパスワード')
+    const newPwInput = screen.getByLabelText('新しいパスワード')
+
+    await userEvent.type(currentPwInput, 'current-password')
+    await userEvent.type(newPwInput, 'Abcd1234567!')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() =>
+      screen.getByText('パスワードを変更しました')
+    )
+    expect(mockChangePassword).toHaveBeenCalledWith('current-password', 'Abcd1234567!')
+    // 入力フィールドがクリアされていることを確認
+    expect(currentPwInput).toHaveValue('')
+    expect(newPwInput).toHaveValue('')
   })
 })
 
