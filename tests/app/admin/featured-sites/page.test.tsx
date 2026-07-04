@@ -44,8 +44,8 @@ beforeEach(() => {
   authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
   listFeaturedSites.mockResolvedValue({
     sites: [
-      { id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com', thumbnail_url: null, description: null },
-      { id: 'rss', name: 'RSS Feed', url: 'https://example.com/rss', thumbnail_url: 'https://example.com/thumb.png', description: 'A feed' },
+      { id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com', thumbnail_url: null, description: null, order: 0 },
+      { id: 'rss', name: 'RSS Feed', url: 'https://example.com/rss', thumbnail_url: 'https://example.com/thumb.png', description: 'A feed', order: 1 },
     ],
   })
 })
@@ -120,6 +120,42 @@ describe('AdminFeaturedSitesPage', () => {
     await userEvent.click(confirmBtn)
 
     await waitFor(() => expect(deleteFeaturedSite).toHaveBeenCalledWith('hn'))
+  })
+
+  test('editing and saving does not reset the order field to 0 (regression)', async () => {
+    updateFeaturedSite.mockResolvedValue({ id: 'rss', name: 'RSS Feed', url: 'https://example.com/rss', order: 1 })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('RSS Feed')).toBeInTheDocument())
+
+    // RSS Feed（order: 1）の編集ボタンをクリック
+    const editButtons = screen.getAllByRole('button', { name: /編集/ })
+    await userEvent.click(editButtons[1])
+
+    await waitFor(() => {
+      const nameInputs = screen.getAllByDisplayValue('RSS Feed')
+      expect(nameInputs.length).toBeGreaterThan(0)
+    })
+
+    const saveButtons = screen.getAllByRole('button', { name: /保存/ })
+    await userEvent.click(saveButtons[0])
+
+    await waitFor(() =>
+      expect(updateFeaturedSite).toHaveBeenCalledWith('rss', expect.objectContaining({ order: 1 }))
+    )
+  })
+
+  test('creating a new site assigns order as the current max order + 1', async () => {
+    createFeaturedSite.mockResolvedValue({ id: 'new', name: 'New Site', url: 'https://newsite.com', order: 2 })
+    renderPage()
+    await waitFor(() => expect(listFeaturedSites).toHaveBeenCalled())
+
+    await userEvent.type(screen.getByLabelText('サイト名'), 'New Site')
+    await userEvent.type(screen.getByLabelText('URL'), 'https://newsite.com')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() =>
+      expect(createFeaturedSite).toHaveBeenCalledWith(expect.objectContaining({ order: 2 }))
+    )
   })
 
   test('non-admin sees a forbidden message', async () => {

@@ -61,6 +61,7 @@ export interface FeaturedSource {
   url: string
   thumbnail_url?: string | null
   description?: string | null
+  order: number
 }
 
 export interface FeaturedSourcesResponse {

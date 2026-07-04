@@ -60,11 +60,13 @@ export default function AdminFeaturedSitesPage() {
       return
     }
     try {
+      const nextOrder = sites.length === 0 ? 0 : Math.max(...sites.map((s) => s.order)) + 1
       await client.createFeaturedSite({
         name: newName,
         url: newUrl,
         thumbnail_url: newThumbnail || undefined,
         description: newDescription || undefined,
+        order: nextOrder,
       })
       setNewName('')
       setNewUrl('')
@@ -101,11 +103,15 @@ export default function AdminFeaturedSitesPage() {
       return
     }
     try {
+      // PUT は全置換のため、表示順（order）を送らないと既定値 0 で上書きされてしまう。
+      // 編集フォームは order を扱わないので、既存の値をそのまま引き継いで送る。
+      const currentOrder = sites.find((s) => s.id === id)?.order ?? 0
       await client.updateFeaturedSite(id, {
         name: editName,
         url: editUrl,
         thumbnail_url: editThumbnail || undefined,
         description: editDescription || undefined,
+        order: currentOrder,
       })
       handleEditCancel()
       await reload()
