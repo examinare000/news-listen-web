@@ -29,6 +29,20 @@ function mockFetchError(status: number, detail: string) {
   )
 }
 
+// 204 No Content: バックエンドは body を返さない。json() を呼ぶと実際の fetch では
+// SyntaxError になるため、json() が呼ばれていないことをこの reject で立証する。
+function mockFetchNoContent() {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      json: () => Promise.reject(new Error('must not parse JSON body on 204 No Content')),
+      text: () => Promise.resolve(''),
+    }),
+  )
+}
+
 beforeEach(() => {
   vi.restoreAllMocks()
 })
@@ -97,6 +111,32 @@ describe('updateProfile / changePassword', () => {
       current_password: 'old',
       new_password: 'new-password',
     })
+  })
+})
+
+describe('deleteAccount', () => {
+  test('DELETEs /api/backend/auth/me with current_password body', async () => {
+    mockFetchNoContent()
+    await makeClient().deleteAccount('current-pw')
+    const { path, init } = lastCall()
+    expect(path).toBe('/api/backend/auth/me')
+    expect(init.method).toBe('DELETE')
+    expect(JSON.parse(init.body as string)).toEqual({ current_password: 'current-pw' })
+  })
+
+  test('resolves without parsing a body on 204 No Content', async () => {
+    mockFetchNoContent()
+    await expect(makeClient().deleteAccount('current-pw')).resolves.toBeUndefined()
+  })
+
+  test('throws ApiError on 403 when the password is incorrect', async () => {
+    mockFetchError(403, 'Invalid password')
+    await expect(makeClient().deleteAccount('wrong')).rejects.toMatchObject({ status: 403 })
+  })
+
+  test('throws ApiError on 409 when deleting the last admin', async () => {
+    mockFetchError(409, 'Cannot delete the last admin account')
+    await expect(makeClient().deleteAccount('current-pw')).rejects.toMatchObject({ status: 409 })
   })
 })
 
