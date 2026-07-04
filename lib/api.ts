@@ -72,9 +72,19 @@ async function request<T>(
   if (!response.ok) {
     let detail = 'Unknown error'
     try {
-      const body = await response.json()
+      const body = await response.json() as {
+        detail?: string | Array<{ msg?: unknown }>
+      }
       if (typeof body.detail === 'string') {
         detail = body.detail
+      } else if (Array.isArray(body.detail)) {
+        const firstMessage = body.detail[0]?.msg
+        if (typeof firstMessage === 'string') {
+          const valueErrorPrefix = 'Value error, '
+          detail = firstMessage.startsWith(valueErrorPrefix)
+            ? firstMessage.slice(valueErrorPrefix.length)
+            : firstMessage
+        }
       }
     } catch {
       // Non-JSON body — keep 'Unknown error'
