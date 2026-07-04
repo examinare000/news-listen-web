@@ -17,6 +17,8 @@ const {
   mockRegisterPasskey,
   mockLogout,
   mockRefreshMe,
+  mockDeleteAccount,
+  mockRouterReplace,
 } = vi.hoisted(() => ({
   mockUpdateProfile: vi.fn(),
   mockChangePassword: vi.fn(),
@@ -28,6 +30,8 @@ const {
   mockRegisterPasskey: vi.fn(),
   mockLogout: vi.fn(),
   mockRefreshMe: vi.fn(),
+  mockDeleteAccount: vi.fn(),
+  mockRouterReplace: vi.fn(),
 }))
 
 // AppContext mock
@@ -51,6 +55,7 @@ vi.mock('@/lib/api', () => ({
     getSessions: mockGetSessions,
     revokeSession: mockRevokeSession,
     revokeOtherSessions: mockRevokeOtherSessions,
+    deleteAccount: mockDeleteAccount,
   })),
   ApiError: class ApiError extends Error {
     constructor(
@@ -95,7 +100,16 @@ vi.mock('next/link', () => ({
     React.createElement('a', props, children),
 }))
 
-// next/navigation は tests/setup.ts のグローバルモックで賄う（LogoutButton の useRouter 用）。
+// next/navigation: アカウント削除成功後の router.replace('/') を検証するため、
+// tests/setup.ts のグローバルモック（呼び出しごとに新しい vi.fn() を返す）を
+// このファイル内では固定参照の mockRouterReplace で上書きする（LogoutButton.test.tsx と同じ手法）。
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({
+    replace: mockRouterReplace,
+    push: vi.fn(),
+  })),
+  usePathname: vi.fn(() => '/'),
+}))
 
 const FAKE_CRED: PasskeyCredential = {
   credential_id: 'cred-abc-123',
@@ -114,6 +128,10 @@ beforeEach(() => {
   mockGetSessions.mockResolvedValue({ sessions: [] })
   mockRevokeSession.mockResolvedValue({ status: 'ok' })
   mockRevokeOtherSessions.mockResolvedValue({ revoked_count: 0 })
+  // clearAllMocks はモック実装をリセットしないため、テスト間漏れを防ぐため明示的に reset する
+  // （LogoutButton.test.tsx と同じ理由）。
+  mockRouterReplace.mockReset()
+  mockDeleteAccount.mockReset()
 })
 
 const SESSIONS = {
@@ -349,5 +367,67 @@ describe('AccountSection — Passkey 削除', () => {
 
     await waitFor(() => expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2))
     await screen.findByText(/登録済みの passkey はありません/i)
+  })
+})
+
+describe('AccountSection — アカウント削除（退会・issue #133）', () => {
+  test('「退会する」をクリックすると警告文と現在のパスワード入力欄を表示し、API はまだ呼ばれない', async () => {
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+
+    expect(screen.getByText(/削除され、復元できません/)).toBeInTheDocument()
+    expect(screen.getByLabelText('退会確認用の現在のパスワード')).toBeInTheDocument()
+    expect(mockDeleteAccount).not.toHaveBeenCalled()
+  })
+
+  test('確認 UI で「キャンセル」をクリックすると閉じて deleteAccount は呼ばれない', async () => {
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+    await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
+
+    expect(screen.queryByText(/削除され、復元できません/)).not.toBeInTheDocument()
+    expect(mockDeleteAccount).not.toHaveBeenCalled()
+  })
+
+  test('パスワードを入力して実行すると deleteAccount を呼び、成功後は認証状態をクリアしてログイン画面へ遷移する', async () => {
+    mockDeleteAccount.mockResolvedValue(undefined)
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+    await userEvent.type(screen.getByLabelText('退会確認用の現在のパスワード'), 'my-password')
+    await userEvent.click(screen.getByRole('button', { name: '退会を実行する' }))
+
+    await waitFor(() => expect(mockDeleteAccount).toHaveBeenCalledWith('my-password'))
+    await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'))
+  })
+
+  test('パスワードが誤っている場合（403）は専用のエラーメッセージを表示し、ログアウトや遷移は行わない', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockDeleteAccount.mockRejectedValue(new ApiError(403, 'Invalid password'))
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+    await userEvent.type(screen.getByLabelText('退会確認用の現在のパスワード'), 'wrong-password')
+    await userEvent.click(screen.getByRole('button', { name: '退会を実行する' }))
+
+    await waitFor(() => screen.getByText('パスワードが正しくありません'))
+    expect(mockLogout).not.toHaveBeenCalled()
+    expect(mockRouterReplace).not.toHaveBeenCalled()
+  })
+
+  test('最後の管理者の場合（409）は専用のエラーメッセージを表示する', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockDeleteAccount.mockRejectedValue(new ApiError(409, 'Cannot delete the last admin account'))
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+    await userEvent.type(screen.getByLabelText('退会確認用の現在のパスワード'), 'my-password')
+    await userEvent.click(screen.getByRole('button', { name: '退会を実行する' }))
+
+    await waitFor(() => screen.getByText('最後の管理者は削除できません'))
+    expect(mockLogout).not.toHaveBeenCalled()
   })
 })
