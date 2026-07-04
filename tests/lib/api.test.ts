@@ -687,7 +687,7 @@ describe('createFeaturedSite', () => {
   test('sends POST to /api/backend/admin/featured-sites with input body', async () => {
     mockFetchOk({ id: 'new-site', name: 'New Site', url: 'https://example.com' }, 201)
     const client = makeClient()
-    const input = { name: 'New Site', url: 'https://example.com', description: 'A new site' }
+    const input = { name: 'New Site', url: 'https://example.com', description: 'A new site', order: 0 }
     await client.createFeaturedSite(input)
 
     expect(fetch).toHaveBeenCalledWith(
@@ -699,15 +699,15 @@ describe('createFeaturedSite', () => {
     )
   })
 
-  test('does not send order field in body', async () => {
+  test('sends order field in body', async () => {
     mockFetchOk({ id: 'new', name: 'Site', url: 'https://example.com' }, 201)
     const client = makeClient()
-    await client.createFeaturedSite({ name: 'Site', url: 'https://example.com' })
+    await client.createFeaturedSite({ name: 'Site', url: 'https://example.com', order: 3 })
 
     const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
     const bodyStr = ((call[1] as unknown) as RequestInit).body as string
     const body = JSON.parse(bodyStr) as Record<string, unknown>
-    expect(body.order).toBeUndefined()
+    expect(body.order).toBe(3)
   })
 
   test('returns created FeaturedSource', async () => {
@@ -720,7 +720,7 @@ describe('createFeaturedSite', () => {
     }
     mockFetchOk(created, 201)
     const client = makeClient()
-    const result = await client.createFeaturedSite({ name: 'Test Site', url: 'https://test.com' })
+    const result = await client.createFeaturedSite({ name: 'Test Site', url: 'https://test.com', order: 0 })
 
     expect(result.id).toBe('new')
     expect(result.name).toBe('Test Site')
@@ -730,7 +730,7 @@ describe('createFeaturedSite', () => {
     mockFetchError(409, 'Site with this ID already exists')
     const client = makeClient()
 
-    await expect(client.createFeaturedSite({ name: 'Dup', url: 'https://dup.com' })).rejects.toThrow(
+    await expect(client.createFeaturedSite({ name: 'Dup', url: 'https://dup.com', order: 0 })).rejects.toThrow(
       ApiError
     )
   })
@@ -740,7 +740,7 @@ describe('updateFeaturedSite', () => {
   test('sends PUT to /api/backend/admin/featured-sites/{id} with update body', async () => {
     mockFetchOk({ id: 'hn', name: 'Updated HN', url: 'https://hn.com' })
     const client = makeClient()
-    const input = { name: 'Updated HN', url: 'https://hn.com' }
+    const input = { name: 'Updated HN', url: 'https://hn.com', order: 0 }
     await client.updateFeaturedSite('hn', input)
 
     expect(fetch).toHaveBeenCalledWith(
@@ -755,7 +755,7 @@ describe('updateFeaturedSite', () => {
   test('encodes id in path', async () => {
     mockFetchOk({ id: 'site-with/slash', name: 'Site', url: 'https://example.com' })
     const client = makeClient()
-    await client.updateFeaturedSite('site-with/slash', { name: 'Site', url: 'https://example.com' })
+    await client.updateFeaturedSite('site-with/slash', { name: 'Site', url: 'https://example.com', order: 0 })
 
     const call = (vi.mocked(fetch) as ReturnType<typeof vi.fn>).mock.calls[0]
     const url = call[0] as string
@@ -776,6 +776,7 @@ describe('updateFeaturedSite', () => {
     const result = await client.updateFeaturedSite('hn', {
       name: 'Hacker News',
       url: 'https://updated.hn.com',
+      order: 0,
     })
 
     expect(result.id).toBe('hn')
@@ -786,9 +787,9 @@ describe('updateFeaturedSite', () => {
     mockFetchError(404, 'Site not found')
     const client = makeClient()
 
-    await expect(client.updateFeaturedSite('nonexistent', { name: 'N', url: 'https://n.com' })).rejects.toThrow(
-      ApiError
-    )
+    await expect(
+      client.updateFeaturedSite('nonexistent', { name: 'N', url: 'https://n.com', order: 0 })
+    ).rejects.toThrow(ApiError)
   })
 })
 

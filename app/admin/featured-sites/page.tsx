@@ -34,15 +34,28 @@ export default function AdminFeaturedSitesPage() {
   // 削除確認
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // 並べ替え中は上下ボタンを無効化し、多重実行を防ぐ
+  const [reordering, setReordering] = useState(false)
+
+  // 一覧取得中（初回マウント時・各操作後の reload 中）は sites が未確定/古い状態のため、
+  // 作成や並べ替えが古い order を計算・送信しないよう操作を無効化する
+  const [listLoading, setListLoading] = useState(true)
+
+  // 一覧ロード中・並べ替え処理中は、stale な sites を元にした操作（作成・編集保存・削除・並べ替え）を防ぐ
+  const controlsDisabled = listLoading || reordering
+
   const isAdmin = user?.role === 'admin'
 
   const reload = useCallback(async () => {
-    setLoadError('')
+    setListLoading(true)
     try {
       const res = await client.listFeaturedSites()
       setSites(res.sites)
+      setLoadError('')
     } catch {
       setLoadError('一覧の取得に失敗しました')
+    } finally {
+      setListLoading(false)
     }
   }, [])
 
@@ -54,17 +67,20 @@ export default function AdminFeaturedSitesPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    if (controlsDisabled) return
     setFormError('')
     if (!newName || !newUrl) {
       setFormError('サイト名と URL を入力してください')
       return
     }
     try {
+      const nextOrder = sites.length === 0 ? 0 : Math.max(...sites.map((s) => s.order)) + 1
       await client.createFeaturedSite({
         name: newName,
         url: newUrl,
         thumbnail_url: newThumbnail || undefined,
         description: newDescription || undefined,
+        order: nextOrder,
       })
       setNewName('')
       setNewUrl('')
@@ -95,22 +111,68 @@ export default function AdminFeaturedSitesPage() {
   }
 
   async function handleEditSave(id: string) {
+    if (controlsDisabled) return
     setEditError('')
     if (!editName || !editUrl) {
       setEditError('サイト名と URL を入力してください')
       return
     }
     try {
+      // PUT は全置換のため、表示順（order）を送らないと既定値 0 で上書きされてしまう。
+      // 編集フォームは order を扱わないので、既存の値をそのまま引き継いで送る。
+      const currentOrder = sites.find((s) => s.id === id)?.order ?? 0
       await client.updateFeaturedSite(id, {
         name: editName,
         url: editUrl,
         thumbnail_url: editThumbnail || undefined,
         description: editDescription || undefined,
+        order: currentOrder,
       })
       handleEditCancel()
       await reload()
     } catch {
       setEditError('サイト更新に失敗しました')
+    }
+  }
+
+  // 隣接する行と入れ替え、配列インデックスと order が一致しない行だけを PUT で更新する
+  // （＝表示順が変わった行。既存データに重複・欠番があっても、このタイミングで自己修復される）。
+  // 途中で失敗しても一覧を再取得して整合させ、エラーを表示する。
+  async function handleMove(id: string, direction: 'up' | 'down') {
+    if (controlsDisabled) return
+    const index = sites.findIndex((s) => s.id === id)
+    if (index === -1) return
+    const swapIndex = direction === 'up' ? index - 1 : index + 1
+    if (swapIndex < 0 || swapIndex >= sites.length) return
+
+    const reordered = [...sites]
+    ;[reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]]
+
+    setReordering(true)
+    let failed = false
+    try {
+      for (let i = 0; i < reordered.length; i++) {
+        const site = reordered[i]
+        if (site.order !== i) {
+          await client.updateFeaturedSite(site.id, {
+            name: site.name,
+            url: site.url,
+            thumbnail_url: site.thumbnail_url || undefined,
+            description: site.description || undefined,
+            order: i,
+          })
+        }
+      }
+    } catch {
+      failed = true
+    } finally {
+      setReordering(false)
+    }
+    // reload() は成功時に loadError を空にクリアしてしまうため、並べ替え自体の失敗は
+    // reload 完了後に改めてセットし直す（reload に無条件で消させない）。
+    await reload()
+    if (failed) {
+      setLoadError('並び替えに失敗しました')
     }
   }
 
@@ -123,6 +185,7 @@ export default function AdminFeaturedSitesPage() {
   }
 
   async function handleDeleteConfirm(id: string) {
+    if (controlsDisabled) return
     try {
       await client.deleteFeaturedSite(id)
       handleDeleteCancel()
@@ -195,7 +258,7 @@ export default function AdminFeaturedSitesPage() {
               style={{ minHeight: '80px' }}
             />
             {formError && <p className="form-error">{formError}</p>}
-            <button className="btn btn-primary" type="submit" style={{ alignSelf: 'flex-end' }}>
+            <button className="btn btn-primary" type="submit" disabled={controlsDisabled} style={{ alignSelf: 'flex-end' }}>
               追加
             </button>
           </form>
@@ -208,7 +271,7 @@ export default function AdminFeaturedSitesPage() {
           </div>
           {loadError && <p className="form-error" style={{ padding: '0 20px' }}>{loadError}</p>}
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-            {sites.map((site) => (
+            {sites.map((site, index) => (
               <li key={site.id}>
                 {editingId === site.id ? (
                   // 編集モード
@@ -247,7 +310,12 @@ export default function AdminFeaturedSitesPage() {
                         <button className="btn btn-ghost" onClick={handleEditCancel} aria-label="キャンセル">
                           キャンセル
                         </button>
-                        <button className="btn btn-primary" onClick={() => handleEditSave(site.id)} aria-label="保存">
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => handleEditSave(site.id)}
+                          disabled={controlsDisabled}
+                          aria-label="保存"
+                        >
                           保存
                         </button>
                       </div>
@@ -269,10 +337,36 @@ export default function AdminFeaturedSitesPage() {
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
-                      <button className="btn btn-ghost" onClick={() => handleEditClick(site)} aria-label={`${site.name} を編集`}>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => handleMove(site.id, 'up')}
+                        disabled={index === 0 || controlsDisabled}
+                        aria-label={`${site.name} を上へ移動`}
+                      >
+                        上へ
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => handleMove(site.id, 'down')}
+                        disabled={index === sites.length - 1 || controlsDisabled}
+                        aria-label={`${site.name} を下へ移動`}
+                      >
+                        下へ
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => handleEditClick(site)}
+                        disabled={controlsDisabled}
+                        aria-label={`${site.name} を編集`}
+                      >
                         編集
                       </button>
-                      <button className="btn btn-ghost" onClick={() => handleDeleteClick(site.id)} aria-label={`${site.name} を削除`}>
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => handleDeleteClick(site.id)}
+                        disabled={controlsDisabled}
+                        aria-label={`${site.name} を削除`}
+                      >
                         削除
                       </button>
                     </div>
