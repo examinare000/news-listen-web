@@ -12,6 +12,45 @@ import { formatAuthUserLabel } from '@/lib/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 import type { PasskeyCredential, Session } from '@/types/index'
 
+// WHY: backend の shared/password_policy.py と同一規則を frontend でも検証し、
+//      送信前エラー表示と 422 レスポンス時の対訳を一元管理する。
+const PASSWORD_MIN_LENGTH = 12
+
+function countPasswordCharacterClasses(password: string) {
+  return [
+    /[a-z]/.test(password),
+    /[A-Z]/.test(password),
+    /\d/.test(password),
+    // WHY: backend の has_symbol は空白を記号に数えない。空白はパスワード政策上記号ではない。
+    /[^A-Za-z0-9\s]/.test(password),
+  ].filter(Boolean).length
+}
+
+function validateNewPassword(password: string) {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return '新しいパスワードは12文字以上にしてください'
+  }
+  if (countPasswordCharacterClasses(password) < 3) {
+    return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
+  }
+  return null
+}
+
+function translatePasswordPolicyDetail(detail: string) {
+  switch (detail) {
+    case 'password must be at least 12 characters long':
+      return '新しいパスワードは12文字以上にしてください'
+    case 'password must contain at least 3 of: lowercase, uppercase, digit, symbol':
+      return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
+    case 'password is too common':
+      return 'よく使われるパスワードのため使用できません'
+    case 'password must not contain the username':
+      return 'ユーザー名を含むパスワードは使用できません'
+    default:
+      return `パスワード変更に失敗しました（${detail}）`
+  }
+}
+
 // 設定画面の「アカウント」セクション。プロフィール（表示名）編集・パスワード変更・
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
@@ -94,8 +133,13 @@ export function AccountSection() {
 
   async function handlePasswordChange() {
     setPwMsg(null)
-    if (newPassword.length < 8) {
-      setPwMsg({ kind: 'error', text: '新しいパスワードは8文字以上にしてください' })
+    if (!currentPassword) {
+      setPwMsg({ kind: 'error', text: '現在のパスワードを入力してください' })
+      return
+    }
+    const validationError = validateNewPassword(newPassword)
+    if (validationError) {
+      setPwMsg({ kind: 'error', text: validationError })
       return
     }
     try {
@@ -104,10 +148,12 @@ export function AccountSection() {
       setNewPassword('')
       setPwMsg({ kind: 'ok', text: 'パスワードを変更しました' })
     } catch (err) {
-      const text =
-        err instanceof ApiError && err.status === 400
-          ? '現在のパスワードが正しくありません'
-          : 'パスワード変更に失敗しました'
+      let text = 'パスワード変更に失敗しました'
+      if (err instanceof ApiError && err.status === 400) {
+        text = '現在のパスワードが正しくありません'
+      } else if (err instanceof ApiError && err.status === 422) {
+        text = translatePasswordPolicyDetail(err.detail)
+      }
       setPwMsg({ kind: 'error', text })
     }
   }
@@ -282,7 +328,7 @@ export function AccountSection() {
       <div className="settings-row">
         <div>
           <div className="settings-row-label">パスワード変更</div>
-          <div className="settings-row-desc">現在のパスワードと新しいパスワード（8文字以上）を入力</div>
+          <div className="settings-row-desc">現在のパスワードと新しいパスワードを入力</div>
         </div>
       </div>
       <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -306,6 +352,7 @@ export function AccountSection() {
           onChange={(e) => setNewPassword(e.target.value)}
           aria-label="新しいパスワード"
         />
+        <div className="settings-row-desc">12文字以上・小文字/大文字/数字/記号のうち3種類以上</div>
         <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={handlePasswordChange} aria-label="パスワードを変更">
           パスワードを変更
         </button>
