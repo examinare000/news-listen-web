@@ -589,7 +589,7 @@ export function AccountSection() {
       {confirmingDeleteAccount && (
         <div style={{ padding: '0 20px 16px' }}>
           <div className="form-error" style={{ marginBottom: 8 }}>
-            全データが完全に削除され復元できません。続行するには現在のパスワードを入力してください。
+            アカウントとあなたの個人データ（設定・Star/既読履歴・端末登録・セッションなど）は削除され、復元できません。続行するには現在のパスワードを入力してください。
           </div>
           <input
             id="account-delete-password"

@@ -376,7 +376,7 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
 
     await userEvent.click(screen.getByRole('button', { name: '退会する' }))
 
-    expect(screen.getByText(/全データが完全に削除され復元できません/)).toBeInTheDocument()
+    expect(screen.getByText(/削除され、復元できません/)).toBeInTheDocument()
     expect(screen.getByLabelText('退会確認用の現在のパスワード')).toBeInTheDocument()
     expect(mockDeleteAccount).not.toHaveBeenCalled()
   })
@@ -387,7 +387,7 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
     await userEvent.click(screen.getByRole('button', { name: '退会する' }))
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
 
-    expect(screen.queryByText(/全データが完全に削除され復元できません/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/削除され、復元できません/)).not.toBeInTheDocument()
     expect(mockDeleteAccount).not.toHaveBeenCalled()
   })
 
