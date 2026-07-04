@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
 import { ApiError } from '@/lib/api'
@@ -15,8 +16,9 @@ import type { PasskeyCredential, Session } from '@/types/index'
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
 export function AccountSection() {
-  const { user, refreshMe } = useAuth()
+  const { user, refreshMe, logout } = useAuth()
   const client = createApiClient()
+  const router = useRouter()
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
   const [profileMsg, setProfileMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
@@ -40,6 +42,12 @@ export function AccountSection() {
   const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null)
   const [revokingOthers, setRevokingOthers] = useState(false)
   const [confirmingRevokeOthers, setConfirmingRevokeOthers] = useState(false)
+
+  // アカウント削除（退会・issue #133）。
+  const [confirmingDeleteAccount, setConfirmingDeleteAccount] = useState(false)
+  const [deleteAccountPassword, setDeleteAccountPassword] = useState('')
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [deleteAccountError, setDeleteAccountError] = useState<string | null>(null)
 
   const loadCredentials = useCallback(async () => {
     try {
@@ -187,6 +195,39 @@ export function AccountSection() {
       setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
     } finally {
       setRevokingOthers(false)
+    }
+  }
+
+  // ── アカウント削除（退会・issue #133） ──────────────────────────────
+  function handleDeleteAccountClick() {
+    setConfirmingDeleteAccount(true)
+    setDeleteAccountError(null)
+  }
+
+  function handleDeleteAccountCancel() {
+    setConfirmingDeleteAccount(false)
+    setDeleteAccountPassword('')
+    setDeleteAccountError(null)
+  }
+
+  async function handleDeleteAccountConfirm() {
+    setDeletingAccount(true)
+    setDeleteAccountError(null)
+    try {
+      await client.deleteAccount(deleteAccountPassword)
+      // WHY: サーバー側でセッションは既に失効済みだが、ローカルの認証状態も
+      //      LogoutButton と同じ後処理（logout → ログイン画面へ replace）で揃える。
+      await logout()
+      router.replace('/')
+    } catch (err) {
+      const text =
+        err instanceof ApiError && err.status === 403
+          ? 'パスワードが正しくありません'
+          : err instanceof ApiError && err.status === 409
+            ? '最後の管理者は削除できません'
+            : 'アカウントの削除に失敗しました'
+      setDeleteAccountError(text)
+      setDeletingAccount(false)
     }
   }
 
@@ -523,6 +564,69 @@ export function AccountSection() {
             </Link>
           </div>
         </>
+      )}
+
+      {/* アカウント削除（退会・issue #133） — 破壊的操作のため一番下に隔離し、確認ステップを挟む */}
+      <div className="settings-row">
+        <div>
+          <div className="settings-row-label" style={{ color: 'var(--red)' }}>
+            アカウント削除（退会）
+          </div>
+          <div className="settings-row-desc">
+            アカウントを削除すると元に戻せません
+          </div>
+        </div>
+        <button
+          className="btn btn-ghost"
+          onClick={handleDeleteAccountClick}
+          disabled={deletingAccount}
+          aria-label="退会する"
+        >
+          退会する
+        </button>
+      </div>
+
+      {confirmingDeleteAccount && (
+        <div style={{ padding: '0 20px 16px' }}>
+          <div className="form-error" style={{ marginBottom: 8 }}>
+            全データが完全に削除され復元できません。続行するには現在のパスワードを入力してください。
+          </div>
+          <input
+            id="account-delete-password"
+            className="form-input"
+            type="password"
+            autoComplete="current-password"
+            placeholder="現在のパスワード"
+            value={deleteAccountPassword}
+            onChange={(e) => setDeleteAccountPassword(e.target.value)}
+            aria-label="退会確認用の現在のパスワード"
+            style={{ marginBottom: 8 }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button
+              className="btn btn-ghost"
+              onClick={handleDeleteAccountCancel}
+              disabled={deletingAccount}
+              aria-label="キャンセル"
+            >
+              キャンセル
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleDeleteAccountConfirm}
+              disabled={deletingAccount || deleteAccountPassword.length === 0}
+              aria-label="退会を実行する"
+            >
+              {deletingAccount ? '削除中…' : '退会を実行する'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {deleteAccountError && (
+        <div className="form-error" style={{ padding: '0 20px 12px' }}>
+          {deleteAccountError}
+        </div>
       )}
     </section>
   )
