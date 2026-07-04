@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
+import { useAuth } from '@/contexts/AuthContext'
 
 // アイコン SVG は docs/design/app-ui.html L1388-1414 をインライン移植
 // WHY: アイコンライブラリを導入しない方針（依存追加ゼロ・デザイン正本と完全一致）
@@ -89,6 +90,9 @@ const NAV_ITEMS = [
 
 export function NavigationBar() {
   const pathname = usePathname()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const isAdminLinkActive = pathname === '/admin/featured-sites'
 
   return (
     <aside className="sidebar">
@@ -136,6 +140,33 @@ export function NavigationBar() {
             </React.Fragment>
           )
         })}
+
+        {/* admin ロールのみ管理導線を表示（権限のない項目を露出させない） */}
+        {isAdmin && (
+          <>
+            <div className="sidebar-divider"></div>
+            <div className="nav-section-label">管理</div>
+            <Link
+              href="/admin/featured-sites"
+              className={isAdminLinkActive ? 'nav-item active' : 'nav-item'}
+              aria-current={isAdminLinkActive ? 'page' : undefined}
+            >
+              <svg
+                className="nav-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <span>おすすめサイト管理</span>
+            </Link>
+          </>
+        )}
       </nav>
 
       <div className="sidebar-footer">
