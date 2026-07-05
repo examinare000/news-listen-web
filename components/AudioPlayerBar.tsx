@@ -194,10 +194,11 @@ export function AudioPlayerBar() {
                       >
                         ↑
                       </button>
+                      {/* 削除前オフセット意味論では「1つ下へ」= 次要素の直後 = i+2（spec §2.7） */}
                       <button
                         type="button"
                         className="ctrl-btn"
-                        onClick={() => player.reorderQueue(i, i + 1)}
+                        onClick={() => player.reorderQueue(i, i + 2)}
                         disabled={i === player.upNext.length - 1}
                         aria-label="下へ"
                       >

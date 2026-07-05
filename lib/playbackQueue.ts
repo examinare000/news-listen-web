@@ -1,6 +1,6 @@
 // 再生キュー（プレイリスト）の純粋な状態モデル（issue #81）。
 // オーディオ要素に依存しないため、自動次再生・空キュー停止・並べ替えをユニットテストできる。
-// iOS の PlaybackQueue.swift と同じ責務・規約。
+// 操作契約の正本は docs/design/shared-playback-spec.md。
 
 import type { Podcast } from '@/types'
 
@@ -87,12 +87,20 @@ export function remove(q: QueueState, id: string): QueueState {
   return { items, currentIndex }
 }
 
-/** 待機列（upNext）を「from 番目を to 番目へ」並べ替える（upNext 基準のインデックス）。現在は不変。 */
+/**
+ * 待機列（upNext）を削除前オフセット方式で並べ替える（upNext 基準のインデックス）。現在再生中は不変。
+ * 意味論 = SwiftUI onMove(fromOffsets:toOffset:) 規約。toIndex ∈ [0, upNextCount]（== count は末尾移動）。
+ * @see docs/design/shared-playback-spec.md §2.7 moveUpNext
+ */
 export function reorderUpNext(q: QueueState, fromIndex: number, toIndex: number): QueueState {
   const base = q.currentIndex === null ? 0 : q.currentIndex + 1
   const up = q.items.slice(base)
-  if (fromIndex < 0 || fromIndex >= up.length || toIndex < 0 || toIndex >= up.length) return q
-  const [moved] = up.splice(fromIndex, 1)
-  up.splice(toIndex, 0, moved)
-  return { ...q, items: [...q.items.slice(0, base), ...up] }
+
+  if (fromIndex < 0 || fromIndex >= up.length || toIndex < 0 || toIndex > up.length) return q
+
+  const moved = up[fromIndex]
+  const rest = [...up.slice(0, fromIndex), ...up.slice(fromIndex + 1)]
+  const insertAt = toIndex - (fromIndex < toIndex ? 1 : 0)
+  const nextUp = [...rest.slice(0, insertAt), moved, ...rest.slice(insertAt)]
+  return { ...q, items: [...q.items.slice(0, base), ...nextUp] }
 }

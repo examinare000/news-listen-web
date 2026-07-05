@@ -433,3 +433,121 @@ describe('Speed selector', () => {
     expect(Number(speedSelect.value)).toBe(1.5)
   })
 })
+
+// ==========================================================
+// キューの並べ替えボタン（回帰テスト：削除前オフセット意味論）
+// issue #138: reorderUpNext の意味論を SwiftUI onMove 準拠（削除前オフセット）に変更
+// 「上へ」= from i → toOffset i-1（後方移動、両意味論一致）
+// 「下へ」= from i → toOffset i+2（前方移動、削除前オフセット方式）
+// テスト検証: キュー状態の実際の順序変化を観察
+// ==========================================================
+describe('Queue reordering buttons (spec issue #138, onMove semantics)', () => {
+  test('UP button moves item 1 position upward (backward move, both semantics agree)', async () => {
+    const queuePodcast1: Podcast = { ...SAMPLE_PODCAST, id: 'q1', title: 'First' }
+    const queuePodcast2: Podcast = { ...SAMPLE_PODCAST, id: 'q2', title: 'Second' }
+    const queuePodcast3: Podcast = { ...SAMPLE_PODCAST, id: 'q3', title: 'Third' }
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
+
+    function QueueSetup() {
+      const player = useAudioPlayerContext()
+      React.useEffect(() => {
+        void player.addToQueue(queuePodcast1)
+        void player.addToQueue(queuePodcast2)
+        void player.addToQueue(queuePodcast3)
+      }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      return null
+    }
+
+    render(
+      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
+        <ToastProvider>
+          <AudioPlayerProvider>
+            <QueueSetup />
+            <AudioPlayerBar />
+          </AudioPlayerProvider>
+        </ToastProvider>
+      </AppProvider>
+    )
+
+    // キューボタンをクリックしてキューパネルを開く
+    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
+    await userEvent.click(queueBtn)
+
+    // 初期状態: First, Second, Third
+    expect(screen.getByText('First')).toBeInTheDocument()
+    expect(screen.getByText('Second')).toBeInTheDocument()
+    expect(screen.getByText('Third')).toBeInTheDocument()
+
+    // Second の UP ボタンをクリック → First, Second が swap
+    const upButtons = screen.getAllByRole('button', { name: /上へ/ })
+    await userEvent.click(upButtons[1]) // Second の UP ボタン
+
+    // 期待値: Second, First, Third（Second が1つ上へ）
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem')
+      // queue-item が複数あるため、テキストの順序で確認
+      const titles = Array.from(items)
+        .map((li) => li.textContent)
+        .filter((text) => text && (text.includes('First') || text.includes('Second') || text.includes('Third')))
+      // Second が First より前に来ることを確認
+      const secondIdx = titles.findIndex((t) => t?.includes('Second'))
+      const firstIdx = titles.findIndex((t) => t?.includes('First'))
+      expect(secondIdx).toBeLessThan(firstIdx)
+    })
+  })
+
+  test('DOWN button moves item 1 position downward (forward move, onMove delete-before-offset semantics)', async () => {
+    const queuePodcast1: Podcast = { ...SAMPLE_PODCAST, id: 'q1', title: 'Item_A' }
+    const queuePodcast2: Podcast = { ...SAMPLE_PODCAST, id: 'q2', title: 'Item_B' }
+    const queuePodcast3: Podcast = { ...SAMPLE_PODCAST, id: 'q3', title: 'Item_C' }
+
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
+
+    function QueueSetup() {
+      const player = useAudioPlayerContext()
+      React.useEffect(() => {
+        void player.addToQueue(queuePodcast1)
+        void player.addToQueue(queuePodcast2)
+        void player.addToQueue(queuePodcast3)
+      }, []) // eslint-disable-line react-hooks/exhaustive-deps
+      return null
+    }
+
+    render(
+      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
+        <ToastProvider>
+          <AudioPlayerProvider>
+            <QueueSetup />
+            <AudioPlayerBar />
+          </AudioPlayerProvider>
+        </ToastProvider>
+      </AppProvider>
+    )
+
+    // キューボタンをクリックしてキューパネルを開く
+    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
+    await userEvent.click(queueBtn)
+
+    // 初期状態: Item_A, Item_B, Item_C
+    expect(screen.getByText('Item_A')).toBeInTheDocument()
+    expect(screen.getByText('Item_B')).toBeInTheDocument()
+    expect(screen.getByText('Item_C')).toBeInTheDocument()
+
+    // Item_A の DOWN ボタンをクリック → deleteBeforeOffset 意味論で Item_B, Item_A, Item_C に
+    const downButtons = screen.getAllByRole('button', { name: /下へ/ })
+    await userEvent.click(downButtons[0]) // Item_A の DOWN ボタン
+
+    // 期待値: Item_B, Item_A, Item_C（Item_A が1つ下へ、削除前オフセット = i+2）
+    await waitFor(() => {
+      const items = screen.getAllByRole('listitem')
+      const titles = Array.from(items)
+        .map((li) => li.textContent)
+        .filter((text) => text && (text.includes('Item_A') || text.includes('Item_B') || text.includes('Item_C')))
+      // Item_A が Item_B より後ろに来ることを確認
+      const aIdx = titles.findIndex((t) => t?.includes('Item_A'))
+      const bIdx = titles.findIndex((t) => t?.includes('Item_B'))
+      expect(aIdx).toBeGreaterThan(bIdx)
+    })
+  })
+})
