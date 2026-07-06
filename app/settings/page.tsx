@@ -1,10 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useToast } from '@/components/ui/Toast'
+import { createApiClient } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
@@ -24,23 +25,30 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
 
 export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
+  const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>('toeic_600')
+  // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
+  const [preferencesLoadError, setPreferencesLoadError] = useState(false)
 
   // Load preferences on mount (C群#13)
-  useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const prefs = await createApiClient().getPreferences()
-        setDefaultDifficulty(prefs.default_difficulty)
-      } catch {
-        // Fallback to toeic_600 if fetch fails
-        setDefaultDifficulty('toeic_600')
-      }
+  const loadPreferences = useCallback(async () => {
+    try {
+      const prefs = await createApiClient().getPreferences()
+      setDefaultDifficulty(prefs.default_difficulty)
+      setPreferencesLoadError(false)
+    } catch {
+      // Fallback to toeic_600 if fetch fails
+      setDefaultDifficulty('toeic_600')
+      setPreferencesLoadError(true)
+      showToast('設定の読み込みに失敗しました', 'error')
     }
+  }, [showToast])
+
+  useEffect(() => {
     void loadPreferences()
-  }, [])
+  }, [loadPreferences])
 
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
@@ -158,6 +166,20 @@ export default function SettingsPage() {
               ))}
             </select>
           </div>
+
+          {preferencesLoadError && (
+            <div className="settings-row-desc form-error" style={{ padding: '0 20px 12px' }}>
+              設定の読み込みに失敗しました。
+              <button
+                className="btn btn-ghost"
+                onClick={() => loadPreferences()}
+                aria-label="設定を再読み込み"
+                style={{ marginLeft: 8 }}
+              >
+                再試行
+              </button>
+            </div>
+          )}
         </section>
 
 
