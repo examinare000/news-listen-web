@@ -256,6 +256,55 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
       expect(diffSelect.value).toBe('toeic_600')
     })
   })
+
+  // issue #164: 設定読み込み失敗をサイレントにせず、トースト表示と再試行導線を出す
+  test('Given getPreferences fails, shows an error toast and a retry affordance', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    // WHY: トースト（Toast コンポーネント）とインライン再試行導線の両方に
+    // 同文言が出るため getAllByText で許容する
+    await waitFor(() => {
+      expect(screen.getAllByText(/設定の読み込みに失敗しました/).length).toBeGreaterThan(0)
+    })
+    expect(screen.getByRole('button', { name: /設定を再読み込み/ })).toBeInTheDocument()
+  })
+
+  test('Given retry button clicked after getPreferences failure, refetches and clears the error on success', async () => {
+    const getPreferences = vi
+      .fn()
+      .mockRejectedValueOnce(new (await import('@/lib/api')).ApiError(500, 'Server error'))
+      .mockResolvedValueOnce({
+        default_difficulty: 'ielts_7',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences,
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /設定を再読み込み/ }))
+    await userEvent.click(screen.getByRole('button', { name: /設定を再読み込み/ }))
+
+    await waitFor(() => expect(getPreferences).toHaveBeenCalledTimes(2))
+    // WHY: エラートーストは TOAST_DURATION_MS (3秒) 経過まで実タイマーで残るため、
+    // 消滅を待つのではなく、成功時にのみ消える再試行ボタンの有無で復帰を検証する。
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /設定を再読み込み/ })).not.toBeInTheDocument()
+    })
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    expect(diffSelect.value).toBe('ielts_7')
+  })
 })
 
 // ==========================================================
