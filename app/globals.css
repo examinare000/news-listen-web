@@ -523,6 +523,13 @@ html[data-theme="light"] body::before { opacity: .5; }
   align-self: center;
 }
 
+/* star ボタンと難易度指定メニュートリガーを横並びにする（issue #163） */
+.star-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .action-btn {
   width: 34px; height: 34px;
   border-radius: 8px;
