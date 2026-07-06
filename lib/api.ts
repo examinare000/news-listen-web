@@ -25,6 +25,7 @@ import type {
   PasskeyCredentialsListResponse,
   SessionsListResponse,
   RevokeSessionsResponse,
+  GenerationQuota,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -112,7 +113,8 @@ export function createApiClient() {
     },
 
     starArticle(id: string) {
-      return request<{ status: string; article_id: string }>(
+      // remaining は生成残回数（issue #164 / ADR-061）。旧 backend は未送信のため optional。
+      return request<{ status: string; article_id: string; remaining?: number | null }>(
         `/api/backend/articles/${id}/star`,
         { method: 'POST' },
       )
@@ -185,6 +187,11 @@ export function createApiClient() {
 
     getPreferences() {
       return request<UserPreferences>('/api/backend/settings/preferences', { method: 'GET' })
+    },
+
+    /** 生成残回数。limit=0 は無制限（remaining は null）。issue #164 / ADR-061。 */
+    getGenerationQuota() {
+      return request<GenerationQuota>('/api/backend/users/me/generation-quota', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {
