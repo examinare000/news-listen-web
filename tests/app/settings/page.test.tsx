@@ -305,6 +305,40 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
     const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
     expect(diffSelect.value).toBe('ielts_7')
   })
+
+  // issue #164: 難易度保存失敗をサイレントにせず、エラートースト表示 + サーバー値へロールバックする
+  test('Given updatePreferences fails, shows an error toast and reverts the select to the previous value', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i }).value).toBe(
+        'toeic_600'
+      )
+    })
+
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    await userEvent.selectOptions(diffSelect, 'eiken_p1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/難易度設定の保存に失敗しました/)).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(diffSelect.value).toBe('toeic_600')
+    })
+  })
 })
 
 // ==========================================================
