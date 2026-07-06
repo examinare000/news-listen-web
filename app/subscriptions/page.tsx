@@ -322,7 +322,7 @@ export default function SubscriptionsPage() {
                   </div>
                 )}
 
-                {!featuredLoadError && recommended.length > 0 && (
+                {recommended.length > 0 && (
                   <div
                     style={{
                       marginTop: 16,
