@@ -52,15 +52,15 @@ export default function SettingsPage() {
 
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
+    // issue #164: 保存失敗時にサーバー側の値へ戻せるよう、変更前の値を保持しておく。
+    const previousDifficulty = defaultDifficulty
     setDefaultDifficulty(newDifficulty)
     try {
       await createApiClient().updatePreferences({ default_difficulty: newDifficulty })
-    } catch (err) {
-      // Fail silently: keep UI updated even if API fails
-      // (Non-fatal for playback experience)
-      if (err instanceof ApiError) {
-        // Optionally log but don't show to user
-      }
+    } catch {
+      // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
+      setDefaultDifficulty(previousDifficulty)
+      showToast('難易度設定の保存に失敗しました', 'error')
     }
   }
 
