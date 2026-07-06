@@ -167,6 +167,47 @@ describe('FeedPage — Star', () => {
     })
   })
 
+  // issue #164 / ADR-061: 生成残回数の可視化
+  test('Given star succeeds with a remaining count, shows the count in the toast', async () => {
+    const starArticle = vi
+      .fn()
+      .mockResolvedValue({ status: 'starred', article_id: 'a1', remaining: 3 })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Star しました（残り生成 3 回）')).toBeInTheDocument()
+    })
+  })
+
+  test('Given star succeeds without a remaining field (backward compat with old backend), shows the original toast text', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText('Star しました')).toBeInTheDocument()
+    })
+  })
+
   test('Given star returns 429, shows generation-limit toast with retry time (#82)', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
