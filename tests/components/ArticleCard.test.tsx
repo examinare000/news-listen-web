@@ -202,3 +202,55 @@ describe('ArticleCard restyle (design markup)', () => {
     expect(track!).toHaveAttribute('aria-valuenow', String(SAMPLE_ARTICLE.score))
   })
 })
+
+// ==========================================================
+// ArticleCard — 記事単位の難易度指定 star（issue #163）
+// ==========================================================
+describe('ArticleCard difficulty menu (issue #163)', () => {
+  test('Given starred=false, shows a difficulty menu trigger next to the star button', () => {
+    renderCard({ starred: false })
+    expect(screen.getByRole('button', { name: /記事の生成難易度を指定/ })).toBeInTheDocument()
+  })
+
+  test('Given starred=true, does not show the difficulty menu trigger', () => {
+    renderCard({ starred: true })
+    expect(screen.queryByRole('button', { name: /記事の生成難易度を指定/ })).not.toBeInTheDocument()
+  })
+
+  test('Given busy=true, difficulty menu trigger is disabled', () => {
+    renderCard({ busy: true })
+    expect(screen.getByRole('button', { name: /記事の生成難易度を指定/ })).toBeDisabled()
+  })
+
+  test('Given a difficulty selected from the menu, calls onStar with id and difficulty', async () => {
+    const onStar = vi.fn()
+    renderCard({ onStar })
+
+    await userEvent.click(screen.getByRole('button', { name: /記事の生成難易度を指定/ }))
+    await userEvent.click(screen.getByRole('menuitem', { name: 'TOEIC 900' }))
+
+    expect(onStar).toHaveBeenCalledWith(SAMPLE_ARTICLE.id, 'toeic_900')
+  })
+
+  test('Given the menu lists all 6 difficulty levels', async () => {
+    renderCard()
+    await userEvent.click(screen.getByRole('button', { name: /記事の生成難易度を指定/ }))
+
+    expect(screen.getByRole('menuitem', { name: 'TOEIC 600' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'TOEIC 900' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'IELTS 5.5' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'IELTS 7.0' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '英検2級' })).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: '英検準1級' })).toBeInTheDocument()
+  })
+
+  test('Given the plain star button clicked (not the menu), calls onStar with only the id', async () => {
+    const onStar = vi.fn()
+    renderCard({ onStar })
+
+    await userEvent.click(screen.getByRole('button', { name: /^スターする$/ }))
+
+    expect(onStar).toHaveBeenCalledWith(SAMPLE_ARTICLE.id)
+    expect(onStar).toHaveBeenCalledTimes(1)
+  })
+})
