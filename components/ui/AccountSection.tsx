@@ -69,6 +69,8 @@ export function AccountSection() {
   // Passkey state
   const [passkeyCredentials, setPasskeyCredentials] = useState<PasskeyCredential[]>([])
   const [passkeyMsg, setPasskeyMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  // issue #164: 初回一覧取得の失敗をサイレントにせず、専用のエラー状態で再試行導線を出す。
+  const [credentialsLoadError, setCredentialsLoadError] = useState(false)
   const [registeringPasskey, setRegisteringPasskey] = useState(false)
   const [deletingCredentialId, setDeletingCredentialId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
@@ -77,6 +79,8 @@ export function AccountSection() {
   // ログイン中のデバイス（セッション）state — issue #84。
   const [sessions, setSessions] = useState<Session[]>([])
   const [sessionsMsg, setSessionsMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
+  // issue #164: 初回一覧取得の失敗をサイレントにせず、専用のエラー状態で再試行できるようにする。
+  const [sessionsLoadError, setSessionsLoadError] = useState(false)
   const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null)
   const [confirmingRevokeId, setConfirmingRevokeId] = useState<string | null>(null)
   const [revokingOthers, setRevokingOthers] = useState(false)
@@ -92,8 +96,10 @@ export function AccountSection() {
     try {
       const res = await client.getPasskeyCredentials()
       setPasskeyCredentials(res.credentials)
+      setCredentialsLoadError(false)
     } catch {
-      // ロード失敗はサイレント（初回表示なので致命的ではない）
+      // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
+      setCredentialsLoadError(true)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -101,8 +107,10 @@ export function AccountSection() {
     try {
       const res = await client.getSessions()
       setSessions(res.sessions)
+      setSessionsLoadError(false)
     } catch {
-      // ロード失敗はサイレント（初回表示なので致命的ではない）
+      // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
+      setSessionsLoadError(true)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -382,7 +390,19 @@ export function AccountSection() {
       </div>
 
       {/* 登録済み Passkey 一覧 */}
-      {passkeyCredentials.length === 0 ? (
+      {credentialsLoadError ? (
+        <div className="form-error" style={{ padding: '0 20px 12px' }}>
+          Passkey 一覧の読み込みに失敗しました
+          <button
+            className="btn btn-ghost"
+            onClick={() => loadCredentials()}
+            aria-label="Passkey 一覧を再試行"
+            style={{ marginLeft: 8 }}
+          >
+            再試行
+          </button>
+        </div>
+      ) : passkeyCredentials.length === 0 ? (
         <div className="settings-row-desc" style={{ padding: '0 20px 12px', color: 'var(--text-muted, #888)' }}>
           登録済みの Passkey はありません
         </div>
@@ -505,7 +525,19 @@ export function AccountSection() {
         </div>
       )}
 
-      {sessions.length === 0 ? (
+      {sessionsLoadError ? (
+        <div className="form-error" style={{ padding: '0 20px 12px' }}>
+          ログイン中のデバイスの読み込みに失敗しました
+          <button
+            className="btn btn-ghost"
+            onClick={() => loadSessions()}
+            aria-label="ログイン中のデバイスを再試行"
+            style={{ marginLeft: 8 }}
+          >
+            再試行
+          </button>
+        </div>
+      ) : sessions.length === 0 ? (
         <div className="settings-row-desc" style={{ padding: '0 20px 12px', color: 'var(--text-muted, #888)' }}>
           ログイン中のデバイスはありません
         </div>
