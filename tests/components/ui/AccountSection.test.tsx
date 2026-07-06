@@ -271,6 +271,56 @@ describe('AccountSection — Passkey 登録', () => {
   })
 })
 
+describe('AccountSection — Passkey 一覧の読み込み失敗（issue #164）', () => {
+  test('読み込み失敗時はエラーメッセージと再試行ボタンを表示し、空一覧の文言は出さない', async () => {
+    mockGetPasskeyCredentials.mockRejectedValue(new Error('network error'))
+    render(<AccountSection />)
+
+    await screen.findByText(/passkey 一覧の読み込みに失敗しました/i)
+    expect(screen.queryByText(/登録済みの passkey はありません/i)).not.toBeInTheDocument()
+  })
+
+  test('再試行ボタンをクリックすると getPasskeyCredentials を再度呼び、成功すれば一覧を表示する', async () => {
+    mockGetPasskeyCredentials
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({ credentials: [FAKE_CRED] })
+    render(<AccountSection />)
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /passkey 一覧を再試行/i }),
+    )
+
+    await waitFor(() => expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2))
+    await screen.findByText('My Passkey')
+    expect(screen.queryByText(/passkey 一覧の読み込みに失敗しました/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('AccountSection — ログイン中デバイス一覧の読み込み失敗（issue #164）', () => {
+  test('読み込み失敗時はエラーメッセージと再試行ボタンを表示し、空一覧の文言は出さない', async () => {
+    mockGetSessions.mockRejectedValue(new Error('network error'))
+    render(<AccountSection />)
+
+    await screen.findByText(/ログイン中のデバイスの読み込みに失敗しました/i)
+    expect(screen.queryByText(/ログイン中のデバイスはありません/i)).not.toBeInTheDocument()
+  })
+
+  test('再試行ボタンをクリックすると getSessions を再度呼び、成功すれば一覧を表示する', async () => {
+    mockGetSessions
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce(SESSIONS)
+    render(<AccountSection />)
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /ログイン中のデバイスを再試行/i }),
+    )
+
+    await waitFor(() => expect(mockGetSessions).toHaveBeenCalledTimes(2))
+    await screen.findByText('Chrome on macOS')
+    expect(screen.queryByText(/ログイン中のデバイスの読み込みに失敗しました/i)).not.toBeInTheDocument()
+  })
+})
+
 describe('AccountSection — 登録済み Passkey 一覧', () => {
   test('クレデンシャルが表示される', async () => {
     mockGetPasskeyCredentials.mockResolvedValue({ credentials: [FAKE_CRED] })
