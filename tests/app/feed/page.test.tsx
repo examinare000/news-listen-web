@@ -167,6 +167,45 @@ describe('FeedPage — Star', () => {
     })
   })
 
+  test('Given a difficulty is chosen from the ArticleCard difficulty menu, calls starArticle with id and difficulty (#163)', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: /記事の生成難易度を指定/ })[0])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'TOEIC 900' }))
+
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1', 'toeic_900')
+    })
+  })
+
+  test('Given the plain star button clicked (no difficulty chosen), calls starArticle with only the id', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1')
+    })
+  })
+
   test('Given star returns 429, shows generation-limit toast with retry time (#82)', async () => {
     const { createApiClient, ApiError } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
