@@ -388,6 +388,49 @@ describe('SubscriptionsPage — recommended sources', () => {
     expect(screen.queryByRole('button', { name: 'The Verge を購読' })).not.toBeInTheDocument()
   })
 
+  // issue #164: おすすめサイト取得失敗をサイレントにせず、取得失敗の旨と再読み込み導線を出す
+  test('Given getFeaturedSources fails, shows a failure notice with a reload affordance', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      getFeaturedSources: vi.fn().mockRejectedValue(new Error('network error')),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/おすすめサイトの読み込みに失敗しました/)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /おすすめサイトを再読み込み/ })).toBeInTheDocument()
+  })
+
+  test('Given reload button clicked after getFeaturedSources failure, refetches and shows recommendations on success', async () => {
+    const getFeaturedSources = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({ sites: FEATURED })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: [] }),
+      getFeaturedSources,
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /おすすめサイトを再読み込み/ }))
+    await userEvent.click(screen.getByRole('button', { name: /おすすめサイトを再読み込み/ }))
+
+    await waitFor(() => expect(getFeaturedSources).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'The Verge を購読' })).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/おすすめサイトの読み込みに失敗しました/)).not.toBeInTheDocument()
+  })
+
   test('Given a recommended site is subscribed via its 購読 button, it disappears from recommendations', async () => {
     const addSource = vi.fn().mockResolvedValue({
       sources: [{ name: 'dev.to', url: 'https://dev.to/feed' }],

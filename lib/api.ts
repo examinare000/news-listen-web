@@ -26,6 +26,7 @@ import type {
   PasskeyCredentialsListResponse,
   SessionsListResponse,
   RevokeSessionsResponse,
+  GenerationQuota,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -113,8 +114,9 @@ export function createApiClient() {
     },
 
     // difficulty 省略時は backend 側で prefs のデフォルト難易度が使われる（後方互換・issue #163）。
+    // remaining は生成残回数（issue #164 / ADR-061）。旧 backend は未送信のため optional。
     starArticle(id: string, difficulty?: DifficultyLevel) {
-      return request<{ status: string; article_id: string }>(
+      return request<{ status: string; article_id: string; remaining?: number | null }>(
         `/api/backend/articles/${id}/star`,
         {
           method: 'POST',
@@ -190,6 +192,11 @@ export function createApiClient() {
 
     getPreferences() {
       return request<UserPreferences>('/api/backend/settings/preferences', { method: 'GET' })
+    },
+
+    /** 生成残回数。limit=0 は無制限（remaining は null）。issue #164 / ADR-061。 */
+    getGenerationQuota() {
+      return request<GenerationQuota>('/api/backend/users/me/generation-quota', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {

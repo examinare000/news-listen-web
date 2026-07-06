@@ -192,6 +192,72 @@ describe('starArticle', () => {
       })
     )
   })
+
+  // issue #164 (ADR-061): 202 レスポンスの remaining をそのまま呼び出し側へ渡す（生成残回数の可視化）
+  test('passes through the remaining field from the response body when present', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1', remaining: 3 })
+    const client = makeClient()
+    const result = await client.starArticle('a1')
+
+    expect(result.remaining).toBe(3)
+  })
+
+  test('passes through remaining: null (unlimited) from the response body', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1', remaining: null })
+    const client = makeClient()
+    const result = await client.starArticle('a1')
+
+    expect(result.remaining).toBeNull()
+  })
+
+  test('remaining is undefined when absent from the response body (backward compat)', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1' })
+    const client = makeClient()
+    const result = await client.starArticle('a1')
+
+    expect(result.remaining).toBeUndefined()
+  })
+})
+
+// ==========================================================
+// getGenerationQuota — GET /api/backend/users/me/generation-quota（ADR-061）
+// ==========================================================
+describe('getGenerationQuota', () => {
+  test('sends GET to /api/backend/users/me/generation-quota', async () => {
+    mockFetchOk({ limit: 5, used: 2, remaining: 3, reset_at: '2026-07-07T00:00:00Z' })
+    const client = makeClient()
+    await client.getGenerationQuota()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/generation-quota',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns limit/used/remaining/reset_at fields (interface contract)', async () => {
+    const quota = { limit: 5, used: 2, remaining: 3, reset_at: '2026-07-07T00:00:00Z' }
+    mockFetchOk(quota)
+    const client = makeClient()
+    const result = await client.getGenerationQuota()
+
+    expect(result).toEqual(quota)
+  })
+
+  test('remaining is null when limit is 0 (unlimited)', async () => {
+    mockFetchOk({ limit: 0, used: 12, remaining: null, reset_at: '2026-07-07T00:00:00Z' })
+    const client = makeClient()
+    const result = await client.getGenerationQuota()
+
+    expect(result.limit).toBe(0)
+    expect(result.remaining).toBeNull()
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getGenerationQuota()).rejects.toThrow(ApiError)
+  })
 })
 
 describe('dismissArticle', () => {

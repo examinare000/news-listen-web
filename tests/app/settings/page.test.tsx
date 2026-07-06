@@ -14,6 +14,7 @@ vi.mock('@/lib/api', () => ({
     changePassword: vi.fn(),
     getPreferences: vi.fn(),
     updatePreferences: vi.fn(),
+    getGenerationQuota: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
@@ -256,6 +257,89 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
       expect(diffSelect.value).toBe('toeic_600')
     })
   })
+
+  // issue #164: 設定読み込み失敗をサイレントにせず、トースト表示と再試行導線を出す
+  test('Given getPreferences fails, shows an error toast and a retry affordance', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    // WHY: トースト（Toast コンポーネント）とインライン再試行導線の両方に
+    // 同文言が出るため getAllByText で許容する
+    await waitFor(() => {
+      expect(screen.getAllByText(/設定の読み込みに失敗しました/).length).toBeGreaterThan(0)
+    })
+    expect(screen.getByRole('button', { name: /設定を再読み込み/ })).toBeInTheDocument()
+  })
+
+  test('Given retry button clicked after getPreferences failure, refetches and clears the error on success', async () => {
+    const getPreferences = vi
+      .fn()
+      .mockRejectedValueOnce(new (await import('@/lib/api')).ApiError(500, 'Server error'))
+      .mockResolvedValueOnce({
+        default_difficulty: 'ielts_7',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences,
+      updatePreferences: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /設定を再読み込み/ }))
+    await userEvent.click(screen.getByRole('button', { name: /設定を再読み込み/ }))
+
+    await waitFor(() => expect(getPreferences).toHaveBeenCalledTimes(2))
+    // WHY: エラートーストは TOAST_DURATION_MS (3秒) 経過まで実タイマーで残るため、
+    // 消滅を待つのではなく、成功時にのみ消える再試行ボタンの有無で復帰を検証する。
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /設定を再読み込み/ })).not.toBeInTheDocument()
+    })
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    expect(diffSelect.value).toBe('ielts_7')
+  })
+
+  // issue #164: 難易度保存失敗をサイレントにせず、エラートースト表示 + サーバー値へロールバックする
+  test('Given updatePreferences fails, shows an error toast and reverts the select to the previous value', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i }).value).toBe(
+        'toeic_600'
+      )
+    })
+
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    await userEvent.selectOptions(diffSelect, 'eiken_p1')
+
+    await waitFor(() => {
+      expect(screen.getByText(/難易度設定の保存に失敗しました/)).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(diffSelect.value).toBe('toeic_600')
+    })
+  })
 })
 
 // ==========================================================
@@ -277,6 +361,201 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
     renderSettingsPage()
     expect(screen.queryByRole('button', { name: /キャッシュ/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/キャッシュ/)).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Settings 画面 — 生成残回数の可視化（issue #164 / ADR-061）
+// ==========================================================
+describe('SettingsPage — generation quota (issue #164)', () => {
+  test('Given limit > 0, shows remaining / limit', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 5,
+        used: 2,
+        remaining: 3,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('本日の残り生成回数')).toBeInTheDocument()
+      expect(screen.getByText('3 / 5 回')).toBeInTheDocument()
+    })
+  })
+
+  test('Given limit === 0 (unlimited), hides the quota row', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 0,
+        used: 12,
+        remaining: null,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('本日の残り生成回数')).not.toBeInTheDocument()
+  })
+
+  test('Given getGenerationQuota fails, shows an inline error with a retry button that refetches', async () => {
+    const getGenerationQuota = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({
+        limit: 5,
+        used: 1,
+        remaining: 4,
+        reset_at: '2026-07-07T00:00:00Z',
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
+    await userEvent.click(screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
+
+    await waitFor(() => expect(getGenerationQuota).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.getByText('4 / 5 回')).toBeInTheDocument()
+    })
+  })
+
+  // Graceful degradation: 404（エンドポイント未実装）時は quota セクション非表示
+  test('Given getGenerationQuota returns 404, hides quota section silently (graceful degradation)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockRejectedValue(new ApiError(404, 'Not Found')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    // 404 時は quota セクション全体を非表示にする
+    expect(screen.queryByText('本日の残り生成回数')).not.toBeInTheDocument()
+    // エラーメッセージも表示しない
+    expect(screen.queryByText(/残り生成回数の取得に失敗/)).not.toBeInTheDocument()
+  })
+
+  // 404 以外のエラーは既存どおり「エラー + 再試行」を出す
+  test('Given getGenerationQuota returns 500, shows error banner with retry button (not graceful)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/残り生成回数の取得に失敗/)).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /残り生成回数を再読み込み/ })).toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Settings 画面 — 難易度変更のレース条件対策（issue #164）
+// ==========================================================
+describe('SettingsPage — difficulty change race condition', () => {
+  test('Given two difficulty changes in succession, only the latest response is applied (stale responses ignored)', async () => {
+    const resolveStack: Array<() => void> = []
+
+    const updatePreferences = vi.fn(async (params: { default_difficulty: string }) => {
+      // 1回目（eiken_p1）は遅延、2回目（ielts_7）は即座に返す
+      if (params.default_difficulty === 'eiken_p1') {
+        return new Promise<void>((resolve) => {
+          resolveStack.push(resolve)
+        })
+      }
+      return Promise.resolve()
+    })
+
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('combobox', { name: /難易度/i })).toBeInTheDocument()
+    })
+
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+
+    // 1回目の変更（遅延中）
+    await userEvent.selectOptions(diffSelect, 'eiken_p1')
+    expect(diffSelect.value).toBe('eiken_p1')
+
+    // 2回目の変更（即座に返る）
+    await userEvent.selectOptions(diffSelect, 'ielts_7')
+    expect(diffSelect.value).toBe('ielts_7')
+
+    // 1回目のリクエストを遅延解決（stale）
+    const staleResolve = resolveStack[0]
+    if (staleResolve) {
+      staleResolve()
+    }
+
+    // stale な 1回目の成功（eiken_p1）で UI が上書きされないことを確認
+    // 最新の値（ielts_7）が保持される
+    await waitFor(() => {
+      expect(diffSelect.value).toBe('ielts_7')
+    })
   })
 })
 

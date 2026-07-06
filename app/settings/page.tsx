@@ -1,16 +1,17 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { useToast } from '@/components/ui/Toast'
 import { createApiClient, ApiError } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
-import type { DifficultyLevel } from '@/types/index'
+import type { DifficultyLevel, GenerationQuota } from '@/types/index'
 
 type TimeFormat = 'absolute' | 'relative'
 
@@ -25,34 +26,82 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
 
 export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
+  const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
+  // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
+  const [preferencesLoadError, setPreferencesLoadError] = useState(false)
 
   // Load preferences on mount (C群#13)
+  const loadPreferences = useCallback(async () => {
+    try {
+      const prefs = await createApiClient().getPreferences()
+      setDefaultDifficulty(prefs.default_difficulty)
+      setPreferencesLoadError(false)
+    } catch {
+      // Fallback to DEFAULT_DIFFICULTY if fetch fails
+      setDefaultDifficulty(DEFAULT_DIFFICULTY)
+      setPreferencesLoadError(true)
+      showToast('設定の読み込みに失敗しました', 'error')
+    }
+  }, [showToast])
+
   useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const prefs = await createApiClient().getPreferences()
-        setDefaultDifficulty(prefs.default_difficulty)
-      } catch {
-        // Fallback to DEFAULT_DIFFICULTY if fetch fails
-        setDefaultDifficulty(DEFAULT_DIFFICULTY)
+    void loadPreferences()
+  }, [loadPreferences])
+
+  // issue #164 / ADR-061: 生成残回数の可視化。
+  const [quota, setQuota] = useState<GenerationQuota | null>(null)
+  const [quotaLoadError, setQuotaLoadError] = useState(false)
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const q = await createApiClient().getGenerationQuota()
+      setQuota(q)
+      setQuotaLoadError(false)
+    } catch (err) {
+      // WHY: 404（エンドポイント未実装）時は graceful degradation — quota セクション全体を非表示。
+      // 404 以外（500・ネットワーク等）はエラーバナーを表示して再試行導線を出す。
+      if (err instanceof ApiError && err.status === 404) {
+        setQuota(null)
+        setQuotaLoadError(false)
+      } else {
+        setQuotaLoadError(true)
       }
     }
-    void loadPreferences()
   }, [])
+
+  useEffect(() => {
+    void loadQuota()
+  }, [loadQuota])
+
+  // WHY: 2連続変更でレスポンス順が入れ替わると、後勝ちした保存成功後に先行の失敗が
+  // サーバー保存済み値を上書きする可能性がある。リクエスト連番で最新リクエストの結果のみを
+  // UI に反映し、stale な応答は無視する。
+  const difficultyRequestIdRef = useRef(0)
 
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
+    // issue #164: 保存失敗時にサーバー側の値へ戻せるよう、変更前の値を保持しておく。
+    const previousDifficulty = defaultDifficulty
     setDefaultDifficulty(newDifficulty)
+
+    // リクエスト連番を増加
+    const requestId = ++difficultyRequestIdRef.current
+
     try {
       await createApiClient().updatePreferences({ default_difficulty: newDifficulty })
-    } catch (err) {
-      // Fail silently: keep UI updated even if API fails
-      // (Non-fatal for playback experience)
-      if (err instanceof ApiError) {
-        // Optionally log but don't show to user
+      // 最新リクエストの場合のみ UI に反映（stale な成功は無視）
+      if (requestId === difficultyRequestIdRef.current) {
+        // 成功時は UI をそのまま保持（既に newDifficulty に更新済み）
+      }
+    } catch {
+      // 最新リクエストの場合のみロールバック（stale な失敗は無視）
+      if (requestId === difficultyRequestIdRef.current) {
+        // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
+        setDefaultDifficulty(previousDifficulty)
+        showToast('難易度設定の保存に失敗しました', 'error')
       }
     }
   }
@@ -110,6 +159,33 @@ export default function SettingsPage() {
             <h2 className="settings-section-title">Podcast 生成</h2>
           </div>
 
+          {/* 生成残回数の可視化（issue #164 / ADR-061）。limit=0 は無制限のため行ごと非表示にする。 */}
+          {quotaLoadError ? (
+            <div className="settings-row-desc form-error" role="alert" style={{ padding: '0 20px 12px' }}>
+              残り生成回数の取得に失敗しました。
+              <button
+                className="btn btn-ghost"
+                onClick={() => loadQuota()}
+                aria-label="残り生成回数を再読み込み"
+                style={{ marginLeft: 8 }}
+              >
+                再試行
+              </button>
+            </div>
+          ) : (
+            quota &&
+            quota.limit > 0 && (
+              <div className="settings-row">
+                <div>
+                  <div className="settings-row-label">本日の残り生成回数</div>
+                  <div className="settings-row-desc">
+                    {quota.remaining ?? 0} / {quota.limit} 回
+                  </div>
+                </div>
+              </div>
+            )
+          )}
+
           <div className="settings-row">
             <div>
               <label className="settings-row-label" htmlFor="default-speed">
@@ -159,6 +235,20 @@ export default function SettingsPage() {
               ))}
             </select>
           </div>
+
+          {preferencesLoadError && (
+            <div className="settings-row-desc form-error" style={{ padding: '0 20px 12px' }}>
+              設定の読み込みに失敗しました。
+              <button
+                className="btn btn-ghost"
+                onClick={() => loadPreferences()}
+                aria-label="設定を再読み込み"
+                style={{ marginLeft: 8 }}
+              >
+                再試行
+              </button>
+            </div>
+          )}
         </section>
 
 
