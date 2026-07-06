@@ -409,7 +409,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   transition: all .2s ease;
   cursor: pointer;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   animation: card-enter .3s ease both;
 }
 
@@ -521,6 +521,13 @@ html[data-theme="light"] body::before { opacity: .5; }
   flex-direction: column;
   gap: 6px;
   align-self: center;
+}
+
+/* star ボタンと難易度指定メニュートリガーを横並びにする（issue #163） */
+.star-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .action-btn {
@@ -1597,4 +1604,67 @@ button.feed-tab {
 .queue-item-actions .ctrl-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* ── 汎用ドロップダウンメニュー（components/ui/Menu.tsx・issue #163） ─────── */
+/* 既存の queue-panel（フロート・トークン再利用）と同じ視覚言語に揃える。 */
+.menu {
+  position: relative;
+  display: inline-flex;
+}
+.menu-trigger {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  transition: all .15s ease;
+}
+.menu-trigger:hover:not(:disabled) {
+  background: var(--bg-overlay);
+  color: var(--text-primary);
+}
+.menu-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.menu-list {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 4px;
+  min-width: 140px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 60;
+}
+.menu-item {
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--font-body), sans-serif;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--bg-base);
+  color: var(--text-primary);
+  outline: none;
 }

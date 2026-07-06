@@ -10,6 +10,7 @@ import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
+import { DEFAULT_DIFFICULTY } from '@/types/index'
 import type { DifficultyLevel, GenerationQuota } from '@/types/index'
 
 type TimeFormat = 'absolute' | 'relative'
@@ -28,7 +29,7 @@ export default function SettingsPage() {
   const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
-  const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>('toeic_600')
+  const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
   const [preferencesLoadError, setPreferencesLoadError] = useState(false)
 
@@ -39,8 +40,8 @@ export default function SettingsPage() {
       setDefaultDifficulty(prefs.default_difficulty)
       setPreferencesLoadError(false)
     } catch {
-      // Fallback to toeic_600 if fetch fails
-      setDefaultDifficulty('toeic_600')
+      // Fallback to DEFAULT_DIFFICULTY if fetch fails
+      setDefaultDifficulty(DEFAULT_DIFFICULTY)
       setPreferencesLoadError(true)
       showToast('設定の読み込みに失敗しました', 'error')
     }

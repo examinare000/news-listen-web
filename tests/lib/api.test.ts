@@ -167,6 +167,32 @@ describe('starArticle', () => {
     )
   })
 
+  // issue #163: 記事単位の難易度指定 star。
+  // difficulty 省略時は従来どおりボディなしで呼ぶ（後方互換）。
+  test('difficulty 省略時はボディなしで送る（後方互換）', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1' })
+    const client = makeClient()
+    await client.starArticle('a1')
+
+    const call = vi.mocked(fetch).mock.calls[0]
+    const init = call[1] as RequestInit
+    expect(init.body).toBeUndefined()
+  })
+
+  test('difficulty 指定時は JSON ボディ {difficulty} を送る', async () => {
+    mockFetchOk({ status: 'starred', article_id: 'a1' })
+    const client = makeClient()
+    await client.starArticle('a1', 'toeic_900')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/articles/a1/star',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ difficulty: 'toeic_900' }),
+      })
+    )
+  })
+
   // issue #164 (ADR-061): 202 レスポンスの remaining をそのまま呼び出し側へ渡す（生成残回数の可視化）
   test('passes through the remaining field from the response body when present', async () => {
     mockFetchOk({ status: 'starred', article_id: 'a1', remaining: 3 })

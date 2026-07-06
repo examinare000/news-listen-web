@@ -1,11 +1,18 @@
 import React from 'react'
 import { formatDate, formatRelativeTime } from '@/lib/format'
 import { useApp } from '@/contexts/AppContext'
-import type { Article } from '@/types/index'
+import { Menu } from '@/components/ui/Menu'
+import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
+import type { Article, DifficultyLevel } from '@/types/index'
+
+// DIFFICULTY_LABELS のキー順（toeic_600 → ... → eiken_p1）をメニュー表示順として使う。
+// WHY: 難易度の並びを別途配列で複製すると表示順の二重管理になるため、
+// 既存のラベル定義（Record）のキー順を単一の正本として再利用する。
+const DIFFICULTY_MENU_ORDER = Object.keys(DIFFICULTY_LABELS) as DifficultyLevel[]
 
 interface ArticleCardProps {
   article: Article
-  onStar: (id: string) => void
+  onStar: (id: string, difficulty?: DifficultyLevel) => void
   onDismiss: (id: string) => void
   busy: boolean
   starred: boolean
@@ -107,17 +114,34 @@ export function ArticleCard({
 
       {/* デザインは div だが、キーボード操作・スクリーンリーダー対応のため button を維持する */}
       <div className="article-actions">
-        <button
-          type="button"
-          className={starred ? 'action-btn star active' : 'action-btn star'}
-          onClick={() => onStar(article.id)}
-          disabled={busy}
-          aria-pressed={starred}
-          aria-label={starred ? 'スター済み' : 'スターする'}
-          data-testid={`star-button-${article.id}`}
-        >
-          {starred ? <StarFilledIcon /> : <StarOutlineIcon />}
-        </button>
+        <div className="star-group">
+          <button
+            type="button"
+            className={starred ? 'action-btn star active' : 'action-btn star'}
+            onClick={() => onStar(article.id)}
+            disabled={busy}
+            aria-pressed={starred}
+            aria-label={starred ? 'スター済み' : 'スターする'}
+            data-testid={`star-button-${article.id}`}
+          >
+            {starred ? <StarFilledIcon /> : <StarOutlineIcon />}
+          </button>
+
+          {/* スター済み記事は難易度選び直しの余地がないため、メニューごと出さない（issue #163） */}
+          {!starred && (
+            <Menu
+              triggerLabel="記事の生成難易度を指定"
+              triggerContent={<span aria-hidden="true">▾</span>}
+              triggerClassName="action-btn"
+              disabled={busy}
+              items={DIFFICULTY_MENU_ORDER.map((difficulty) => ({
+                key: difficulty,
+                label: DIFFICULTY_LABELS[difficulty],
+                onSelect: () => onStar(article.id, difficulty),
+              }))}
+            />
+          )}
+        </div>
 
         <button
           type="button"

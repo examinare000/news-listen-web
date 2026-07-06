@@ -5,7 +5,7 @@ import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
 import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
-import type { Article } from '@/types/index'
+import type { Article, DifficultyLevel } from '@/types/index'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82）。次回可能時刻があれば併記する。
 function generationLimitMessage(retryAfterSeconds: number | undefined): string {
@@ -105,10 +105,13 @@ export default function FeedPage() {
     fetchFeed()
   }, [fetchFeed])
 
-  async function handleStar(id: string) {
+  async function handleStar(id: string, difficulty?: DifficultyLevel) {
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      const res = await createApiClient().starArticle(id)
+      // difficulty 未指定時は明示的な undefined を渡さず、従来どおり id のみで呼ぶ
+      // （後方互換・starArticle 側の「省略時はボディなし」契約と合わせる）
+      const api = createApiClient()
+      const res = difficulty ? await api.starArticle(id, difficulty) : await api.starArticle(id)
       setStarredIds((prev) => new Set(prev).add(id))
       showToast(starSuccessMessage(res.remaining), 'success')
     } catch (err) {

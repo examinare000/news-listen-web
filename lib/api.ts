@@ -6,6 +6,7 @@
  * never talks to the backend directly.
  */
 import type {
+  DifficultyLevel,
   FeedResponse,
   PodcastsResponse,
   SourcesResponse,
@@ -112,11 +113,15 @@ export function createApiClient() {
       return request<FeedResponse>('/api/backend/feed', { method: 'GET' })
     },
 
-    starArticle(id: string) {
-      // remaining は生成残回数（issue #164 / ADR-061）。旧 backend は未送信のため optional。
+    // difficulty 省略時は backend 側で prefs のデフォルト難易度が使われる（後方互換・issue #163）。
+    // remaining は生成残回数（issue #164 / ADR-061）。旧 backend は未送信のため optional。
+    starArticle(id: string, difficulty?: DifficultyLevel) {
       return request<{ status: string; article_id: string; remaining?: number | null }>(
         `/api/backend/articles/${id}/star`,
-        { method: 'POST' },
+        {
+          method: 'POST',
+          ...(difficulty ? { body: JSON.stringify({ difficulty }) } : {}),
+        },
       )
     },
 

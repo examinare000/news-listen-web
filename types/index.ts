@@ -8,6 +8,10 @@ export type DifficultyLevel =
   | 'eiken_2'
   | 'eiken_p1'
 
+// 統一デフォルト難易度（issue #163・docs/design/shared-playback-spec.md 正本）。
+// 設定画面の初期値/フォールバックと、記事単位star省略時の想定値を一箇所に集約する。
+export const DEFAULT_DIFFICULTY: DifficultyLevel = 'toeic_600'
+
 export type PodcastStatus = 'processing' | 'completed' | 'failed' | 'partial_failed'
 
 export interface Article {

@@ -167,6 +167,70 @@ describe('FeedPage — Star', () => {
     })
   })
 
+  test('Given a difficulty is chosen from the ArticleCard difficulty menu, calls starArticle with id and difficulty (#163)', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: /記事の生成難易度を指定/ })[0])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'TOEIC 900' }))
+
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1', 'toeic_900')
+    })
+  })
+
+  // #163（難易度指定star）と #164（remaining表示）のマージ統合境界を固定する。
+  // 難易度指定で star した場合にも remaining 付きトーストが出ることを検証する。
+  test('Given a difficulty is chosen and star succeeds with a remaining count, shows the count in the toast', async () => {
+    const starArticle = vi
+      .fn()
+      .mockResolvedValue({ status: 'starred', article_id: 'a1', remaining: 2 })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: /記事の生成難易度を指定/ })[0])
+    await userEvent.click(screen.getByRole('menuitem', { name: 'TOEIC 900' }))
+
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1', 'toeic_900')
+      expect(screen.getByText('Star しました（残り生成 2 回）')).toBeInTheDocument()
+    })
+  })
+
+  test('Given the plain star button clicked (no difficulty chosen), calls starArticle with only the id', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(starArticle).toHaveBeenCalledWith('a1')
+    })
+  })
+
   // issue #164 / ADR-061: 生成残回数の可視化
   test('Given star succeeds with a remaining count, shows the count in the toast', async () => {
     const starArticle = vi
