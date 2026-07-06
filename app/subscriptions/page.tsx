@@ -33,6 +33,8 @@ export default function SubscriptionsPage() {
 
   // システム提供のおすすめサイト（DB 駆動）
   const [featured, setFeatured] = useState<FeaturedSource[]>([])
+  // issue #164: 取得失敗をサイレントにせず、専用のエラー状態から再読み込みできるようにする。
+  const [featuredLoadError, setFeaturedLoadError] = useState(false)
   // 即購読中のおすすめサイト id（ボタンの二重押下防止）
   const [subscribingId, setSubscribingId] = useState<string | null>(null)
 
@@ -82,9 +84,12 @@ export default function SubscriptionsPage() {
     try {
       const data = await makeClient().getFeaturedSources()
       setFeatured(data.sites)
+      setFeaturedLoadError(false)
     } catch {
-      // おすすめ欄の取得失敗は致命的でない（購読一覧・追加フォームは独立して機能する）
+      // issue #164: おすすめ欄の取得失敗は購読一覧・追加フォームに影響しないため空表示は維持しつつ、
+      // サイレントにはせず専用のエラー状態から再読み込みできるようにする。
       setFeatured([])
+      setFeaturedLoadError(true)
     }
   }, [makeClient])
 
@@ -293,6 +298,29 @@ export default function SubscriptionsPage() {
                     追加する
                   </button>
                 </form>
+
+                {featuredLoadError && (
+                  <div
+                    style={{
+                      marginTop: 16,
+                      paddingTop: 16,
+                      borderTop: '1px solid var(--border)',
+                    }}
+                  >
+                    {/* WHY role="alert" 不使用: 購読一覧の致命的エラー（getByRole('alert')）と衝突しないよう、
+                        おすすめ欄の失敗は非致命な副次情報として通常テキストで示す */}
+                    <p className="form-error" style={{ fontSize: 12, marginBottom: 8 }}>
+                      おすすめサイトの読み込みに失敗しました
+                    </p>
+                    <button
+                      className="btn btn-ghost"
+                      onClick={fetchFeatured}
+                      aria-label="おすすめサイトを再読み込み"
+                    >
+                      再読み込み
+                    </button>
+                  </div>
+                )}
 
                 {recommended.length > 0 && (
                   <div

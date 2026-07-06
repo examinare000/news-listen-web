@@ -15,6 +15,14 @@ function generationLimitMessage(retryAfterSeconds: number | undefined): string {
     : '本日の生成上限に達しました'
 }
 
+// Star 成功時のメッセージ（issue #164 / ADR-061）。remaining が数値の場合のみ残回数を併記する。
+// remaining が undefined（旧 backend で未送信）の場合は従来の文言を維持する（graceful degradation）。
+function starSuccessMessage(remaining: number | null | undefined): string {
+  return typeof remaining === 'number'
+    ? `Star しました（残り生成 ${remaining} 回）`
+    : 'Star しました'
+}
+
 type FeedTab = 'all' | 'starred'
 
 function SkeletonCard() {
@@ -100,9 +108,9 @@ export default function FeedPage() {
   async function handleStar(id: string) {
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      await createApiClient().starArticle(id)
+      const res = await createApiClient().starArticle(id)
       setStarredIds((prev) => new Set(prev).add(id))
-      showToast('Star しました', 'success')
+      showToast(starSuccessMessage(res.remaining), 'success')
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 404) {

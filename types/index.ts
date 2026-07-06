@@ -110,6 +110,15 @@ export interface UserPreferences {
 
 export type UserPreferencesPatch = Partial<UserPreferences>
 
+// ── 生成残回数（issue #164 / ADR-061） ────────────────────────────────
+/** GET /users/me/generation-quota のレスポンス。limit=0 は無制限（remaining は null）。 */
+export interface GenerationQuota {
+  limit: number
+  used: number
+  remaining: number | null
+  reset_at: string // ISO 8601
+}
+
 // ── Passkey / WebAuthn ───────────────────────────────────────────────
 /** POST /auth/passkey/register/options および /auth/passkey/login/options のレスポンス。
  *  options フィールドは JSON 文字列（backend の options_to_json() 出力）。クライアント側で JSON.parse が必要。 */
