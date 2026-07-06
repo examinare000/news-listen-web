@@ -72,6 +72,7 @@ export function Menu({
   function handleSelect(item: MenuItem) {
     setOpen(false)
     item.onSelect()
+    triggerRef.current?.focus()
   }
 
   function handleItemKeyDown(e: React.KeyboardEvent, index: number) {
@@ -86,8 +87,17 @@ export function Menu({
     }
   }
 
+  function handleContainerBlur(e: React.FocusEvent<HTMLDivElement>) {
+    // WHY: relatedTarget を使ってフォーカスがコンテナ外に移動したかを検出。
+    // onBlur は要素からフォーカスが離れるときに発火し、relatedTarget に次のフォーカス対象が入る。
+    // relatedTarget がコンテナ外（null または containerRef に含まれない）なら、メニューを閉じる。
+    if (open && containerRef.current && !containerRef.current.contains(e.relatedTarget)) {
+      setOpen(false)
+    }
+  }
+
   return (
-    <div className="menu" ref={containerRef}>
+    <div className="menu" ref={containerRef} onBlur={handleContainerBlur}>
       <button
         type="button"
         ref={triggerRef}

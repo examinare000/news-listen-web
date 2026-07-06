@@ -99,6 +99,15 @@ describe('Menu — item selection', () => {
     expect(onSelectB).not.toHaveBeenCalled()
     expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
+
+  test('Given a menu item clicked, focus returns to trigger button', async () => {
+    renderMenu()
+    const trigger = screen.getByRole('button', { name: 'メニューを開く' })
+    await userEvent.click(trigger)
+    await userEvent.click(screen.getByRole('menuitem', { name: '項目A' }))
+
+    expect(trigger).toHaveFocus()
+  })
 })
 
 describe('Menu — keyboard navigation', () => {
@@ -125,5 +134,26 @@ describe('Menu — keyboard navigation', () => {
     await userEvent.keyboard('{ArrowUp}')
 
     expect(screen.getByRole('menuitem', { name: '項目B' })).toHaveFocus()
+  })
+
+  test('Given focus leaves the menu via Tab, menu closes', async () => {
+    render(
+      <div>
+        <Menu
+          triggerLabel="メニューを開く"
+          triggerContent={<span>▾</span>}
+          items={[{ key: 'a', label: '項目A', onSelect: vi.fn() }]}
+        />
+        <button type="button">外側</button>
+      </div>
+    )
+    const trigger = screen.getByRole('button', { name: 'メニューを開く' })
+    await userEvent.click(trigger)
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+
+    // メニュー内の項目からTabキーで外側の要素へフォーカス移動
+    await userEvent.keyboard('{Tab}')
+
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument()
   })
 })
