@@ -14,6 +14,7 @@ vi.mock('@/lib/api', () => ({
     changePassword: vi.fn(),
     getPreferences: vi.fn(),
     updatePreferences: vi.fn(),
+    getGenerationQuota: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
@@ -360,6 +361,96 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
     renderSettingsPage()
     expect(screen.queryByRole('button', { name: /キャッシュ/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/キャッシュ/)).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Settings 画面 — 生成残回数の可視化（issue #164 / ADR-061）
+// ==========================================================
+describe('SettingsPage — generation quota (issue #164)', () => {
+  test('Given limit > 0, shows remaining / limit', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 5,
+        used: 2,
+        remaining: 3,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('本日の残り生成回数')).toBeInTheDocument()
+      expect(screen.getByText('3 / 5 回')).toBeInTheDocument()
+    })
+  })
+
+  test('Given limit === 0 (unlimited), hides the quota row', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 0,
+        used: 12,
+        remaining: null,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('本日の残り生成回数')).not.toBeInTheDocument()
+  })
+
+  test('Given getGenerationQuota fails, shows an inline error with a retry button that refetches', async () => {
+    const getGenerationQuota = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({
+        limit: 5,
+        used: 1,
+        remaining: 4,
+        reset_at: '2026-07-07T00:00:00Z',
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
+    await userEvent.click(screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
+
+    await waitFor(() => expect(getGenerationQuota).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.getByText('4 / 5 回')).toBeInTheDocument()
+    })
   })
 })
 
