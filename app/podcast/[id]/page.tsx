@@ -122,6 +122,28 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           {podcast.japanese_intro_text}
         </p>
 
+        {/* 英語本編トランスクリプト（issue #162）。旧エピソード/劣化生成では segments が
+            null/欠落するため、その場合は控えめなフォールバック文言に留めレイアウトを維持する。 */}
+        {podcast.segments && podcast.segments.length > 0 ? (
+          <div style={{ marginBottom: 16 }}>
+            {podcast.segments.map((segment, index) => (
+              <div
+                key={index}
+                style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}
+              >
+                <span className="badge" style={{ flexShrink: 0 }}>
+                  {segment.speaker}
+                </span>
+                <p style={{ fontSize: 14, lineHeight: 1.7 }}>{segment.text}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+            トランスクリプトはありません
+          </p>
+        )}
+
         <div className="podcast-meta" style={{ marginBottom: 16 }}>
           <span>
             <svg

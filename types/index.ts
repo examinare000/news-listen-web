@@ -24,6 +24,12 @@ export interface FeedResponse {
   date: string
 }
 
+/** トランスクリプトのセリフ1件（話者ラベルと発話テキスト）。GET /podcasts/:id の segments 要素。 */
+export interface TranscriptSegment {
+  speaker: string
+  text: string
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -34,6 +40,8 @@ export interface Podcast {
    *  既存データや未デプロイ環境では空文字または欠落するため optional。 */
   title?: string
   japanese_intro_text: string
+  /** 英語本編のトランスクリプト（issue #162）。旧エピソードや劣化生成では null/欠落するため optional。 */
+  segments?: TranscriptSegment[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus
