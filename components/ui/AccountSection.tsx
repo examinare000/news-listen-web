@@ -391,7 +391,7 @@ export function AccountSection() {
 
       {/* 登録済み Passkey 一覧 */}
       {credentialsLoadError ? (
-        <div className="form-error" style={{ padding: '0 20px 12px' }}>
+        <div className="form-error" role="alert" style={{ padding: '0 20px 12px' }}>
           Passkey 一覧の読み込みに失敗しました
           <button
             className="btn btn-ghost"
@@ -526,7 +526,7 @@ export function AccountSection() {
       )}
 
       {sessionsLoadError ? (
-        <div className="form-error" style={{ padding: '0 20px 12px' }}>
+        <div className="form-error" role="alert" style={{ padding: '0 20px 12px' }}>
           ログイン中のデバイスの読み込みに失敗しました
           <button
             className="btn btn-ghost"

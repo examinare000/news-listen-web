@@ -643,3 +643,34 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
     expect(mockLogout).not.toHaveBeenCalled()
   })
 })
+
+// ==========================================================
+// AccountSection — アクセシビリティ（issue #164）
+// ==========================================================
+describe('AccountSection — accessibility', () => {
+  test('Given Passkey credentials load fails, error message has role="alert"', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockGetPasskeyCredentials.mockRejectedValue(new ApiError(500, 'Server error'))
+    mockGetSessions.mockResolvedValue({ sessions: [] })
+
+    render(<AccountSection />)
+
+    await waitFor(() => {
+      const errorDiv = screen.getByText(/Passkey 一覧の読み込みに失敗/)?.closest('.form-error')
+      expect(errorDiv).toHaveAttribute('role', 'alert')
+    })
+  })
+
+  test('Given sessions load fails, error message has role="alert"', async () => {
+    const { ApiError } = await import('@/lib/api')
+    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [] })
+    mockGetSessions.mockRejectedValue(new ApiError(500, 'Server error'))
+
+    render(<AccountSection />)
+
+    await waitFor(() => {
+      const errorDiv = screen.getByText(/ログイン中のデバイスの読み込みに失敗/)?.closest('.form-error')
+      expect(errorDiv).toHaveAttribute('role', 'alert')
+    })
+  })
+})
