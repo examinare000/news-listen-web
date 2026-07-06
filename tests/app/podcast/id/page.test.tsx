@@ -188,6 +188,64 @@ describe('PodcastDetailPage — play flow', () => {
 })
 
 // ==========================================================
+// Podcast 詳細 — トランスクリプト表示 (issue #162)
+// ==========================================================
+describe('PodcastDetailPage — transcript', () => {
+  test('Given segments, displays each speaker label and text', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({
+        ...SAMPLE_PODCAST,
+        segments: [
+          { speaker: 'A', text: 'Good morning, everyone.' },
+          { speaker: 'B', text: 'Thanks for joining us today.' },
+        ],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Good morning, everyone.')).toBeInTheDocument()
+      expect(screen.getByText('Thanks for joining us today.')).toBeInTheDocument()
+    })
+    // 話者ラベルはA/Bそれぞれ1件ずつ表示される
+    expect(screen.getAllByText('A')).toHaveLength(1)
+    expect(screen.getAllByText('B')).toHaveLength(1)
+  })
+
+  test('Given segments is null, shows fallback message without crashing and keeps existing content', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, segments: null }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/トランスクリプトはありません/)).toBeInTheDocument()
+    })
+    // 既存表示（イントロ・再生ボタン）が壊れていないこと（回帰なし）
+    expect(screen.getByText(/追加のテキストも含まれています/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+  })
+
+  test('Given segments field is entirely missing (legacy episode), shows fallback without crashing', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    // segments フィールド自体が欠落した旧データを模擬
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/トランスクリプトはありません/)).toBeInTheDocument()
+    })
+  })
+})
+
+// ==========================================================
 // Podcast 詳細 — 404
 // ==========================================================
 describe('PodcastDetailPage — 404', () => {
