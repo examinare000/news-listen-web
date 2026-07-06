@@ -9,6 +9,7 @@ import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
+import { DEFAULT_DIFFICULTY } from '@/types/index'
 import type { DifficultyLevel } from '@/types/index'
 
 type TimeFormat = 'absolute' | 'relative'
@@ -26,7 +27,7 @@ export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
-  const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>('toeic_600')
+  const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
 
   // Load preferences on mount (C群#13)
   useEffect(() => {
@@ -35,8 +36,8 @@ export default function SettingsPage() {
         const prefs = await createApiClient().getPreferences()
         setDefaultDifficulty(prefs.default_difficulty)
       } catch {
-        // Fallback to toeic_600 if fetch fails
-        setDefaultDifficulty('toeic_600')
+        // Fallback to DEFAULT_DIFFICULTY if fetch fails
+        setDefaultDifficulty(DEFAULT_DIFFICULTY)
       }
     }
     void loadPreferences()
