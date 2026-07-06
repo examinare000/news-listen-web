@@ -10,7 +10,7 @@ import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
-import type { DifficultyLevel } from '@/types/index'
+import type { DifficultyLevel, GenerationQuota } from '@/types/index'
 
 type TimeFormat = 'absolute' | 'relative'
 
@@ -49,6 +49,24 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadPreferences()
   }, [loadPreferences])
+
+  // issue #164 / ADR-061: 生成残回数の可視化。
+  const [quota, setQuota] = useState<GenerationQuota | null>(null)
+  const [quotaLoadError, setQuotaLoadError] = useState(false)
+
+  const loadQuota = useCallback(async () => {
+    try {
+      const q = await createApiClient().getGenerationQuota()
+      setQuota(q)
+      setQuotaLoadError(false)
+    } catch {
+      setQuotaLoadError(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadQuota()
+  }, [loadQuota])
 
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
@@ -116,6 +134,33 @@ export default function SettingsPage() {
             </div>
             <h2 className="settings-section-title">Podcast 生成</h2>
           </div>
+
+          {/* 生成残回数の可視化（issue #164 / ADR-061）。limit=0 は無制限のため行ごと非表示にする。 */}
+          {quotaLoadError ? (
+            <div className="settings-row-desc form-error" style={{ padding: '0 20px 12px' }}>
+              残り生成回数の取得に失敗しました。
+              <button
+                className="btn btn-ghost"
+                onClick={() => loadQuota()}
+                aria-label="残り生成回数を再読み込み"
+                style={{ marginLeft: 8 }}
+              >
+                再試行
+              </button>
+            </div>
+          ) : (
+            quota &&
+            quota.limit > 0 && (
+              <div className="settings-row">
+                <div>
+                  <div className="settings-row-label">本日の残り生成回数</div>
+                  <div className="settings-row-desc">
+                    {quota.remaining ?? 0} / {quota.limit} 回
+                  </div>
+                </div>
+              </div>
+            )
+          )}
 
           <div className="settings-row">
             <div>
