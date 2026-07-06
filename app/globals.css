@@ -409,7 +409,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   transition: all .2s ease;
   cursor: pointer;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   animation: card-enter .3s ease both;
 }
 
@@ -1613,8 +1613,7 @@ button.feed-tab {
   display: inline-flex;
 }
 .menu-trigger {
-  width: 18px;
-  min-width: 18px;
+  width: 34px;
   height: 34px;
   padding: 0;
   border-radius: var(--radius-sm);
