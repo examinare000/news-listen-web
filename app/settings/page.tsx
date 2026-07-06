@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
-import { createApiClient } from '@/lib/api'
+import { createApiClient, ApiError } from '@/lib/api'
 import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
@@ -59,8 +59,15 @@ export default function SettingsPage() {
       const q = await createApiClient().getGenerationQuota()
       setQuota(q)
       setQuotaLoadError(false)
-    } catch {
-      setQuotaLoadError(true)
+    } catch (err) {
+      // WHY: 404（エンドポイント未実装）時は graceful degradation — quota セクション全体を非表示。
+      // 404 以外（500・ネットワーク等）はエラーバナーを表示して再試行導線を出す。
+      if (err instanceof ApiError && err.status === 404) {
+        setQuota(null)
+        setQuotaLoadError(false)
+      } else {
+        setQuotaLoadError(true)
+      }
     }
   }, [])
 
@@ -68,17 +75,33 @@ export default function SettingsPage() {
     void loadQuota()
   }, [loadQuota])
 
+  // WHY: 2連続変更でレスポンス順が入れ替わると、後勝ちした保存成功後に先行の失敗が
+  // サーバー保存済み値を上書きする可能性がある。リクエスト連番で最新リクエストの結果のみを
+  // UI に反映し、stale な応答は無視する。
+  const difficultyRequestIdRef = useRef(0)
+
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
     // issue #164: 保存失敗時にサーバー側の値へ戻せるよう、変更前の値を保持しておく。
     const previousDifficulty = defaultDifficulty
     setDefaultDifficulty(newDifficulty)
+
+    // リクエスト連番を増加
+    const requestId = ++difficultyRequestIdRef.current
+
     try {
       await createApiClient().updatePreferences({ default_difficulty: newDifficulty })
+      // 最新リクエストの場合のみ UI に反映（stale な成功は無視）
+      if (requestId === difficultyRequestIdRef.current) {
+        // 成功時は UI をそのまま保持（既に newDifficulty に更新済み）
+      }
     } catch {
-      // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
-      setDefaultDifficulty(previousDifficulty)
-      showToast('難易度設定の保存に失敗しました', 'error')
+      // 最新リクエストの場合のみロールバック（stale な失敗は無視）
+      if (requestId === difficultyRequestIdRef.current) {
+        // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
+        setDefaultDifficulty(previousDifficulty)
+        showToast('難易度設定の保存に失敗しました', 'error')
+      }
     }
   }
 
@@ -137,7 +160,7 @@ export default function SettingsPage() {
 
           {/* 生成残回数の可視化（issue #164 / ADR-061）。limit=0 は無制限のため行ごと非表示にする。 */}
           {quotaLoadError ? (
-            <div className="settings-row-desc form-error" style={{ padding: '0 20px 12px' }}>
+            <div className="settings-row-desc form-error" role="alert" style={{ padding: '0 20px 12px' }}>
               残り生成回数の取得に失敗しました。
               <button
                 className="btn btn-ghost"
