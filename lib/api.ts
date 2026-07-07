@@ -27,6 +27,7 @@ import type {
   SessionsListResponse,
   RevokeSessionsResponse,
   GenerationQuota,
+  ListeningStreak,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -197,6 +198,11 @@ export function createApiClient() {
     /** 生成残回数。limit=0 は無制限（remaining は null）。issue #164 / ADR-061。 */
     getGenerationQuota() {
       return request<GenerationQuota>('/api/backend/users/me/generation-quota', { method: 'GET' })
+    },
+
+    /** 聴取ストリーク。current_streak_days=0 でも last_listened_day が非null の場合がある（途切れ）。issue #165 / ADR-062。 */
+    getListeningStreak() {
+      return request<ListeningStreak>('/api/backend/users/me/listening-streak', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {

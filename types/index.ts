@@ -123,6 +123,16 @@ export interface GenerationQuota {
   reset_at: string // ISO 8601
 }
 
+// ── 聴取ストリーク（issue #165 / ADR-062） ─────────────────────────────
+/** GET /users/me/listening-streak のレスポンス。
+ *  current_streak_days は 0 の場合もある（ストリークが途切れただけで、聴取歴自体は存在する）。
+ *  last_listened_day が null なのは、聴取歴が一度もない場合のみ。 */
+export interface ListeningStreak {
+  current_streak_days: number
+  today_listened: boolean
+  last_listened_day: string | null // ISO 8601 date (YYYY-MM-DD)
+}
+
 // ── Passkey / WebAuthn ───────────────────────────────────────────────
 /** POST /auth/passkey/register/options および /auth/passkey/login/options のレスポンス。
  *  options フィールドは JSON 文字列（backend の options_to_json() 出力）。クライアント側で JSON.parse が必要。 */

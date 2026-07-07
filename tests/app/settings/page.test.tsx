@@ -626,10 +626,11 @@ describe('SettingsPage — listening streak (issue #165)', () => {
     })
   })
 
-  test('Given getListeningStreak fails, hides the streak section entirely (graceful degradation)', async () => {
-    const { createApiClient } = await import('@/lib/api')
+  // Graceful degradation: 404（エンドポイント未実装）時は streak セクション非表示
+  test('Given getListeningStreak returns 404, hides the streak section silently (graceful degradation)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(vi.fn().mockRejectedValue(new Error('network error'))),
+      mockClientWithStreak(vi.fn().mockRejectedValue(new ApiError(404, 'Not Found'))),
     )
 
     renderSettingsPage()
@@ -637,7 +638,36 @@ describe('SettingsPage — listening streak (issue #165)', () => {
     await waitFor(() => {
       expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
     })
+    // 404 時はセクション全体を非表示にする
     expect(screen.queryByText('連続聴取日数')).not.toBeInTheDocument()
+    // エラーメッセージも表示しない
+    expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
+  })
+
+  // 404 以外（500・ネットワーク断等）は一時障害として扱い、再試行手段を残す（quota と同じ設計）
+  test('Given getListeningStreak returns 500, shows an inline error with a retry button that refetches', async () => {
+    const getListeningStreak = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({
+        current_streak_days: 5,
+        today_listened: true,
+        last_listened_day: '2026-07-07',
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(mockClientWithStreak(getListeningStreak))
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
+    expect(screen.getByText(/聴取ストリークの取得に失敗/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
+
+    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
+    })
   })
 })
 
