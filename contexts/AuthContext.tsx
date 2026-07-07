@@ -6,6 +6,8 @@ import { createApiClient } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { deleteAllAudio } from '@/lib/audioCache'
+import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
 
 // 認証状態。サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
@@ -74,6 +76,16 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
       await client().logout()
     } catch {
       // ログアウトはベストエフォート（サーバー失効に失敗してもローカル状態は落とす）。
+    }
+    try {
+      // issue #167 review指摘2: 共有端末でのユーザーデータ残留防止。
+      // deleteAllAudio()（オフライン音声 audio-v1）だけでは、SW 管理の api-v1
+      // （ユーザー固有 Podcast 一覧）・shell-pages-v1（閲覧済みページ）が残り、
+      // ユーザー A のキャッシュがユーザー B に返りうる。両方ともベストエフォート
+      // （失敗してもログアウト自体は完了させる — 上の方針と揃える）。
+      await Promise.all([deleteAllAudio(), clearManagedServiceWorkerCaches()])
+    } catch {
+      // キャッシュ消去の失敗はログアウトを妨げない。
     }
     setUser(null)
     setStatus('unauthenticated')
