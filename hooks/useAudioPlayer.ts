@@ -156,6 +156,12 @@ export function useAudioPlayer(
 
     return () => {
       audio.pause()
+      // review指摘4: createObjectURL で発行した blob: URL はタブが生きている限り
+      // ブラウザが自動 GC しない。アンマウント時に revoke してリークを防ぐ。
+      // blob 以外の URL（署名付き音声URL等）は触らない。
+      if (audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src)
+      }
       audio.removeEventListener('timeupdate', handleTimeUpdate)
       audio.removeEventListener('ended', handleEnded)
       audio.removeEventListener('error', handleError)
@@ -170,6 +176,13 @@ export function useAudioPlayer(
       // Pause current playback before switching episodes
       audio.pause()
       setIsPlaying(false)
+
+      // review指摘4: 次の src に差し替える前に、直前の src が blob: URL（オフライン再生の
+      // キャッシュ音声）だった場合のみ revoke してリークを防ぐ。blob 以外の URL
+      // （署名付き音声URL等）は触らない。
+      if (audio.src.startsWith('blob:')) {
+        URL.revokeObjectURL(audio.src)
+      }
 
       pendingResumeRef.current = resumePosition
       podcastIdRef.current = podcastId
