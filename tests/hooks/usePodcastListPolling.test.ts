@@ -92,6 +92,30 @@ describe('usePodcastListPolling', () => {
     expect(fetchPodcasts).toHaveBeenCalledTimes(2)
   })
 
+  // 回帰テスト: 実際の呼び出し元（app/podcast/page.tsx）は onUpdate を毎レンダー新規の
+  // アロー関数で渡している。これまでの実装は poll を [fetchPodcasts, onUpdate] に依存させて
+  // おり、呼び出し元が再レンダーするたびに poll の参照が変わり、interval の再構築時に
+  // 「即時 poll() 実行」が走っていた。これは fetchPodcasts → setState → 再レンダー → 新しい
+  // onUpdate → 新しい poll → 即時 poll()... という無限ループを生み、実ブラウザの E2E で
+  // 無限レンダーストーム（1つの再生ボタンクリックがスタックするほどの再描画）を引き起こした。
+  test('Given onUpdate/fetchPodcasts identity changes every render (unstable caller), does not immediately re-poll beyond the interval', () => {
+    const fetchPodcasts = vi.fn().mockResolvedValue({ podcasts: [{ id: 'p1' }] })
+
+    const { rerender } = renderHook(
+      () => usePodcastListPolling({ fetchPodcasts, onUpdate: () => {}, enabled: true }),
+    )
+
+    expect(fetchPodcasts).toHaveBeenCalledTimes(1)
+
+    // 呼び出し元の再レンダーを模す: onUpdate を毎回新しいアロー関数で渡す。
+    // interval のタイマーは一切進めていないので、正しい実装なら追加の呼び出しは発生しない。
+    rerender()
+    rerender()
+    rerender()
+
+    expect(fetchPodcasts).toHaveBeenCalledTimes(1)
+  })
+
   test('Given enabled changes to false, stops polling (no more calls)', () => {
     const fetchPodcasts = vi.fn().mockResolvedValue({ podcasts: [{ id: 'p1' }] })
     const onUpdate = vi.fn()
