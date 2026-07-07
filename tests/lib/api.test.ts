@@ -260,6 +260,55 @@ describe('getGenerationQuota', () => {
   })
 })
 
+// ==========================================================
+// getListeningStreak — GET /api/backend/users/me/listening-streak（issue #165・ADR-062）
+// ==========================================================
+describe('getListeningStreak', () => {
+  test('sends GET to /api/backend/users/me/listening-streak', async () => {
+    mockFetchOk({ current_streak_days: 5, today_listened: true, last_listened_day: '2026-07-07' })
+    const client = makeClient()
+    await client.getListeningStreak()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/listening-streak',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns current_streak_days/today_listened/last_listened_day fields (interface contract)', async () => {
+    const streak = { current_streak_days: 5, today_listened: true, last_listened_day: '2026-07-07' }
+    mockFetchOk(streak)
+    const client = makeClient()
+    const result = await client.getListeningStreak()
+
+    expect(result).toEqual(streak)
+  })
+
+  test('current_streak_days can be 0 while last_listened_day is non-null (streak broken, not never-listened)', async () => {
+    mockFetchOk({ current_streak_days: 0, today_listened: false, last_listened_day: '2026-07-01' })
+    const client = makeClient()
+    const result = await client.getListeningStreak()
+
+    expect(result.current_streak_days).toBe(0)
+    expect(result.last_listened_day).toBe('2026-07-01')
+  })
+
+  test('last_listened_day is null when the user has never listened', async () => {
+    mockFetchOk({ current_streak_days: 0, today_listened: false, last_listened_day: null })
+    const client = makeClient()
+    const result = await client.getListeningStreak()
+
+    expect(result.last_listened_day).toBeNull()
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getListeningStreak()).rejects.toThrow(ApiError)
+  })
+})
+
 describe('dismissArticle', () => {
   test('sends POST to /api/backend/articles/{id}/dismiss', async () => {
     mockFetchOk({ status: 'dismissed', article_id: 'a1' })

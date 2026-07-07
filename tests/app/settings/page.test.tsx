@@ -6,6 +6,7 @@ import SettingsPage from '@/app/settings/page'
 import { AppProvider, useApp } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
+import type { createApiClient } from '@/lib/api'
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
@@ -15,6 +16,7 @@ vi.mock('@/lib/api', () => ({
     getPreferences: vi.fn(),
     updatePreferences: vi.fn(),
     getGenerationQuota: vi.fn(),
+    getListeningStreak: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
@@ -523,6 +525,152 @@ describe('SettingsPage — generation quota (issue #164)', () => {
 // ==========================================================
 // Settings 画面 — 難易度変更のレース条件対策（issue #164）
 // ==========================================================
+// ==========================================================
+// Settings 画面 — 聴取ストリークの可視化（issue #165 / ADR-062）
+// ==========================================================
+describe('SettingsPage — listening streak (issue #165)', () => {
+  function mockClientWithStreak(getListeningStreak: ReturnType<typeof vi.fn>) {
+    return {
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 0,
+        used: 0,
+        remaining: null,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+      getListeningStreak,
+    } as unknown as ReturnType<typeof createApiClient>
+  }
+
+  test('Given a positive streak and today already listened, shows the streak count and a today-done indicator', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithStreak(
+        vi.fn().mockResolvedValue({
+          current_streak_days: 5,
+          today_listened: true,
+          last_listened_day: '2026-07-07',
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('連続聴取日数')).toBeInTheDocument()
+      expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
+    })
+  })
+
+  test('Given a positive streak but today not yet listened, shows the streak count without a today-done indicator', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithStreak(
+        vi.fn().mockResolvedValue({
+          current_streak_days: 5,
+          today_listened: false,
+          last_listened_day: '2026-07-06',
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('5日連続')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/本日分は聴取済み/)).not.toBeInTheDocument()
+  })
+
+  test('Given current_streak_days is 0 with a non-null last_listened_day, shows the broken-streak message with the last listened date', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithStreak(
+        vi.fn().mockResolvedValue({
+          current_streak_days: 0,
+          today_listened: false,
+          last_listened_day: '2026-07-01',
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('連続0日・最終聴取日 2026-07-01')).toBeInTheDocument()
+    })
+  })
+
+  test('Given last_listened_day is null, shows a never-listened message', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithStreak(
+        vi.fn().mockResolvedValue({
+          current_streak_days: 0,
+          today_listened: false,
+          last_listened_day: null,
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('まだ聴取記録がありません')).toBeInTheDocument()
+    })
+  })
+
+  // Graceful degradation: 404（エンドポイント未実装）時は streak セクション非表示
+  test('Given getListeningStreak returns 404, hides the streak section silently (graceful degradation)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithStreak(vi.fn().mockRejectedValue(new ApiError(404, 'Not Found'))),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    // 404 時はセクション全体を非表示にする
+    expect(screen.queryByText('連続聴取日数')).not.toBeInTheDocument()
+    // エラーメッセージも表示しない
+    expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
+  })
+
+  // 404 以外（500・ネットワーク断等）は一時障害として扱い、再試行手段を残す（quota と同じ設計）
+  test('Given getListeningStreak returns 500, shows an inline error with a retry button that refetches', async () => {
+    const getListeningStreak = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network error'))
+      .mockResolvedValueOnce({
+        current_streak_days: 5,
+        today_listened: true,
+        last_listened_day: '2026-07-07',
+      })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(mockClientWithStreak(getListeningStreak))
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
+    expect(screen.getByText(/聴取ストリークの取得に失敗/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
+
+    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(2))
+    await waitFor(() => {
+      expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
+    })
+  })
+})
+
 describe('SettingsPage — difficulty change race condition', () => {
   test('Given two difficulty changes in succession, only the latest response is applied (stale responses ignored)', async () => {
     const resolveStack: Array<() => void> = []
