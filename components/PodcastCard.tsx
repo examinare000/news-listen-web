@@ -15,6 +15,10 @@ interface PodcastCardProps {
   // 連続再生の導線（issue #81）。親ページがキュー操作を注入する（未指定なら非表示）。
   onPlayNext?: (podcast: Podcast) => void
   onAddToQueue?: (podcast: Podcast) => void
+  // オフライン保存（issue #167）。ダウンロード状態・ハンドラは親ページが注入する
+  // （未指定なら非表示。Context 非依存の純粋コンポーネント方針は他の連続再生ボタンと同じ）。
+  cached?: boolean
+  onDownload?: (podcast: Podcast) => void
 }
 
 export function PodcastCard({
@@ -24,6 +28,8 @@ export function PodcastCard({
   playing = false,
   onPlayNext,
   onAddToQueue,
+  cached = false,
+  onDownload,
 }: PodcastCardProps) {
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
@@ -59,8 +65,8 @@ export function PodcastCard({
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
         </button>
-        {/* 連続再生の導線（issue #81）。注入時のみ表示。 */}
-        {(onPlayNext || onAddToQueue) && (
+        {/* 連続再生（issue #81）・オフライン保存（issue #167）の導線。注入時のみ表示。 */}
+        {(onPlayNext || onAddToQueue || onDownload) && (
           <div className="podcast-queue-actions">
             {onPlayNext && (
               <button
@@ -90,6 +96,25 @@ export function PodcastCard({
                 ＋キュー
               </button>
             )}
+            {onDownload &&
+              (cached ? (
+                <span className="ctrl-btn" aria-label="オフライン保存済み">
+                  保存済み
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  className="ctrl-btn"
+                  aria-label="オフライン保存"
+                  title="オフライン保存"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onDownload(podcast)
+                  }}
+                >
+                  オフライン保存
+                </button>
+              ))}
           </div>
         )}
       </div>

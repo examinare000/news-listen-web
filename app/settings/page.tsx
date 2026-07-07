@@ -12,6 +12,8 @@ import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
 import type { DifficultyLevel, GenerationQuota } from '@/types/index'
+import { formatDuration, formatBytes } from '@/lib/format'
+import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
 
 type TimeFormat = 'absolute' | 'relative'
 
@@ -75,6 +77,30 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadQuota()
   }, [loadQuota])
+
+  // issue #167: オフラインキャッシュ（ダウンロード済みエピソード）の一覧・使用量・削除。
+  const [cachedEpisodes, setCachedEpisodes] = useState<CachedEpisodeMeta[]>([])
+  const [usage, setUsage] = useState<StorageEstimate | null>(null)
+
+  const loadOfflineCache = useCallback(async () => {
+    const [episodes, estimate] = await Promise.all([listCachedEpisodes(), estimateUsage()])
+    setCachedEpisodes(episodes)
+    setUsage(estimate)
+  }, [])
+
+  useEffect(() => {
+    void loadOfflineCache()
+  }, [loadOfflineCache])
+
+  async function handleDeleteCachedEpisode(id: string) {
+    await deleteAudio(id)
+    await loadOfflineCache()
+  }
+
+  async function handleDeleteAllCachedEpisodes() {
+    await deleteAllAudio()
+    await loadOfflineCache()
+  }
 
   // WHY: 2連続変更でレスポンス順が入れ替わると、後勝ちした保存成功後に先行の失敗が
   // サーバー保存済み値を上書きする可能性がある。リクエスト連番で最新リクエストの結果のみを
@@ -251,8 +277,59 @@ export default function SettingsPage() {
           )}
         </section>
 
+        {/* セクション 3: オフラインキャッシュ（issue #167） */}
+        <section className="settings-section">
+          <div className="settings-section-header">
+            <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
+              📥
+            </div>
+            <h2 className="settings-section-title">オフラインキャッシュ</h2>
+          </div>
 
-        {/* セクション 3: プッシュ通知 */}
+          {/* ストレージ API 未対応環境では usage が null のまま(graceful degradation)。行ごと非表示。 */}
+          {usage && (
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">使用容量</div>
+                <div className="settings-row-desc">
+                  {formatBytes(usage.usage)} / {formatBytes(usage.quota)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {cachedEpisodes.length === 0 ? (
+            <div className="settings-row-desc" style={{ padding: '0 20px 16px' }}>
+              キャッシュ済みのエピソードはありません
+            </div>
+          ) : (
+            <>
+              {cachedEpisodes.map((ep) => (
+                <div className="settings-row" key={ep.id} data-testid={`offline-cache-item-${ep.id}`}>
+                  <div>
+                    <div className="settings-row-label">{ep.title}</div>
+                    <div className="settings-row-desc">{formatDuration(ep.duration_seconds)}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    aria-label="削除"
+                    onClick={() => void handleDeleteCachedEpisode(ep.id)}
+                  >
+                    削除
+                  </button>
+                </div>
+              ))}
+              <div className="settings-row-desc" style={{ padding: '0 20px 12px', textAlign: 'right' }}>
+                <button type="button" className="btn btn-ghost" onClick={() => void handleDeleteAllCachedEpisodes()}>
+                  すべて削除
+                </button>
+              </div>
+            </>
+          )}
+        </section>
+
+        {/* セクション 4: プッシュ通知 */}
         <PushNotificationSection />
       </div>
     </>

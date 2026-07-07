@@ -23,6 +23,27 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
+// issue #167: オフラインキャッシュセクション用。既定は「未キャッシュ・容量取得不可」に倒す
+// （lib/audioCache.ts の graceful degradation と同じデフォルト）。
+const {
+  listCachedEpisodes,
+  estimateUsage,
+  deleteAudio: mockDeleteAudio,
+  deleteAllAudio: mockDeleteAllAudio,
+} = vi.hoisted(() => ({
+  listCachedEpisodes: vi.fn().mockResolvedValue([]),
+  estimateUsage: vi.fn().mockResolvedValue(null),
+  deleteAudio: vi.fn().mockResolvedValue(undefined),
+  deleteAllAudio: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('@/lib/audioCache', () => ({
+  listCachedEpisodes,
+  estimateUsage,
+  deleteAudio: mockDeleteAudio,
+  deleteAllAudio: mockDeleteAllAudio,
+}))
+
 // AccountSection が useAuth を使うためモックする（管理者ユーザーでログイン中とする）。
 vi.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
@@ -357,11 +378,9 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
     expect(document.querySelector('input[type="range"]')).not.toBeInTheDocument()
   })
 
-  test('D22: no cache management UI', () => {
-    renderSettingsPage()
-    expect(screen.queryByRole('button', { name: /キャッシュ/ })).not.toBeInTheDocument()
-    expect(screen.queryByText(/キャッシュ/)).not.toBeInTheDocument()
-  })
+  // D22 was superseded by issue #167 (PWA offline playback), whose acceptance criteria
+  // explicitly require a cache usage/deletion UI in Settings. See the
+  // 'SettingsPage — offline cache (issue #167)' describe block below for its coverage.
 })
 
 // ==========================================================
@@ -555,6 +574,96 @@ describe('SettingsPage — difficulty change race condition', () => {
     // 最新の値（ielts_7）が保持される
     await waitFor(() => {
       expect(diffSelect.value).toBe('ielts_7')
+    })
+  })
+})
+
+// ==========================================================
+// Settings 画面 — オフラインキャッシュ（issue #167）
+// ==========================================================
+describe('SettingsPage — offline cache (issue #167)', () => {
+  test('shows an empty state when nothing is cached', async () => {
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('オフラインキャッシュ')).toBeInTheDocument()
+      expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
+    })
+  })
+
+  test('lists cached episodes with title and duration', async () => {
+    listCachedEpisodes.mockResolvedValue([
+      { id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 },
+      { id: 'p2', title: 'オフライン用イントロ2', duration_seconds: 65 },
+    ])
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('オフライン用イントロ1')).toBeInTheDocument()
+      expect(screen.getByText('オフライン用イントロ2')).toBeInTheDocument()
+    })
+    expect(screen.getByText('2:05')).toBeInTheDocument()
+    expect(screen.getByText('1:05')).toBeInTheDocument()
+  })
+
+  test('shows storage usage when estimateUsage succeeds', async () => {
+    estimateUsage.mockResolvedValue({ usage: 5 * 1024 * 1024, quota: 100 * 1024 * 1024 })
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('5.0 MB / 100.0 MB')).toBeInTheDocument()
+    })
+  })
+
+  test('hides the usage row when estimateUsage is unavailable (graceful degradation)', async () => {
+    estimateUsage.mockResolvedValue(null)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('オフラインキャッシュ')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/MB \//)).not.toBeInTheDocument()
+  })
+
+  test('deletes a single cached episode and refreshes the list', async () => {
+    listCachedEpisodes
+      .mockResolvedValueOnce([{ id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 }])
+      .mockResolvedValueOnce([])
+
+    renderSettingsPage()
+
+    await waitFor(() => expect(screen.getByText('オフライン用イントロ1')).toBeInTheDocument())
+
+    const row = screen.getByTestId('offline-cache-item-p1')
+    await userEvent.click(within(row).getByRole('button', { name: '削除' }))
+
+    expect(mockDeleteAudio).toHaveBeenCalledWith('p1')
+    await waitFor(() => {
+      expect(screen.queryByText('オフライン用イントロ1')).not.toBeInTheDocument()
+      expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
+    })
+  })
+
+  test('deletes every cached episode via "すべて削除"', async () => {
+    listCachedEpisodes
+      .mockResolvedValueOnce([
+        { id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 },
+        { id: 'p2', title: 'オフライン用イントロ2', duration_seconds: 65 },
+      ])
+      .mockResolvedValueOnce([])
+
+    renderSettingsPage()
+
+    await waitFor(() => expect(screen.getByText('オフライン用イントロ1')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: 'すべて削除' }))
+
+    expect(mockDeleteAllAudio).toHaveBeenCalled()
+    await waitFor(() => {
+      expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
     })
   })
 })

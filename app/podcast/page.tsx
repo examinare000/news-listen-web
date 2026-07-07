@@ -9,6 +9,7 @@ import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
 import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { createApiClient, ApiError } from '@/lib/api'
+import { isCached, downloadAudio } from '@/lib/audioCache'
 import type { Podcast } from '@/types/index'
 
 function RefreshIcon() {
@@ -72,6 +73,46 @@ export default function PodcastPage() {
     fetchPodcasts()
   }, [fetchPodcasts])
 
+  // オフライン保存（issue #167）。一覧取得のたびに各エピソードのキャッシュ有無を確認する。
+  const [cachedIds, setCachedIds] = useState<Set<string>>(() => new Set())
+
+  // WHY depend on a joined-id string, not `podcasts` itself (regression fix): getPodcasts()
+  // is an HTTP/JSON round-trip, so it returns a brand-new array reference every poll even when
+  // the content is unchanged. Depending on `podcasts` directly re-ran this effect on every
+  // poll tick regardless of content, and that extra state update (setCachedIds) fed back into
+  // usePodcastListPolling's pre-existing onUpdate-identity instability (its `poll` callback is
+  // recreated — and its effect torn down/re-run — on every render), compounding into a
+  // render/fetch storm that made e2e/main-flow.e2e.ts's play-button click never stabilize
+  // (7898 GET /api/backend/podcasts calls observed in a 14s Playwright trace vs. ~150 without
+  // this effect). A joined-id string is a primitive, so React's Object.is dependency check only
+  // reruns this effect when the actual set of podcast ids changes, not on every same-content refetch.
+  const podcastIds = podcasts.map((p) => p.id).join(',')
+
+  useEffect(() => {
+    if (podcasts.length === 0) return
+    let cancelled = false
+    Promise.all(podcasts.map((p) => isCached(p.id).then((c) => (c ? p.id : null))))
+      .then((ids) => {
+        if (cancelled) return
+        setCachedIds(new Set(ids.filter((id): id is string => id !== null)))
+      })
+      .catch(() => {
+        // 確認失敗は致命的ではない（未保存として扱い、ボタンは表示し続ける）。
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [podcastIds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleDownload(podcast: Podcast) {
+    try {
+      await downloadAudio(podcast.id)
+      setCachedIds((prev) => new Set(prev).add(podcast.id))
+    } catch {
+      showToast('オフライン保存に失敗しました', 'error')
+    }
+  }
+
   // #11 ポーリング: 新規 Podcast 生成完了を待つ
   // WHY: ユーザーが /feed で Star → /podcast に遷移した直後、生成完了を自動検知して表示更新
   // onUpdate で停止時に polling を無効化（過剰ポーリング防止）
@@ -122,6 +163,9 @@ export default function PodcastPage() {
               savedPosition={savedPosition > 0 ? savedPosition : undefined}
               // 再生中強調（D24）: 判定はページ責務（PodcastCard を Context 非依存に保つ）
               playing={state.currentPodcast?.id === podcast.id}
+              // オフライン保存（issue #167）: 状態・ハンドラもページ責務として注入する
+              cached={cachedIds.has(podcast.id)}
+              onDownload={(p) => void handleDownload(p)}
             />
           )
         })}

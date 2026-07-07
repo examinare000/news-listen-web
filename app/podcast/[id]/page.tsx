@@ -7,6 +7,7 @@ import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
 import { createApiClient, ApiError } from '@/lib/api'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
+import { isCached, downloadAudio } from '@/lib/audioCache'
 import type { Podcast } from '@/types/index'
 
 interface PodcastDetailPageProps {
@@ -71,6 +72,27 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     // Delegate to shared hook: re-fetches fresh URL (spec §9 L151),
     // restores saved position (spec §10.3 L201/L209 "一覧と同フロー").
     await startPodcast(podcast.id)
+  }
+
+  // オフライン保存（issue #167）。読み込み後にキャッシュ済みかを確認し、
+  // ダウンロード完了で「保存済み」表示へ切り替える。
+  const [downloaded, setDownloaded] = useState(false)
+
+  useEffect(() => {
+    if (!podcast) return
+    isCached(podcast.id).then(setDownloaded).catch(() => {
+      // 確認に失敗しても致命的ではない（未保存として扱い、ボタンは表示し続ける）。
+    })
+  }, [podcast])
+
+  async function handleDownload() {
+    if (!podcast) return
+    try {
+      await downloadAudio(podcast.id)
+      setDownloaded(true)
+    } catch {
+      showToast('オフライン保存に失敗しました', 'error')
+    }
   }
 
   if (notFound) {
@@ -182,12 +204,25 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           ))}
         </div>
 
-        <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          再生
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            再生
+          </button>
+
+          {/* オフライン保存（issue #167）。保存済みなら状態表示に切り替える。 */}
+          {downloaded ? (
+            <span className="btn btn-ghost" aria-label="オフライン保存済み">
+              保存済み
+            </span>
+          ) : (
+            <button type="button" className="btn btn-ghost" onClick={() => void handleDownload()}>
+              オフライン保存
+            </button>
+          )}
+        </div>
       </div>
     </>
   )
