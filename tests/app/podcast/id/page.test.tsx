@@ -20,6 +20,19 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
+// issue #167: オフライン保存ボタン用。既定は「未キャッシュ」に倒す。
+// WHY the mock also stubs getCachedAudioUrl/getCachedPodcast (unused by this test file's
+// assertions): AudioPlayerContext imports them from the same module, and a partial mock
+// would leave them undefined — breaking the (real, unmocked) play flow these tests exercise.
+const { isCached, downloadAudio, getCachedAudioUrl, getCachedPodcast } = vi.hoisted(() => ({
+  isCached: vi.fn().mockResolvedValue(false),
+  downloadAudio: vi.fn().mockResolvedValue(undefined),
+  getCachedAudioUrl: vi.fn().mockResolvedValue(null),
+  getCachedPodcast: vi.fn().mockResolvedValue(null),
+}))
+
+vi.mock('@/lib/audioCache', () => ({ isCached, downloadAudio, getCachedAudioUrl, getCachedPodcast }))
+
 const SAMPLE_PODCAST = {
   id: 'p1',
   type: 'single',
@@ -38,6 +51,10 @@ let mockAudio: MockAudio
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // WHY reset here (not rely on vi.clearAllMocks): clearAllMocks wipes call history but
+  // keeps whatever resolved value a previous test's mockResolvedValue() left behind.
+  isCached.mockResolvedValue(false)
+  downloadAudio.mockResolvedValue(undefined)
   localStorage.clear()
   mockAudio = setupMockAudio()
 })
@@ -263,5 +280,75 @@ describe('PodcastDetailPage — 404', () => {
 
     // 一覧へ戻るリンクが存在する
     expect(screen.getByRole('link', { name: /一覧|戻る/i })).toHaveAttribute('href', '/podcast')
+  })
+})
+
+// ==========================================================
+// Podcast 詳細 — オフライン保存（issue #167）
+// ==========================================================
+describe('PodcastDetailPage — offline download (issue #167)', () => {
+  test('shows an オフライン保存 button once the episode is loaded (not yet cached)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+    })
+  })
+
+  test('clicking it downloads the audio and switches to a "保存済み" state', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'オフライン保存' }))
+
+    expect(downloadAudio).toHaveBeenCalledWith('p1')
+    await waitFor(() => {
+      expect(screen.getByText('保存済み')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'オフライン保存' })).not.toBeInTheDocument()
+    })
+  })
+
+  test('shows "保存済み" immediately when the episode is already cached (no re-download)', async () => {
+    isCached.mockResolvedValue(true)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('保存済み')).toBeInTheDocument()
+    })
+    expect(downloadAudio).not.toHaveBeenCalled()
+  })
+
+  test('given the download fails, shows an error toast and keeps the button retryable', async () => {
+    downloadAudio.mockRejectedValueOnce(new Error('network error'))
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'オフライン保存' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/オフライン保存に失敗しました/)
+    })
+    // 失敗時は保存済みにならず、再試行できる
+    expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
   })
 })

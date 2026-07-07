@@ -29,9 +29,28 @@ export function usePodcastListPolling({ fetchPodcasts, onUpdate, enabled }: UseP
   const startTimeRef = useRef<number | null>(null)
   const intervalIdRef = useRef<NodeJS.Timeout | null>(null)
 
+  // WHY refs for the latest callbacks (regression fix): the real caller (app/podcast/page.tsx)
+  // passes a brand-new `onUpdate` arrow function on every render, which is a normal and
+  // legitimate thing for a component to do — this hook should not require callers to memoize
+  // their callbacks. Previously `poll` was a useCallback depending on [fetchPodcasts, onUpdate],
+  // so any caller re-render changed `poll`'s identity, which made the setup effect below
+  // (keyed on `poll`) tear down and immediately re-invoke `poll()` — bypassing POLL_INTERVAL_MS
+  // entirely. Combined with `poll()` itself eventually calling setState (via fetchPodcasts），
+  // that immediate re-poll caused another re-render, forming an unbounded fetch/render feedback
+  // loop (observed in production as e2e/main-flow.e2e.ts never stabilizing: thousands of
+  // GET /api/backend/podcasts calls in seconds). Storing the callbacks in refs lets `poll`
+  // always invoke the latest versions while keeping `poll`'s own identity — and therefore the
+  // interval lifecycle — stable across unrelated re-renders.
+  const fetchPodcastsRef = useRef(fetchPodcasts)
+  const onUpdateRef = useRef(onUpdate)
+  useEffect(() => {
+    fetchPodcastsRef.current = fetchPodcasts
+    onUpdateRef.current = onUpdate
+  })
+
   const poll = useCallback(async () => {
     try {
-      const result = await fetchPodcasts()
+      const result = await fetchPodcastsRef.current()
       const currentCount = result.podcasts.length
 
       // Initialize baseline and start time on first poll
@@ -56,13 +75,13 @@ export function usePodcastListPolling({ fetchPodcasts, onUpdate, enabled }: UseP
         }
         baselineCountRef.current = null
         startTimeRef.current = null
-        onUpdate()
+        onUpdateRef.current()
       }
     } catch {
       // Silently ignore polling errors to avoid breaking the UI
       // (network failures, API errors, etc.)
     }
-  }, [fetchPodcasts, onUpdate])
+  }, [])
 
   useEffect(() => {
     if (!enabled) {

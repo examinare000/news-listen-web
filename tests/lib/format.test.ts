@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter } from '@/lib/format'
+import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter, formatBytes } from '@/lib/format'
 import type { AuthUser } from '@/types/index'
 
 // ==========================================================
@@ -255,5 +255,28 @@ describe('formatRetryAfter (#82)', () => {
   })
   test('境界（3599秒）は「約60分後」ではなく「約1時間後」', () => {
     expect(formatRetryAfter(3599)).toBe('約1時間後')
+  })
+})
+
+// issue #167: 設定画面のオフラインキャッシュ使用量表示（navigator.storage.estimate() の bytes を整形）
+describe('formatBytes (#167)', () => {
+  test('0 bytes は "0 B"', () => {
+    expect(formatBytes(0)).toBe('0 B')
+  })
+
+  test('1024 未満は B 単位', () => {
+    expect(formatBytes(512)).toBe('512 B')
+  })
+
+  test('KB 単位（小数第1位）', () => {
+    expect(formatBytes(1536)).toBe('1.5 KB')
+  })
+
+  test('MB 単位（小数第1位）', () => {
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB')
+  })
+
+  test('GB 単位（小数第1位）', () => {
+    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB')
   })
 })

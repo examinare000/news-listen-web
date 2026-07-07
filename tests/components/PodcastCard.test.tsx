@@ -156,3 +156,33 @@ describe('PodcastCard saved position', () => {
     expect(screen.queryByText(/続きから/)).not.toBeInTheDocument()
   })
 })
+
+// ==========================================================
+// PodcastCard — オフライン保存（issue #167）
+// WHY prop injection (not a Context/lib/audioCache import here): PodcastCard is kept
+// context-free by design (mirrors onPlayNext/onAddToQueue) so it stays a cheap,
+// isolated unit to test — the page decides download state/handler and injects them.
+// ==========================================================
+describe('PodcastCard offline download (issue #167)', () => {
+  test('Given onDownload is not provided, does not render a download button', () => {
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} />)
+    expect(screen.queryByRole('button', { name: /オフライン保存/ })).not.toBeInTheDocument()
+  })
+
+  test('Given onDownload is provided and not cached, clicking calls onDownload with the podcast', async () => {
+    const onDownload = vi.fn()
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} onDownload={onDownload} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'オフライン保存' }))
+
+    expect(onDownload).toHaveBeenCalledWith(SAMPLE_PODCAST)
+  })
+
+  test('Given cached=true, shows a "保存済み" state instead of a clickable download button', () => {
+    const onDownload = vi.fn()
+    render(<PodcastCard podcast={SAMPLE_PODCAST} onPlay={vi.fn()} onDownload={onDownload} cached />)
+
+    expect(screen.getByText('保存済み')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'オフライン保存' })).not.toBeInTheDocument()
+  })
+})

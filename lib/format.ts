@@ -101,6 +101,24 @@ export function formatRelativeTime(date: Date, now: Date): string {
 }
 
 /**
+ * Formats a byte count (navigator.storage.estimate() usage/quota) to a human-readable
+ * string. issue #167: 設定画面のオフラインキャッシュ使用量表示。
+ */
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = bytes / 1024
+  let unitIndex = 0
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024
+    unitIndex += 1
+  }
+  return `${value.toFixed(1)} ${units[unitIndex]}`
+}
+
+/**
  * Formats an authenticated user to a label string.
  * Used in AccountSection and SidebarAccount to display user info consistently.
  * @param user - The authenticated user, or null for unauthenticated state

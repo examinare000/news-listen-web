@@ -14,6 +14,9 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllGlobals()
+  // review指摘4 のテストで vi.spyOn(URL, 'revokeObjectURL') を使う。spyOn は同一メソッドへの
+  // 再呼び出しで既存のモックを使い回す（呼び出し履歴が蓄積する）ため、テスト間で復元する。
+  vi.restoreAllMocks()
 })
 
 // ==========================================================
@@ -428,6 +431,67 @@ describe('Unmount cleanup', () => {
     unmount()
 
     expect(mockAudio.paused).toBe(true)
+  })
+})
+
+// ==========================================================
+// Blob URL cleanup（review指摘4） — createObjectURL のリークを防ぐため、差し替え/アンマウント
+// 時に前の src が blob: URL だった場合のみ revokeObjectURL する。blob 以外の URL（署名付き
+// 音声URL等）には触れない。
+// ==========================================================
+describe('Blob URL cleanup (issue #167 review指摘4)', () => {
+  test('revokes the previous blob: URL when loading a new episode', () => {
+    const { result } = renderHook(() => useAudioPlayer())
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+
+    act(() => {
+      result.current.load('blob:https://example.com/old-blob-id', 0, 'p1')
+    })
+    act(() => {
+      result.current.load('https://example.com/audio2.mp3', 0, 'p2')
+    })
+
+    expect(revokeSpy).toHaveBeenCalledWith('blob:https://example.com/old-blob-id')
+  })
+
+  test('does not revoke when the previous src was not a blob: URL', () => {
+    const { result } = renderHook(() => useAudioPlayer())
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+
+    act(() => {
+      result.current.load('https://example.com/audio1.mp3', 0, 'p1')
+    })
+    act(() => {
+      result.current.load('https://example.com/audio2.mp3', 0, 'p2')
+    })
+
+    expect(revokeSpy).not.toHaveBeenCalled()
+  })
+
+  test('revokes the current blob: URL on unmount', () => {
+    const { result, unmount } = renderHook(() => useAudioPlayer())
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+
+    act(() => {
+      result.current.load('blob:https://example.com/blob-id', 0, 'p1')
+    })
+
+    unmount()
+
+    expect(revokeSpy).toHaveBeenCalledWith('blob:https://example.com/blob-id')
+  })
+
+  test('does not revoke on unmount when the src was not a blob: URL', () => {
+    const { result, unmount } = renderHook(() => useAudioPlayer())
+    const revokeSpy = vi.spyOn(URL, 'revokeObjectURL')
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    unmount()
+
+    expect(revokeSpy).not.toHaveBeenCalled()
   })
 })
 
