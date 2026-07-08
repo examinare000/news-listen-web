@@ -1,5 +1,6 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import React from 'react'
 import RootPage from '@/app/page'
 import { AppProvider } from '@/contexts/AppContext'
@@ -33,6 +34,7 @@ vi.mock('@/contexts/AuthContext', () => ({
     user: null,
     login: vi.fn(),
     logout: vi.fn(),
+    register: vi.fn(),
     refreshMe: vi.fn(),
   }),
 }))
@@ -57,31 +59,8 @@ function renderRootPage(initialState: Record<string, unknown> = {}) {
   )
 }
 
-
 // ==========================================================
-// Entry Gate — 復元中スケルトン (spec §10.1-a)
-// ==========================================================
-describe('RootPage — restoring', () => {
-  test('Given isRestoring, shows card-shaped skeleton placeholders', () => {
-    useAppOverride.current = () => ({
-      state: { isRestoring: true },
-      dispatch: vi.fn(),
-      setTimeFormat: vi.fn(),
-    })
-
-    render(<RootPage />)
-
-    const loading = screen.getByLabelText('読み込み中')
-    // カード形状のプレースホルダー — 単一ブロックでなく複数の .skeleton 要素で構成される
-    expect(loading.querySelectorAll('.skeleton').length).toBeGreaterThanOrEqual(2)
-    // 復元中はモーダルもリダイレクトも発生しない
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(mockReplace).not.toHaveBeenCalled()
-  })
-})
-
-// ==========================================================
-// Entry Gate — 認証完了状態 (spec §10.1-b)
+// Entry Gate — 認証完了状態 (spec §10.1)
 // ==========================================================
 describe('RootPage — authenticated', () => {
   test('Given restore complete and authenticated, calls router.replace("/feed")', async () => {
@@ -102,27 +81,80 @@ describe('RootPage — authenticated', () => {
   })
 })
 
-// ==========================================================
-// Entry Gate — 復元完了だが未ログイン → LoginModal
-// ==========================================================
-describe('RootPage — unauthenticated', () => {
-  test('Given unauthenticated, shows LoginModal and does not redirect', async () => {
-    authStatusOverride.current = 'unauthenticated'
+describe('RootPage — authenticated, onboarding gate', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test('Given onboarding not completed, shows OnboardingSourcesModal and does not redirect', async () => {
+    authStatusOverride.current = 'authenticated'
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ onboarding_completed: false }),
+      }),
+    )
     renderRootPage({ isRestoring: false })
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog', { name: 'ログイン' })).toBeInTheDocument()
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
-    expect(mockReplace).not.toHaveBeenCalled()
-  })
-
-  test('Given auth unknown, renders nothing (resolving)', async () => {
-    authStatusOverride.current = 'unknown'
-    renderRootPage({ isRestoring: false })
-
-    // ログイン画面もフィード遷移も発生しない（/auth/me 解決待ち）
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(mockReplace).not.toHaveBeenCalled()
   })
 })
 
+// ==========================================================
+// Entry Gate — 未接続/未ログイン → LandingPage（LP は isRestoring を待たず即座に表示）
+// ==========================================================
+describe('RootPage — unauthenticated', () => {
+  test('Given unauthenticated, shows LandingPage with /signup CTA and does NOT auto-open LoginModal', async () => {
+    authStatusOverride.current = 'unauthenticated'
+    renderRootPage({ isRestoring: false })
+
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: /新規登録|招待コードで登録/ })[0]).toHaveAttribute(
+      'href',
+      '/signup',
+    )
+    expect(screen.queryByRole('dialog', { name: 'ログイン' })).not.toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  test('Given unauthenticated even while isRestoring, shows LandingPage immediately (no skeleton wait)', () => {
+    authStatusOverride.current = 'unauthenticated'
+    useAppOverride.current = () => ({
+      state: { isRestoring: true },
+      dispatch: vi.fn(),
+      setTimeFormat: vi.fn(),
+    })
+
+    render(<RootPage />)
+
+    expect(screen.getByTestId('lp-hero')).toBeInTheDocument()
+  })
+
+  test('clicking ログイン opens the LoginModal, and its onClose hides it again', async () => {
+    authStatusOverride.current = 'unauthenticated'
+    renderRootPage({ isRestoring: false })
+    const user = userEvent.setup()
+
+    await user.click(screen.getAllByRole('button', { name: 'ログイン' })[0])
+    const dialog = await screen.findByRole('dialog', { name: 'ログイン' })
+    expect(dialog).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '閉じる' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'ログイン' })).not.toBeInTheDocument())
+    // LP 自体は閉じた後も表示され続ける
+    expect(screen.getByTestId('lp-hero')).toBeInTheDocument()
+  })
+
+  test('Given auth unknown, shows LandingPage (no redirect)', async () => {
+    authStatusOverride.current = 'unknown'
+    renderRootPage({ isRestoring: false })
+
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+})

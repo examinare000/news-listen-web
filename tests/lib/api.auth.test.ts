@@ -140,6 +140,56 @@ describe('deleteAccount', () => {
   })
 })
 
+describe('register', () => {
+  test('POSTs invite/username/password/display_name to /api/backend/auth/register with credentials included', async () => {
+    mockFetchOk({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'Newbie' } }, 201)
+    const res = await makeClient().register({
+      invite_code: 'INV123',
+      username: 'newbie',
+      password: 'Sup3r-Secret!!',
+      display_name: 'Newbie',
+    })
+
+    const { path, init } = lastCall()
+    expect(path).toBe('/api/backend/auth/register')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toEqual({
+      invite_code: 'INV123',
+      username: 'newbie',
+      password: 'Sup3r-Secret!!',
+      display_name: 'Newbie',
+    })
+    // セッション Cookie 送受信のため credentials: 'include'
+    expect(init.credentials).toBe('include')
+    expect(res.user.username).toBe('newbie')
+  })
+
+  test('omits invite_code/display_name from body when not provided', async () => {
+    mockFetchOk({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'newbie' } }, 201)
+    await makeClient().register({ username: 'newbie', password: 'Sup3r-Secret!!' })
+
+    const { init } = lastCall()
+    expect(JSON.parse(init.body as string)).toEqual({
+      username: 'newbie',
+      password: 'Sup3r-Secret!!',
+    })
+  })
+
+  test('throws ApiError on 409 (username not available)', async () => {
+    mockFetchError(409, 'Username not available')
+    await expect(
+      makeClient().register({ username: 'taken', password: 'Sup3r-Secret!!' }),
+    ).rejects.toMatchObject({ status: 409 })
+  })
+
+  test('throws ApiError on 400 (invalid or expired invite)', async () => {
+    mockFetchError(400, 'Invalid or expired invite')
+    await expect(
+      makeClient().register({ invite_code: 'BAD', username: 'newbie', password: 'Sup3r-Secret!!' }),
+    ).rejects.toMatchObject({ status: 400 })
+  })
+})
+
 describe('admin user management', () => {
   test('listUsers GETs /api/backend/admin/users', async () => {
     mockFetchOk({ users: [] })

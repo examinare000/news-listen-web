@@ -16,8 +16,11 @@ import type {
   OnboardingStatusResponse,
   AuthUser,
   LoginResponse,
+  RegisterInput,
   UserListResponse,
   UserRole,
+  InviteCreateResponse,
+  InviteListResponse,
   UserPreferences,
   UserPreferencesPatch,
   VapidPublicKeyResponse,
@@ -228,6 +231,21 @@ export function createApiClient() {
       return request<{ status: string }>('/api/backend/auth/logout', { method: 'POST' })
     },
 
+    /**
+     * 招待コードによる新規登録。成功時（201）は login と同じ LoginResponse を返し、
+     * httpOnly セッション Cookie を発行する。invite_code/display_name は未指定なら
+     * ボディへ含めない（バックエンドの Optional フィールドとの整合）。
+     */
+    register(input: RegisterInput) {
+      const body: Record<string, string> = { username: input.username, password: input.password }
+      if (input.invite_code) body.invite_code = input.invite_code
+      if (input.display_name) body.display_name = input.display_name
+      return request<LoginResponse>('/api/backend/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+    },
+
     getMe() {
       return request<AuthUser>('/api/backend/auth/me', { method: 'GET' })
     },
@@ -285,6 +303,26 @@ export function createApiClient() {
         `/api/backend/admin/users/${encodeURIComponent(username)}`,
         { method: 'DELETE' },
       )
+    },
+
+    // ── 管理者による招待コード管理 ────────────────────────────────
+    /** code / invite_url はこの応答でのみ表示される（以降は復元不可）。 */
+    createInvite(input: { note?: string; max_uses?: number; expires_in_days?: number }) {
+      return request<InviteCreateResponse>('/api/backend/admin/invites', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+    },
+
+    listInvites() {
+      return request<InviteListResponse>('/api/backend/admin/invites', { method: 'GET' })
+    },
+
+    /** 招待コードを失効（ソフト削除）。存在しない id は 404。 */
+    revokeInvite(id: string) {
+      return request<void>(`/api/backend/admin/invites/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
     },
 
     // ── 管理者によるおすすめサイト管理 ────────────────────────────────

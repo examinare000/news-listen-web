@@ -205,17 +205,20 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
   // Test flow steps: フィード → Star → /podcast → 再生
   // ═══════════════════════════════════════════════════════════════════════════════
 
-  // 1. Navigate to root → config seeded, unauthenticated → LoginModal
+  // 1. Navigate to root → unauthenticated → LandingPage（LP は isRestoring を待たず即座に表示）
   await page.goto('/')
+  await expect(page.getByTestId('lp-hero')).toBeVisible()
 
-  // 2. Login screen visible (config gate passed)
+  // 2. LP の「ログイン」ボタンでオーバーレイの LoginModal を開く
+  await page.getByRole('button', { name: 'ログイン', exact: true }).first().click()
   await expect(page.getByRole('heading', { name: 'ログイン' })).toBeVisible()
 
   // 3. Log in
   await page.locator('#login-username').fill('e2e')
   await page.locator('#login-password').fill('e2e-password')
-  // 「Passkey でログイン」ボタンも追加されたため、送信ボタンは完全一致で特定する
-  await page.getByRole('button', { name: 'ログイン', exact: true }).click()
+  // LP の背後にも「ログイン」ボタンが残っているため（モーダルはオーバーレイで LP を
+  // アンマウントしない）、送信ボタンは dialog 内に絞って特定する。
+  await page.getByRole('dialog', { name: 'ログイン' }).getByRole('button', { name: 'ログイン', exact: true }).click()
 
   // 4. Lands on feed with the article (root replaces to /feed after auth+onboarding)
   await expect(page).toHaveURL(/\/feed$/)

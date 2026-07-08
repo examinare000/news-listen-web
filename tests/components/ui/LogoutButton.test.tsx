@@ -27,6 +27,7 @@ async function setupUseAuth() {
     user: { username: 'alice', role: 'user', display_name: 'Alice' },
     logout: mockLogout,
     login: vi.fn(),
+    register: vi.fn(),
     refreshMe: vi.fn(),
     loginWithPasskey: vi.fn(),
   })

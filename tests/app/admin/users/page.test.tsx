@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import AdminUsersPage from '@/app/admin/users/page'
+import AdminUsersPage from '@/app/(app)/admin/users/page'
 import { AppProvider } from '@/contexts/AppContext'
 
 const listUsers = vi.fn()

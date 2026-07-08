@@ -1,7 +1,7 @@
 'use client'
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import type { AuthUser } from '@/types/index'
+import type { AuthUser, RegisterInput } from '@/types/index'
 import { createApiClient } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
@@ -21,6 +21,8 @@ interface AuthContextValue {
   /** パスワードログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
+  /** 招待コードによる新規登録。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
+  register: (input: RegisterInput) => Promise<void>
   /** GET /auth/me で状態を再解決する。 */
   refreshMe: () => Promise<void>
   /**
@@ -71,6 +73,16 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     [client],
   )
 
+  const register = useCallback(
+    async (input: RegisterInput) => {
+      // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する（login と同じ方針）。
+      const res = await client().register(input)
+      setUser(res.user)
+      setStatus('authenticated')
+    },
+    [client],
+  )
+
   const logout = useCallback(async () => {
     try {
       await client().logout()
@@ -111,7 +123,7 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   }, [state.isRestoring, refreshMe, initialStatus])
 
   return (
-    <AuthContext.Provider value={{ status, user, login, logout, refreshMe, loginWithPasskey }}>
+    <AuthContext.Provider value={{ status, user, login, register, logout, refreshMe, loginWithPasskey }}>
       {children}
     </AuthContext.Provider>
   )
