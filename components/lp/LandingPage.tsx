@@ -20,7 +20,7 @@ const FEATURES: Feature[] = [
   {
     index: '01',
     title: 'パーソナライズドフィード',
-    desc: 'HackerNews/Zenn/任意RSSをAIが興味順に',
+    desc: '様々なサイトの海外ニュースをお好み順に',
   },
   {
     index: '02',
