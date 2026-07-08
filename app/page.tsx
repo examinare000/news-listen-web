@@ -4,19 +4,18 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useApp } from '@/contexts/AppContext'
 import { useAuth } from '@/contexts/AuthContext'
+import { LandingPage } from '@/components/lp/LandingPage'
 import { LoginModal } from '@/components/ui/LoginModal'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
 import { createApiClient } from '@/lib/api'
 
-// Entry gate (spec §10.1 + ログイン + おすすめサイト追加ステップ):
-// (a) isRestoring=true        → skeleton (localStorage restore in progress)
-// (b) isRestoring=false:
-//       - 認証状態 unknown（/auth/me 解決中）→ null
-//       - 未認証 → LoginModal（ログインするまで遷移不可）
-//       - 認証済み:
-//           - onboarding 状態を取得する間は null（リダイレクトしない）
-//           - onboarding_completed=false → OnboardingSourcesModal（追加ステップ）
-//           - onboarding_completed=true  → /feed へ replace
+// Entry gate（ランディングページ導入後）:
+// - unknown / unauthenticated → LandingPage を即座に表示（LP は静的なので isRestoring を
+//   待たない。以前のスケルトン分岐は撤去）。ログインボタンでオーバーレイの LoginModal を開く。
+// - 認証済み:
+//     - onboarding 状態を取得する間は LandingPage を表示（ブランク遷移防止。以前は null）
+//     - onboarding_completed=false → OnboardingSourcesModal（追加ステップ）
+//     - onboarding_completed=true  → /feed へ replace
 type OnboardingGate = 'unknown' | 'needed' | 'done'
 
 export default function RootPage() {
@@ -26,6 +25,8 @@ export default function RootPage() {
 
   // ログイン済みになった後にだけ取得する onboarding ゲート状態。
   const [gate, setGate] = useState<OnboardingGate>('unknown')
+  // LP 上でログインボタンを押した時だけ LoginModal をオーバーレイ表示する。
+  const [showLoginModal, setShowLoginModal] = useState(false)
 
   // ログイン完了後に onboarding 状態を取得する（未認証では API が 401 になるため）。
   useEffect(() => {
@@ -57,33 +58,20 @@ export default function RootPage() {
     }
   }, [state.isRestoring, authStatus, gate, router])
 
-  if (state.isRestoring) {
-    // カード形状のスケルトン（タイトル行 + カード 2 枚）。表示条件 isRestoring は不変
-    return (
-      <div aria-label="読み込み中" role="status" className="content-area">
-        <div className="skeleton" style={{ height: 16, width: 180, marginBottom: 16 }} />
-        <div className="skeleton" style={{ height: 96, borderRadius: 'var(--radius)', marginBottom: 12 }} />
-        <div className="skeleton" style={{ height: 96, borderRadius: 'var(--radius)' }} />
-      </div>
-    )
+  if (authStatus === 'authenticated') {
+    if (gate === 'needed') {
+      return <OnboardingSourcesModal onDone={() => setGate('done')} />
+    }
+    // gate が unknown（取得中）/ done（リダイレクト in-flight）の間も、以前の null 表示に
+    // 代えて LP を出すことでブランク画面のちらつきを防ぐ。ログインボタンは事実上使われない。
+    return <LandingPage onLoginClick={() => setShowLoginModal(true)} />
   }
 
-  // restoration 完了。次にログイン状態を解決する。
-  if (authStatus === 'unknown') {
-    // /auth/me 解決中は何も描画しない（ちらつき防止）
-    return null
-  }
-  if (authStatus === 'unauthenticated') {
-    return <LoginModal />
-  }
-  // 認証済み。
-  if (gate === 'needed') {
-    return (
-      <OnboardingSourcesModal
-        onDone={() => setGate('done')}
-      />
-    )
-  }
-  // gate が unknown（取得中）/ done（リダイレクト in-flight）の間は何も描画しない
-  return null
+  // unknown（/auth/me 解決中）/ unauthenticated: LP を即座に表示する。
+  return (
+    <>
+      <LandingPage onLoginClick={() => setShowLoginModal(true)} />
+      {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
+    </>
+  )
 }
