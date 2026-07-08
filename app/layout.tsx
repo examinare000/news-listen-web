@@ -5,8 +5,6 @@ import { AppProvider } from '@/contexts/AppContext'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
-import { NavigationBar } from '@/components/NavigationBar'
-import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { PushRegistrar } from '@/components/PushRegistrar'
 import { ClientErrorReporter } from '@/components/ClientErrorReporter'
 import './globals.css'
@@ -70,11 +68,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <AuthProvider>
             <ToastProvider>
               <AudioPlayerProvider>
-                <div className="app-shell">
-                  <NavigationBar />
-                  <main className="main-content">{children}</main>
-                  <AudioPlayerBar />
-                </div>
+                {/* 可視シェル（サイドバー＋プレイヤーバー）は app/(app)/layout.tsx へ移譲。
+                    shell-less なランディングページ（/ 配下）を後で追加できるようにするため */}
+                {children}
                 <PushRegistrar />
                 <ClientErrorReporter />
               </AudioPlayerProvider>

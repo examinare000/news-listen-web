@@ -26,19 +26,14 @@ describe('RootLayout', () => {
     expect(html).toContain('child-content')
   })
 
-  test('main 要素が存在し children を内包する', () => {
+  // 可視シェル（app-shell/NavigationBar/main.main-content/AudioPlayerBar）は
+  // app/(app)/layout.tsx に移譲した（tests/app/app-group-layout.test.tsx で検証）。
+  // RootLayout は children をそのまま描画するだけになる。
+  test('children を app-shell 等でラップせずそのまま描画する', () => {
     const html = renderLayoutToString(<p>inside-main</p>)
-    expect(html).toMatch(/<main[^>]*>[\s\S]*inside-main[\s\S]*<\/main>/)
-  })
-
-  test('main 要素に main-content クラスが付与される（app-shell グリッドの第2列）', () => {
-    const html = renderLayoutToString()
-    expect(html).toMatch(/<main[^>]*class="[^"]*main-content[^"]*"/)
-  })
-
-  test('app-shell グリッドコンテナが存在する', () => {
-    const html = renderLayoutToString()
-    expect(html).toMatch(/class="[^"]*app-shell[^"]*"/)
+    expect(html).not.toMatch(/class="[^"]*app-shell[^"]*"/)
+    expect(html).not.toMatch(/<main[^>]*>/)
+    expect(html).toContain('inside-main')
   })
 
   test('テーマ初期化スクリプトが出力に含まれる（localStorage と data-theme を参照）', () => {

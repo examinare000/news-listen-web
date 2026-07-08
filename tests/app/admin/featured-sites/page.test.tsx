@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import AdminFeaturedSitesPage from '@/app/admin/featured-sites/page'
+import AdminFeaturedSitesPage from '@/app/(app)/admin/featured-sites/page'
 import { AppProvider } from '@/contexts/AppContext'
 
 const listFeaturedSites = vi.fn()

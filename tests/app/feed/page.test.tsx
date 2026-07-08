@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import FeedPage from '@/app/feed/page'
+import FeedPage from '@/app/(app)/feed/page'
 import { AppProvider } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
 
