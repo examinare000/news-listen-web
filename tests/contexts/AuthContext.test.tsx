@@ -8,9 +8,10 @@ import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 const getMe = vi.fn()
 const login = vi.fn()
 const logout = vi.fn()
+const register = vi.fn()
 
 vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({ getMe, login, logout }),
+  createApiClient: () => ({ getMe, login, logout, register }),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
       super(detail)
@@ -35,13 +36,23 @@ const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
 vi.mock('@/lib/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
 
 function Consumer() {
-  const { status, user, login: doLogin, logout: doLogout } = useAuth()
+  const { status, user, login: doLogin, logout: doLogout, register: doRegister } = useAuth()
   return (
     <div>
       <span data-testid="status">{status}</span>
       <span data-testid="user">{user?.username ?? '-'}</span>
       <button onClick={() => doLogin('alice', 'pw')}>login</button>
       <button onClick={() => doLogout()}>logout</button>
+      <button
+        onClick={() => {
+          // register は失敗時に ApiError を throw する契約（呼び出し側で文言表示）。
+          // ここではその契約どおり呼び出し側（Consumer）で捕捉し、テストの
+          // unhandled rejection を防ぐ。
+          doRegister({ username: 'newbie', password: 'Sup3r-Secret!!' }).catch(() => {})
+        }}
+      >
+        register
+      </button>
     </div>
   )
 }
@@ -154,5 +165,33 @@ describe('login / logout', () => {
     await userEvent.click(screen.getByText('logout'))
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+  })
+})
+
+describe('register', () => {
+  test('register success sets user and authenticated status', async () => {
+    getMe.mockRejectedValue(new Error('401'))
+    register.mockResolvedValue({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'Newbie' } })
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+
+    await userEvent.click(screen.getByText('register'))
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    expect(screen.getByTestId('user')).toHaveTextContent('newbie')
+  })
+
+  test('register failure propagates the error and stays unauthenticated', async () => {
+    getMe.mockRejectedValue(new Error('401'))
+    register.mockRejectedValue(new Error('409'))
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+
+    await userEvent.click(screen.getByText('register'))
+
+    // register の失敗は呼び出し側（Consumer）で握りつぶされないため画面上は変化しないが、
+    // 状態は unauthenticated のまま据え置かれる（authenticated へ誤って進めない）。
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    expect(screen.getByTestId('user')).toHaveTextContent('-')
   })
 })

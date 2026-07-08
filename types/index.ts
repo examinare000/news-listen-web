@@ -104,6 +104,46 @@ export interface UserListResponse {
   users: AuthUser[]
 }
 
+/** POST /auth/register のリクエストボディ。invite_code は登録制限が無効な環境では省略可。 */
+export interface RegisterInput {
+  invite_code?: string
+  username: string
+  password: string
+  display_name?: string
+}
+
+// ── 招待コード（管理者による新規登録招待） ──────────────────────────────
+export type InviteStatus = 'active' | 'expired' | 'exhausted' | 'revoked'
+
+/** GET /admin/invites の一覧要素。code 自体は初回作成時のみ返るため一覧には含まれない。 */
+export interface Invite {
+  id: string
+  note: string | null
+  created_by: string
+  max_uses: number
+  use_count: number
+  used_by: string[]
+  expires_at: string | null // ISO 8601
+  revoked_at: string | null // ISO 8601
+  created_at: string // ISO 8601
+  status: InviteStatus
+}
+
+/** POST /admin/invites のレスポンス。code / invite_url はこの応答でのみ表示される（以降は復元不可）。 */
+export interface InviteCreateResponse {
+  id: string
+  code: string
+  invite_url: string
+  note: string | null
+  max_uses: number
+  expires_at: string | null // ISO 8601
+  created_at: string // ISO 8601
+}
+
+export interface InviteListResponse {
+  invites: Invite[]
+}
+
 // ── ユーザー設定・嗜好 ────────────────────────────────────────────
 export interface UserPreferences {
   default_difficulty: DifficultyLevel
