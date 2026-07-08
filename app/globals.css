@@ -1861,3 +1861,20 @@ button.feed-tab {
   .lp-features-grid { grid-template-columns: 1fr; }
   .lp-hero-title { font-size: 32px; }
 }
+
+/* ── Signup（招待制新規登録） ─────────────────────────────────── */
+/* shell-less なルートセグメント（app/signup/page.tsx）。.modal-box をオーバーレイなしの
+ * 静的カードとして再利用する（LP と同じトーンを維持しつつ新規 CSS を最小化）。 */
+.signup-shell {
+  min-height: 100vh;
+  overflow-y: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+}
+
+.signup-card {
+  width: 440px;
+  max-width: 100%;
+}
