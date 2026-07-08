@@ -21,6 +21,7 @@ const defaultAuthContext = vi.hoisted(
     user: { username: 'test', role: 'user', display_name: 'Test User' },
     logout: vi.fn(),
     login: vi.fn(),
+    register: vi.fn(),
     refreshMe: vi.fn(),
     loginWithPasskey: vi.fn(),
   })
@@ -229,5 +230,33 @@ describe('NavigationBar', () => {
     expect(sectionLabel).toHaveClass('nav-section-label')
     expect(sectionLabel).toHaveTextContent('管理')
     expect(adminLink).toBe(screen.getByRole('link', { name: 'おすすめサイト管理' }))
+  })
+
+  // ==========================================================
+  // 「招待管理」ナビ項目 — admin ロールのみ表示（招待制新規登録・issue 相当）
+  // ==========================================================
+  test('Given an admin user, renders the 招待管理 link pointing to /admin/invites', () => {
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+
+    render(<NavigationBar />)
+
+    expect(screen.getByRole('link', { name: '招待管理' })).toHaveAttribute('href', '/admin/invites')
+  })
+
+  test('Given a non-admin user, does NOT render the 招待管理 link', () => {
+    mockAuthAs({ user: { username: 'test', role: 'user' as const, display_name: 'Test User' } })
+
+    render(<NavigationBar />)
+
+    expect(screen.queryByRole('link', { name: '招待管理' })).not.toBeInTheDocument()
+  })
+
+  test('Given an admin user, 招待管理 link immediately follows the おすすめサイト管理 link', () => {
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+
+    render(<NavigationBar />)
+
+    const featuredSitesLink = screen.getByRole('link', { name: 'おすすめサイト管理' })
+    expect(featuredSitesLink.nextElementSibling).toBe(screen.getByRole('link', { name: '招待管理' }))
   })
 })

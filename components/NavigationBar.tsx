@@ -94,6 +94,7 @@ export function NavigationBar() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const isAdminLinkActive = pathname === '/admin/featured-sites'
+  const isInvitesLinkActive = pathname === '/admin/invites'
 
   return (
     <aside className="sidebar">
@@ -165,6 +166,26 @@ export function NavigationBar() {
                 <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
               </svg>
               <span>おすすめサイト管理</span>
+            </Link>
+            <Link
+              href="/admin/invites"
+              className={isInvitesLinkActive ? 'nav-item active' : 'nav-item'}
+              aria-current={isInvitesLinkActive ? 'page' : undefined}
+            >
+              <svg
+                className="nav-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+                <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+              </svg>
+              <span>招待管理</span>
             </Link>
           </>
         )}
