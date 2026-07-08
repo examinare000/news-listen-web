@@ -6,10 +6,18 @@ import { ApiError } from '@/lib/api'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 
+interface LoginModalProps {
+  /**
+   * 指定時のみ閉じるボタン（と Escape）を表示する。省略時（ランディングページ導入前の
+   * 呼び出し元）は既存どおり閉じられないモーダルとして振る舞う。
+   */
+  onClose?: () => void
+}
+
 // 接続設定（SetupModal）の後、未ログイン時に表示するログイン画面。
 // 認証はサーバーサイドセッション（httpOnly Cookie）。成功すると AuthContext が
 // 'authenticated' になり、上位のゲート（app/page.tsx）がフィードへ進める。
-export function LoginModal() {
+export function LoginModal({ onClose }: LoginModalProps = {}) {
   const { login, loginWithPasskey } = useAuth()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -18,6 +26,17 @@ export function LoginModal() {
   const [submittingPasskey, setSubmittingPasskey] = useState(false)
   const [supportsPasskey, setSupportsPasskey] = useState(true)
   const dialogRef = useFocusTrap<HTMLDivElement>()
+
+  // onClose 指定時のみ Escape で閉じる（useFocusTrap は Tab トラップのみを扱い、
+  // Escape は各モーダルの責務 — ConfirmDialog と同じ方針）。
+  useEffect(() => {
+    if (!onClose) return
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose?.()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
 
   // WHY: WebAuthn 非対応環境（古いブラウザ等）では Passkey ボタンを disabled にし、
   //      ユーザーが試行できない状態にする。port 経由で判定を集約。
@@ -74,6 +93,28 @@ export function LoginModal() {
   return (
     <div className="modal-backdrop">
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="login-modal-title" className="modal-box">
+        {onClose && (
+          <button
+            type="button"
+            className="btn btn-icon modal-close"
+            onClick={onClose}
+            aria-label="閉じる"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        )}
         <div className="modal-logo">
           <div className="logo-icon">
             <svg

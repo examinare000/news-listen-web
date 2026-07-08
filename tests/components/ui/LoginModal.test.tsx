@@ -65,4 +65,20 @@ describe('LoginModal', () => {
     const divider = screen.getByText('または')
     expect(divider).toHaveClass('modal-divider')
   })
+
+  describe('onClose', () => {
+    test('does not render a close affordance when onClose is not given', () => {
+      render(<LoginModal />)
+      expect(screen.queryByRole('button', { name: '閉じる' })).not.toBeInTheDocument()
+    })
+
+    test('renders a close button when onClose is given, and fires it on click', async () => {
+      const onClose = vi.fn()
+      render(<LoginModal onClose={onClose} />)
+
+      await userEvent.click(screen.getByRole('button', { name: '閉じる' }))
+
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+  })
 })
