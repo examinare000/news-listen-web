@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.rioikeda.newslisten",
+      "sha256_cert_fingerprints": [
+        "9D:B3:3E:95:D1:14:0A:C3:D0:42:BF:18:97:04:8D:EE:3A:10:E2:3B:A2:D2:81:FD:DC:45:B9:37:AE:78:FF:2F"
+      ]
+    }
+  }
+]
