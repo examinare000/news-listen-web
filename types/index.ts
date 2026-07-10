@@ -34,6 +34,13 @@ export interface TranscriptSegment {
   text: string
 }
 
+/** 語彙グロッサリの1エントリ（用語・日本語訳・例文）。GET /podcasts/:id の vocabulary 要素。 */
+export interface VocabularyEntry {
+  term: string
+  meaning_ja: string
+  example: string
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -46,6 +53,8 @@ export interface Podcast {
   japanese_intro_text: string
   /** 英語本編のトランスクリプト（issue #162）。旧エピソードや劣化生成では null/欠落するため optional。 */
   segments?: TranscriptSegment[] | null
+  /** 語彙グロッサリ（用語・日本語訳・例文）。旧エピソードや劣化生成では null/欠落するため optional。 */
+  vocabulary?: VocabularyEntry[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus

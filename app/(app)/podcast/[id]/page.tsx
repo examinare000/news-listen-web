@@ -8,6 +8,7 @@ import { formatDuration, formatDate } from '@/lib/format'
 import { createApiClient, ApiError } from '@/lib/api'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
 import { isCached, downloadAudio } from '@/lib/audioCache'
+import { highlightTerms } from '@/lib/highlightTerms'
 import type { Podcast } from '@/types/index'
 
 interface PodcastDetailPageProps {
@@ -130,6 +131,10 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     )
   }
 
+  // トランスクリプト中の語彙用語ハイライト用（issue: 語彙グロッサリ表示）。vocabulary が
+  // null/欠落なら空配列 → highlightTerms は原文をそのまま返す。
+  const vocabularyTerms = podcast.vocabulary?.map((entry) => entry.term) ?? []
+
   return (
     <>
       <PageHeader showBackLink />
@@ -156,7 +161,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                 <span className="badge" style={{ flexShrink: 0 }}>
                   {segment.speaker}
                 </span>
-                <p style={{ fontSize: 14, lineHeight: 1.7 }}>{segment.text}</p>
+                <p style={{ fontSize: 14, lineHeight: 1.7 }}>
+                  {highlightTerms(segment.text, vocabularyTerms)}
+                </p>
               </div>
             ))}
           </div>
@@ -164,6 +171,36 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
             トランスクリプトはありません
           </p>
+        )}
+
+        {/* 語彙グロッサリ。旧エピソードや劣化生成では vocabulary が null/欠落/空になるため、
+            その場合はフォールバック文言も出さずセクションごと非表示にする。 */}
+        {podcast.vocabulary && podcast.vocabulary.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
+              語彙
+            </h2>
+            {podcast.vocabulary.map((entry, index) => (
+              <div key={`${entry.term}-${index}`} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  {entry.meaning_ja}
+                </div>
+                <p
+                  style={{
+                    fontSize: 13,
+                    fontStyle: 'italic',
+                    color: 'var(--text-muted)',
+                    borderLeft: '2px solid var(--border-mid)',
+                    paddingLeft: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  {entry.example}
+                </p>
+              </div>
+            ))}
+          </div>
         )}
 
         <div className="podcast-meta" style={{ marginBottom: 16 }}>

@@ -263,6 +263,97 @@ describe('PodcastDetailPage — transcript', () => {
 })
 
 // ==========================================================
+// Podcast 詳細 — 語彙グロッサリ (vocabulary)
+// ==========================================================
+describe('PodcastDetailPage — vocabulary glossary', () => {
+  test('Given vocabulary entries, displays term / meaning_ja / example for each entry', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({
+        ...SAMPLE_PODCAST,
+        vocabulary: [
+          { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
+          { term: 'quarter', meaning_ja: '四半期', example: 'Profits rose in the third quarter.' },
+        ],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /語彙/ })).toBeInTheDocument()
+    })
+    expect(screen.getByText('accelerate')).toBeInTheDocument()
+    expect(screen.getByText('加速する')).toBeInTheDocument()
+    expect(screen.getByText(/The car began to accelerate quickly\./)).toBeInTheDocument()
+    expect(screen.getByText('quarter')).toBeInTheDocument()
+    expect(screen.getByText('四半期')).toBeInTheDocument()
+  })
+
+  test('Given vocabulary is null (legacy episode), hides the section and keeps existing content', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: null }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      // 既存表示（イントロ）が壊れていないこと（回帰なし）
+      expect(screen.getByText(/追加のテキストも含まれています/)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given vocabulary field is entirely missing (legacy episode), hides the section without crashing', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given vocabulary is an empty array, hides the section', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: [] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given a vocabulary term appears in the transcript, highlights it with a <mark>', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({
+        ...SAMPLE_PODCAST,
+        segments: [{ speaker: 'A', text: 'The economy will accelerate next quarter.' }],
+        vocabulary: [
+          { term: 'accelerate', meaning_ja: '加速する', example: 'Sales accelerated fast.' },
+        ],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('accelerate', { selector: 'mark' })).toBeInTheDocument()
+    })
+  })
+})
+
+// ==========================================================
 // Podcast 詳細 — 404
 // ==========================================================
 describe('PodcastDetailPage — 404', () => {
