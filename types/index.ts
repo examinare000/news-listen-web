@@ -41,6 +41,30 @@ export interface VocabularyEntry {
   example: string
 }
 
+/** 理解度チェッククイズの1設問（GET /podcasts/:id の quiz 要素・ADR-070）。
+ *  正解添字（answer_index）は backend が API 境界で射影して落とすため、この型には含めない
+ *  ── クライアントは採点前に正解を一切持たない（サーバ採点、ADR-070 決定7）。 */
+export interface QuizQuestion {
+  question: string
+  options: string[]
+}
+
+/** POST /podcasts/:id/quiz-answers の採点結果1設問分。correct_index は採点後にのみ開示される。 */
+export interface QuizAnswerResult {
+  question_index: number
+  selected_index: number
+  correct_index: number
+  is_correct: boolean
+}
+
+/** POST /podcasts/:id/quiz-answers のレスポンス（サーバ採点結果）。 */
+export interface QuizAnswerResponse {
+  correct_count: number
+  total: number
+  correct_rate: number
+  results: QuizAnswerResult[]
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -55,6 +79,8 @@ export interface Podcast {
   segments?: TranscriptSegment[] | null
   /** 語彙グロッサリ（用語・日本語訳・例文）。旧エピソードや劣化生成では null/欠落するため optional。 */
   vocabulary?: VocabularyEntry[] | null
+  /** 理解度チェッククイズ（正解キーなしの射影型）。旧エピソードや劣化生成では null/欠落するため optional（ADR-070）。 */
+  quiz?: QuizQuestion[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus

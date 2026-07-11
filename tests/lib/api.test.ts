@@ -1202,3 +1202,57 @@ describe('unsubscribePush', () => {
     expect(callArgs.body).toBeUndefined()
   })
 })
+
+// ==========================================================
+// submitQuizAnswers — POST /api/backend/podcasts/:id/quiz-answers（ADR-070・F2 理解度クイズ）
+// 正解キー（answer_index）はサーバのみが保持し、採点結果でのみ correct_index を開示する。
+// ==========================================================
+describe('submitQuizAnswers', () => {
+  const GRADE_RESULT = {
+    correct_count: 2,
+    total: 3,
+    correct_rate: 0.667,
+    results: [
+      { question_index: 0, selected_index: 1, correct_index: 1, is_correct: true },
+      { question_index: 1, selected_index: 0, correct_index: 2, is_correct: false },
+      { question_index: 2, selected_index: 3, correct_index: 3, is_correct: true },
+    ],
+  }
+
+  test('sends POST to /api/backend/podcasts/:id/quiz-answers with selected answer indices in body', async () => {
+    mockFetchOk(GRADE_RESULT)
+    const client = makeClient()
+    await client.submitQuizAnswers('p1', [1, 0, 3])
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/podcasts/p1/quiz-answers',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ answers: [1, 0, 3] }),
+      })
+    )
+  })
+
+  test('returns correct_count/total/correct_rate/results fields (interface contract)', async () => {
+    mockFetchOk(GRADE_RESULT)
+    const client = makeClient()
+    const result = await client.submitQuizAnswers('p1', [1, 0, 3])
+
+    expect(result).toEqual(GRADE_RESULT)
+  })
+
+  test('throws ApiError on 422 when answer indices are out of range or count mismatches', async () => {
+    mockFetchError(422, 'Invalid answers')
+    const client = makeClient()
+
+    await expect(client.submitQuizAnswers('p1', [9])).rejects.toThrow(ApiError)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.submitQuizAnswers('p1', [0, 1, 2])).rejects.toThrow(ApiError)
+  })
+})

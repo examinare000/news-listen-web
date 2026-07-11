@@ -31,6 +31,7 @@ import type {
   RevokeSessionsResponse,
   GenerationQuota,
   ListeningStreak,
+  QuizAnswerResponse,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -150,6 +151,21 @@ export function createApiClient() {
         {
           method: 'PATCH',
           body: JSON.stringify({ position_seconds: positionSeconds }),
+        },
+      )
+    },
+
+    /**
+     * 理解度チェッククイズの回答送信・サーバ採点（ADR-070 決定7）。
+     * answers は各設問で選んだ option の添字（設問順）。正解キーはクライアントに一切渡らず、
+     * このレスポンスの results[].correct_index で採点後にのみ開示される。
+     */
+    submitQuizAnswers(podcastId: string, answers: number[]) {
+      return request<QuizAnswerResponse>(
+        `/api/backend/podcasts/${podcastId}/quiz-answers`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ answers }),
         },
       )
     },
