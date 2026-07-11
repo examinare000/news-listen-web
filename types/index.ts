@@ -208,6 +208,17 @@ export interface ListeningStreak {
   last_listened_day: string | null // ISO 8601 date (YYYY-MM-DD)
 }
 
+// ── 難易度自動適応（ADR-071 F3） ─────────────────────────────────────
+/** GET /users/me/difficulty-suggestion のレスポンス。常に 200。
+ *  has_suggestion が false のときは推奨なし（suggested/direction/reason は null）。 */
+export interface DifficultySuggestion {
+  has_suggestion: boolean
+  current: DifficultyLevel
+  suggested: DifficultyLevel | null
+  direction: 'up' | 'down' | null
+  reason: string | null
+}
+
 // ── Passkey / WebAuthn ───────────────────────────────────────────────
 /** POST /auth/passkey/register/options および /auth/passkey/login/options のレスポンス。
  *  options フィールドは JSON 文字列（backend の options_to_json() 出力）。クライアント側で JSON.parse が必要。 */
