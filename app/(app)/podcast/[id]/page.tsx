@@ -8,7 +8,8 @@ import { formatDuration, formatDate } from '@/lib/format'
 import { createApiClient, ApiError } from '@/lib/api'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
 import { isCached, downloadAudio } from '@/lib/audioCache'
-import type { Podcast } from '@/types/index'
+import { highlightTerms } from '@/lib/highlightTerms'
+import type { Podcast, QuizAnswerResponse } from '@/types/index'
 
 interface PodcastDetailPageProps {
   params: Promise<{ id: string }>
@@ -95,6 +96,36 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     }
   }
 
+  // 理解度チェッククイズ（ADR-070・F2）。正解キー（answer_index）は backend が API 境界で
+  // 落とすため、この state には一切含まれない。Submit 後の quizResult にのみ correct_index が載る。
+  // WHY a sparse Record keyed by question index (not a pre-filled array): 「未回答」の初期値が
+  // 空オブジェクトそのもので表現できるため、podcast 読み込み完了時に配列を作り直す effect が不要になる。
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({})
+  const [quizResult, setQuizResult] = useState<QuizAnswerResponse | null>(null)
+  const [submittingQuiz, setSubmittingQuiz] = useState(false)
+
+  function handleSelectQuizAnswer(questionIndex: number, optionIndex: number) {
+    setQuizAnswers((prev) => ({ ...prev, [questionIndex]: optionIndex }))
+  }
+
+  const quizAllAnswered = Boolean(
+    podcast?.quiz && podcast.quiz.every((_, index) => quizAnswers[index] !== undefined)
+  )
+
+  async function handleSubmitQuiz() {
+    if (!podcast?.quiz || !quizAllAnswered) return
+    setSubmittingQuiz(true)
+    try {
+      const answers = podcast.quiz.map((_, index) => quizAnswers[index])
+      const result = await createApiClient().submitQuizAnswers(podcast.id, answers)
+      setQuizResult(result)
+    } catch {
+      showToast('採点に失敗しました', 'error')
+    } finally {
+      setSubmittingQuiz(false)
+    }
+  }
+
   if (notFound) {
     return (
       <>
@@ -130,6 +161,10 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     )
   }
 
+  // トランスクリプト中の語彙用語ハイライト用（issue: 語彙グロッサリ表示）。vocabulary が
+  // null/欠落なら空配列 → highlightTerms は原文をそのまま返す。
+  const vocabularyTerms = podcast.vocabulary?.map((entry) => entry.term) ?? []
+
   return (
     <>
       <PageHeader showBackLink />
@@ -156,7 +191,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                 <span className="badge" style={{ flexShrink: 0 }}>
                   {segment.speaker}
                 </span>
-                <p style={{ fontSize: 14, lineHeight: 1.7 }}>{segment.text}</p>
+                <p style={{ fontSize: 14, lineHeight: 1.7 }}>
+                  {highlightTerms(segment.text, vocabularyTerms)}
+                </p>
               </div>
             ))}
           </div>
@@ -164,6 +201,107 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
             トランスクリプトはありません
           </p>
+        )}
+
+        {/* 語彙グロッサリ。旧エピソードや劣化生成では vocabulary が null/欠落/空になるため、
+            その場合はフォールバック文言も出さずセクションごと非表示にする。 */}
+        {podcast.vocabulary && podcast.vocabulary.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
+              語彙
+            </h2>
+            {podcast.vocabulary.map((entry, index) => (
+              <div key={`${entry.term}-${index}`} style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                  {entry.meaning_ja}
+                </div>
+                <p
+                  style={{
+                    fontSize: 13,
+                    fontStyle: 'italic',
+                    color: 'var(--text-muted)',
+                    borderLeft: '2px solid var(--border-mid)',
+                    paddingLeft: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  {entry.example}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 理解度チェッククイズ（ADR-070・F2）。旧エピソードや劣化生成では quiz が null/欠落/空になる
+            ため、その場合はセクションごと非表示にする（語彙グロッサリと同じ graceful-hide 方針）。
+            正解（correct_index）は quizResult が届く＝採点後にのみ表示する。採点前は一切保持しない。 */}
+        {podcast.quiz && podcast.quiz.length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
+              理解度チェック
+            </h2>
+            {podcast.quiz.map((question, questionIndex) => {
+              const questionResult = quizResult?.results.find(
+                (r) => r.question_index === questionIndex
+              )
+              return (
+                <fieldset
+                  key={`${question.question}-${questionIndex}`}
+                  style={{ border: 'none', padding: 0, marginBottom: 14 }}
+                >
+                  <legend style={{ fontSize: 14, fontWeight: 600, marginBottom: 6 }}>
+                    {`Q${questionIndex + 1}. ${question.question}`}
+                  </legend>
+                  {question.options.map((option, optionIndex) => {
+                    const isSelected = quizAnswers[questionIndex] === optionIndex
+                    const isCorrectOption = questionResult?.correct_index === optionIndex
+                    const isWrongSelection = isSelected && questionResult && !questionResult.is_correct
+                    return (
+                      <label
+                        key={`${option}-${optionIndex}`}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 6,
+                          fontSize: 13,
+                          marginBottom: 4,
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name={`quiz-question-${questionIndex}`}
+                          checked={isSelected}
+                          disabled={Boolean(quizResult)}
+                          onChange={() => handleSelectQuizAnswer(questionIndex, optionIndex)}
+                        />
+                        {option}
+                        {questionResult && isCorrectOption && (
+                          <span className="badge badge-completed">正解</span>
+                        )}
+                        {isWrongSelection && <span className="badge badge-failed">あなたの回答</span>}
+                      </label>
+                    )
+                  })}
+                </fieldset>
+              )
+            })}
+
+            {quizResult ? (
+              <p style={{ fontSize: 14, fontWeight: 600 }}>
+                スコア: {quizResult.correct_count} / {quizResult.total}
+              </p>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={!quizAllAnswered || submittingQuiz}
+                onClick={() => void handleSubmitQuiz()}
+              >
+                採点する
+              </button>
+            )}
+          </div>
         )}
 
         <div className="podcast-meta" style={{ marginBottom: 16 }}>

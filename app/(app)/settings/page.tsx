@@ -11,7 +11,7 @@ import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
-import type { DifficultyLevel, GenerationQuota, ListeningStreak } from '@/types/index'
+import type { DifficultyLevel, GenerationQuota, ListeningStreak, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes } from '@/lib/format'
 import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
 
@@ -103,6 +103,36 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadStreak()
   }, [loadStreak])
+
+  // ADR-071 F3: おすすめ難易度バナー。has_suggestion=false や取得失敗（404含む・旧デプロイ等）は
+  // 常にバナー非表示へ倒す（quota/streak と異なり 500 でも再試行導線は出さない。非破壊の推奨に過ぎず、
+  // 出し損ねても実害が無いため画面を壊さない方を優先する。ADR-071 決定6）。
+  const [suggestion, setSuggestion] = useState<DifficultySuggestion | null>(null)
+
+  const loadSuggestion = useCallback(async () => {
+    try {
+      const s = await createApiClient().getDifficultySuggestion()
+      setSuggestion(s.has_suggestion ? s : null)
+    } catch {
+      setSuggestion(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadSuggestion()
+  }, [loadSuggestion])
+
+  // 推奨の適用（ADR-071 決定5・§6）: 新規ミューテーションを追加せず、既存の設定変更経路
+  // handleDifficultyChange をそのまま再利用する。updatePreferences を独自に呼び出すと
+  // issue #164 の requestId ガード（stale レスポンスによる上書き防止）の外側で動いてしまい、
+  // ドロップダウンでの並行変更と競合した際に、適用成功後の値が後から来た別リクエストの
+  // 失敗でロールバックされる恐れがある（レビュー指摘）。
+  async function handleApplySuggestion() {
+    if (!suggestion?.suggested) return
+    const target = suggestion.suggested
+    setSuggestion(null) // 楽観的にバナーを閉じる
+    await handleDifficultyChange(target) // requestId ガード付きの楽観更新・ロールバックを再利用
+  }
 
   // issue #167: オフラインキャッシュ（ダウンロード済みエピソード）の一覧・使用量・削除。
   const [cachedEpisodes, setCachedEpisodes] = useState<CachedEpisodeMeta[]>([])
@@ -302,6 +332,35 @@ export default function SettingsPage() {
             </div>
           )}
         </section>
+
+        {/* セクション 2.5: おすすめ難易度バナー（ADR-071 F3 難易度自動適応）。
+            has_suggestion=false または取得失敗時は非表示（graceful degradation・決定6）。 */}
+        {suggestion && (
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+                ✨
+              </div>
+              <h2 className="settings-section-title">おすすめ難易度</h2>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">
+                  {suggestion.suggested ? DIFFICULTY_LABELS[suggestion.suggested] : ''} をおすすめします
+                </div>
+                <div className="settings-row-desc">{suggestion.reason}</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => void handleApplySuggestion()}
+              >
+                適用する
+              </button>
+            </div>
+          </section>
+        )}
 
         {/* セクション 3: 聴取ストリーク（issue #165 / ADR-062）。
             404（graceful degradation）時は streak も streakLoadError も立たないためセクション自体が非表示になる。 */}
