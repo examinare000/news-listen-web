@@ -33,6 +33,7 @@ import type {
   ListeningStreak,
   DifficultySuggestion,
   QuizAnswerResponse,
+  LearningDashboard,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -228,6 +229,12 @@ export function createApiClient() {
     /** 難易度自動適応の推奨。常に 200・has_suggestion=false で推奨なしを表現する。ADR-071 F3。 */
     getDifficultySuggestion() {
       return request<DifficultySuggestion>('/api/backend/users/me/difficulty-suggestion', { method: 'GET' })
+    },
+
+    /** 学習ダッシュボード（ストリーク・エピソード数・習得語彙数・クイズ成績・月別活動・現在の難易度）。
+     *  既存シグナルの read-only 集約。常に200・新規ユーザーは全ゼロ/null/空配列（ADR-072 / F4）。 */
+    getLearningDashboard() {
+      return request<LearningDashboard>('/api/backend/users/me/learning-dashboard', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {

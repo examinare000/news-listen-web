@@ -219,6 +219,40 @@ export interface DifficultySuggestion {
   reason: string | null
 }
 
+// ── 学習ダッシュボード（F4 / ADR-072） ────────────────────────────────
+/** クイズ成績の推移1点分。エピソード横断で「各エピソードの最新採点」を graded_at 昇順に
+ *  並べた列の要素 ── 同一エピソードを解き直して伸びる改善曲線ではない（ADR-072 決定3-3）。 */
+export interface QuizTrendPoint {
+  graded_at: string // ISO8601
+  correct_rate: number
+}
+
+/** クイズ成績の集約。quizzed_episodes は「クイズを解いた distinct エピソード数」で、
+ *  retake が上書きされるため延べ受験回数ではない（ADR-070 決定8-1・ADR-072 決定3-3）。 */
+export interface QuizStats {
+  quizzed_episodes: number
+  average_correct_rate: number | null // クイズ済みエピソード0件ならnull（ゼロ除算回避）
+  trend: QuizTrendPoint[]
+}
+
+/** 月ごとの聴取日数（listeningDays を "YYYY-MM" で集計・ADR-072 決定2）。 */
+export interface MonthlyActivity {
+  month: string // "YYYY-MM"
+  active_days: number
+}
+
+/** GET /users/me/learning-dashboard のレスポンス（F4・既存シグナルの read-only 集約・ADR-072）。
+ *  streak は既存 ListeningStreak 型を入れ子で再利用する（DRY・ADR-072 決定4）。
+ *  current_difficulty は現在の設定値のみで、学習で到達したレベルの履歴ではない（ADR-072 決定3-3）。 */
+export interface LearningDashboard {
+  streak: ListeningStreak
+  total_episodes: number
+  vocabulary_acquired: number
+  quiz: QuizStats
+  monthly_activity: MonthlyActivity[]
+  current_difficulty: string
+}
+
 // ── Passkey / WebAuthn ───────────────────────────────────────────────
 /** POST /auth/passkey/register/options および /auth/passkey/login/options のレスポンス。
  *  options フィールドは JSON 文字列（backend の options_to_json() 出力）。クライアント側で JSON.parse が必要。 */

@@ -69,6 +69,29 @@ const NAV_ITEMS = [
     ),
   },
   {
+    // F4 学習ダッシュボード（ADR-072）。アイコンは学習進捗（棒グラフ的モチーフ）を表す新規インライン SVG
+    // ── デザイン正本（docs/design/app-ui.html）に本項目の定義はないため、既存4項目と同じ描線規約
+    //    （viewBox 24, stroke=currentColor, strokeWidth=2, round cap/join）で独自に追加する。
+    label: 'ダッシュボード',
+    href: '/dashboard',
+    icon: (
+      <svg
+        className="nav-icon"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <line x1="4" y1="20" x2="4" y2="14" />
+        <line x1="10" y1="20" x2="10" y2="9" />
+        <line x1="16" y1="20" x2="16" y2="4" />
+      </svg>
+    ),
+  },
+  {
     label: '設定',
     href: '/settings',
     icon: (
