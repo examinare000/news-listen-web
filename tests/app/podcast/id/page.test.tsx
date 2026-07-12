@@ -263,6 +263,293 @@ describe('PodcastDetailPage — transcript', () => {
 })
 
 // ==========================================================
+// Podcast 詳細 — 語彙グロッサリ (vocabulary)
+// ==========================================================
+describe('PodcastDetailPage — vocabulary glossary', () => {
+  test('Given vocabulary entries, displays term / meaning_ja / example for each entry', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({
+        ...SAMPLE_PODCAST,
+        vocabulary: [
+          { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
+          { term: 'quarter', meaning_ja: '四半期', example: 'Profits rose in the third quarter.' },
+        ],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /語彙/ })).toBeInTheDocument()
+    })
+    expect(screen.getByText('accelerate')).toBeInTheDocument()
+    expect(screen.getByText('加速する')).toBeInTheDocument()
+    expect(screen.getByText(/The car began to accelerate quickly\./)).toBeInTheDocument()
+    expect(screen.getByText('quarter')).toBeInTheDocument()
+    expect(screen.getByText('四半期')).toBeInTheDocument()
+  })
+
+  test('Given vocabulary is null (legacy episode), hides the section and keeps existing content', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: null }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      // 既存表示（イントロ）が壊れていないこと（回帰なし）
+      expect(screen.getByText(/追加のテキストも含まれています/)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given vocabulary field is entirely missing (legacy episode), hides the section without crashing', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given vocabulary is an empty array, hides the section', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: [] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /語彙/ })).not.toBeInTheDocument()
+  })
+
+  test('Given a vocabulary term appears in the transcript, highlights it with a <mark>', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({
+        ...SAMPLE_PODCAST,
+        segments: [{ speaker: 'A', text: 'The economy will accelerate next quarter.' }],
+        vocabulary: [
+          { term: 'accelerate', meaning_ja: '加速する', example: 'Sales accelerated fast.' },
+        ],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('accelerate', { selector: 'mark' })).toBeInTheDocument()
+    })
+  })
+})
+
+// ==========================================================
+// Podcast 詳細 — 理解度チェッククイズ (ADR-070・F2)
+// 正解キー（answer_index）はサーバのみが保持する。クライアントは Submit まで正解を持たず、
+// 採点レスポンス（results[].correct_index）到着後にのみ正解を表示する。
+// ==========================================================
+describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
+  const SAMPLE_QUIZ = [
+    {
+      question: 'What does the article say about containerization?',
+      options: [
+        'It slows down deployment',
+        'It has revolutionized application deployment',
+        'It is only for large enterprises',
+        'It replaces all networking',
+      ],
+    },
+    {
+      question: 'Where was the technology first adopted?',
+      options: [
+        'In small startups only',
+        'In the cloud industry',
+        'In government agencies',
+        'In academic research labs',
+      ],
+    },
+  ]
+
+  const SAMPLE_GRADE_RESULT = {
+    correct_count: 1,
+    total: 2,
+    correct_rate: 0.5,
+    results: [
+      { question_index: 0, selected_index: 1, correct_index: 1, is_correct: true },
+      { question_index: 1, selected_index: 0, correct_index: 1, is_correct: false },
+    ],
+  }
+
+  test('Given quiz questions, displays each question and its options', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /理解度チェック/ })).toBeInTheDocument()
+    })
+    expect(
+      screen.getByText(/What does the article say about containerization\?/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Where was the technology first adopted\?/)).toBeInTheDocument()
+    expect(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: 'In the cloud industry' })).toBeInTheDocument()
+  })
+
+  test('Given quiz is null (legacy episode), hides the section and keeps existing content', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: null }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByText(/追加のテキストも含まれています/)).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /理解度チェック/ })).not.toBeInTheDocument()
+  })
+
+  test('Given quiz field is entirely missing (legacy episode), hides the section without crashing', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /理解度チェック/ })).not.toBeInTheDocument()
+  })
+
+  test('Given quiz is an empty array, hides the section', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: [] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole('heading', { name: /理解度チェック/ })).not.toBeInTheDocument()
+  })
+
+  test('Submit button is disabled until every question has a selected answer', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
+
+    const submitButton = screen.getByRole('button', { name: '採点する' })
+    expect(submitButton).toBeDisabled()
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    )
+    expect(submitButton).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('radio', { name: 'In the cloud industry' }))
+    expect(submitButton).toBeEnabled()
+  })
+
+  test('Submitting sends the selected answer indices in question order', async () => {
+    const submitQuizAnswers = vi.fn().mockResolvedValue(SAMPLE_GRADE_RESULT)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    ) // question 0 → index 1
+    await userEvent.click(screen.getByRole('radio', { name: 'In small startups only' })) // question 1 → index 0
+    await userEvent.click(screen.getByRole('button', { name: '採点する' }))
+
+    await waitFor(() => {
+      expect(submitQuizAnswers).toHaveBeenCalledWith('p1', [1, 0])
+    })
+  })
+
+  test('Shows the score and per-question correct/incorrect feedback from the graded response', async () => {
+    const submitQuizAnswers = vi.fn().mockResolvedValue(SAMPLE_GRADE_RESULT)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'In small startups only' }))
+    await userEvent.click(screen.getByRole('button', { name: '採点する' }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 \/ 2/)).toBeInTheDocument()
+    })
+    // 正解の選択肢（correct_index）にマークが表示される（2問分）
+    expect(screen.getAllByText('正解').length).toBeGreaterThan(0)
+    // 不正解だった設問では、選択したものにマークが付く
+    expect(screen.getByText('あなたの回答')).toBeInTheDocument()
+  })
+
+  test('Given the submission fails, shows an error message and keeps the quiz retryable', async () => {
+    const submitQuizAnswers = vi.fn().mockRejectedValue(new Error('network error'))
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderDetailPage()
+    await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'In small startups only' }))
+    await userEvent.click(screen.getByRole('button', { name: '採点する' }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/採点に失敗しました/)
+    })
+    // クラッシュせず、再送信できる状態を維持する（未確定のまま留まり再試行可能）
+    expect(screen.getByRole('button', { name: '採点する' })).toBeEnabled()
+  })
+})
+
+// ==========================================================
 // Podcast 詳細 — 404
 // ==========================================================
 describe('PodcastDetailPage — 404', () => {

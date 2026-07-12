@@ -309,6 +309,130 @@ describe('getListeningStreak', () => {
   })
 })
 
+// ==========================================================
+// getDifficultySuggestion — GET /api/backend/users/me/difficulty-suggestion（ADR-071 F3）
+// ==========================================================
+describe('getDifficultySuggestion', () => {
+  test('sends GET to /api/backend/users/me/difficulty-suggestion', async () => {
+    mockFetchOk({
+      has_suggestion: false,
+      current: 'toeic_600',
+      suggested: null,
+      direction: null,
+      reason: null,
+    })
+    const client = makeClient()
+    await client.getDifficultySuggestion()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/difficulty-suggestion',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns has_suggestion/current/suggested/direction/reason fields (interface contract)', async () => {
+    const suggestion = {
+      has_suggestion: true,
+      current: 'toeic_600',
+      suggested: 'ielts_55',
+      direction: 'up',
+      reason: '直近の理解度が高いため一段上の難易度を提案します',
+    }
+    mockFetchOk(suggestion)
+    const client = makeClient()
+    const result = await client.getDifficultySuggestion()
+
+    expect(result).toEqual(suggestion)
+  })
+
+  test('has_suggestion is false with all optional fields null when there is no recommendation', async () => {
+    mockFetchOk({
+      has_suggestion: false,
+      current: 'toeic_600',
+      suggested: null,
+      direction: null,
+      reason: null,
+    })
+    const client = makeClient()
+    const result = await client.getDifficultySuggestion()
+
+    expect(result.has_suggestion).toBe(false)
+    expect(result.suggested).toBeNull()
+    expect(result.direction).toBeNull()
+    expect(result.reason).toBeNull()
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getDifficultySuggestion()).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
+// getLearningDashboard — GET /api/backend/users/me/learning-dashboard（ADR-072・F4）
+// ==========================================================
+describe('getLearningDashboard', () => {
+  const SAMPLE_DASHBOARD = {
+    streak: { current_streak_days: 5, today_listened: true, last_listened_day: '2026-07-07' },
+    total_episodes: 12,
+    vocabulary_acquired: 34,
+    quiz: {
+      quizzed_episodes: 3,
+      average_correct_rate: 0.75,
+      trend: [
+        { graded_at: '2026-07-01T00:00:00Z', correct_rate: 0.6 },
+        { graded_at: '2026-07-05T00:00:00Z', correct_rate: 0.9 },
+      ],
+    },
+    monthly_activity: [{ month: '2026-07', active_days: 5 }],
+    current_difficulty: 'toeic_600',
+  }
+
+  test('sends GET to /api/backend/users/me/learning-dashboard', async () => {
+    mockFetchOk(SAMPLE_DASHBOARD)
+    const client = makeClient()
+    await client.getLearningDashboard()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/learning-dashboard',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns streak/total_episodes/vocabulary_acquired/quiz/monthly_activity/current_difficulty fields (interface contract)', async () => {
+    mockFetchOk(SAMPLE_DASHBOARD)
+    const client = makeClient()
+    const result = await client.getLearningDashboard()
+
+    expect(result).toEqual(SAMPLE_DASHBOARD)
+  })
+
+  test('new user response has all-zero/empty/null fields without error', async () => {
+    const emptyDashboard = {
+      streak: { current_streak_days: 0, today_listened: false, last_listened_day: null },
+      total_episodes: 0,
+      vocabulary_acquired: 0,
+      quiz: { quizzed_episodes: 0, average_correct_rate: null, trend: [] },
+      monthly_activity: [],
+      current_difficulty: 'toeic_600',
+    }
+    mockFetchOk(emptyDashboard)
+    const client = makeClient()
+    const result = await client.getLearningDashboard()
+
+    expect(result).toEqual(emptyDashboard)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getLearningDashboard()).rejects.toThrow(ApiError)
+  })
+})
+
 describe('dismissArticle', () => {
   test('sends POST to /api/backend/articles/{id}/dismiss', async () => {
     mockFetchOk({ status: 'dismissed', article_id: 'a1' })
@@ -1200,5 +1324,59 @@ describe('unsubscribePush', () => {
     // DELETE はボディを持たない（クエリパラメータ規約）
     const callArgs = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1] as RequestInit
     expect(callArgs.body).toBeUndefined()
+  })
+})
+
+// ==========================================================
+// submitQuizAnswers — POST /api/backend/podcasts/:id/quiz-answers（ADR-070・F2 理解度クイズ）
+// 正解キー（answer_index）はサーバのみが保持し、採点結果でのみ correct_index を開示する。
+// ==========================================================
+describe('submitQuizAnswers', () => {
+  const GRADE_RESULT = {
+    correct_count: 2,
+    total: 3,
+    correct_rate: 0.667,
+    results: [
+      { question_index: 0, selected_index: 1, correct_index: 1, is_correct: true },
+      { question_index: 1, selected_index: 0, correct_index: 2, is_correct: false },
+      { question_index: 2, selected_index: 3, correct_index: 3, is_correct: true },
+    ],
+  }
+
+  test('sends POST to /api/backend/podcasts/:id/quiz-answers with selected answer indices in body', async () => {
+    mockFetchOk(GRADE_RESULT)
+    const client = makeClient()
+    await client.submitQuizAnswers('p1', [1, 0, 3])
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/podcasts/p1/quiz-answers',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ answers: [1, 0, 3] }),
+      })
+    )
+  })
+
+  test('returns correct_count/total/correct_rate/results fields (interface contract)', async () => {
+    mockFetchOk(GRADE_RESULT)
+    const client = makeClient()
+    const result = await client.submitQuizAnswers('p1', [1, 0, 3])
+
+    expect(result).toEqual(GRADE_RESULT)
+  })
+
+  test('throws ApiError on 422 when answer indices are out of range or count mismatches', async () => {
+    mockFetchError(422, 'Invalid answers')
+    const client = makeClient()
+
+    await expect(client.submitQuizAnswers('p1', [9])).rejects.toThrow(ApiError)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.submitQuizAnswers('p1', [0, 1, 2])).rejects.toThrow(ApiError)
   })
 })

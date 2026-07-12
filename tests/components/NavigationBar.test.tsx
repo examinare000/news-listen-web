@@ -63,13 +63,34 @@ describe('NavigationBar', () => {
     ).toBeInTheDocument()
   })
 
-  test('renders 4 navigation links: フィード, ポッドキャスト, 購読管理, 設定', () => {
+  test('renders 5 navigation links: フィード, ポッドキャスト, 購読管理, ダッシュボード, 設定', () => {
     render(<NavigationBar />)
 
     expect(screen.getByRole('link', { name: 'フィード' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'ポッドキャスト' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '購読管理' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'ダッシュボード' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '設定' })).toBeInTheDocument()
+  })
+
+  // F4 学習ダッシュボード（ADR-072）: NAV_ITEMS への新規追加
+  test('ダッシュボード link points to /dashboard', () => {
+    render(<NavigationBar />)
+    expect(screen.getByRole('link', { name: 'ダッシュボード' })).toHaveAttribute(
+      'href',
+      '/dashboard'
+    )
+  })
+
+  test('Given current path is /dashboard, ダッシュボード link has aria-current="page"', async () => {
+    const { usePathname } = await import('next/navigation')
+    vi.mocked(usePathname).mockReturnValue('/dashboard')
+
+    render(<NavigationBar />)
+
+    const dashboardLink = screen.getByRole('link', { name: 'ダッシュボード' })
+    expect(dashboardLink).toHaveAttribute('aria-current', 'page')
+    expect(dashboardLink.classList.contains('active')).toBe(true)
   })
 
   test('フィード link points to /feed', () => {

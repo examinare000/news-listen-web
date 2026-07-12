@@ -34,6 +34,37 @@ export interface TranscriptSegment {
   text: string
 }
 
+/** 語彙グロッサリの1エントリ（用語・日本語訳・例文）。GET /podcasts/:id の vocabulary 要素。 */
+export interface VocabularyEntry {
+  term: string
+  meaning_ja: string
+  example: string
+}
+
+/** 理解度チェッククイズの1設問（GET /podcasts/:id の quiz 要素・ADR-070）。
+ *  正解添字（answer_index）は backend が API 境界で射影して落とすため、この型には含めない
+ *  ── クライアントは採点前に正解を一切持たない（サーバ採点、ADR-070 決定7）。 */
+export interface QuizQuestion {
+  question: string
+  options: string[]
+}
+
+/** POST /podcasts/:id/quiz-answers の採点結果1設問分。correct_index は採点後にのみ開示される。 */
+export interface QuizAnswerResult {
+  question_index: number
+  selected_index: number
+  correct_index: number
+  is_correct: boolean
+}
+
+/** POST /podcasts/:id/quiz-answers のレスポンス（サーバ採点結果）。 */
+export interface QuizAnswerResponse {
+  correct_count: number
+  total: number
+  correct_rate: number
+  results: QuizAnswerResult[]
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -46,6 +77,10 @@ export interface Podcast {
   japanese_intro_text: string
   /** 英語本編のトランスクリプト（issue #162）。旧エピソードや劣化生成では null/欠落するため optional。 */
   segments?: TranscriptSegment[] | null
+  /** 語彙グロッサリ（用語・日本語訳・例文）。旧エピソードや劣化生成では null/欠落するため optional。 */
+  vocabulary?: VocabularyEntry[] | null
+  /** 理解度チェッククイズ（正解キーなしの射影型）。旧エピソードや劣化生成では null/欠落するため optional（ADR-070）。 */
+  quiz?: QuizQuestion[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus
@@ -171,6 +206,51 @@ export interface ListeningStreak {
   current_streak_days: number
   today_listened: boolean
   last_listened_day: string | null // ISO 8601 date (YYYY-MM-DD)
+}
+
+// ── 難易度自動適応（ADR-071 F3） ─────────────────────────────────────
+/** GET /users/me/difficulty-suggestion のレスポンス。常に 200。
+ *  has_suggestion が false のときは推奨なし（suggested/direction/reason は null）。 */
+export interface DifficultySuggestion {
+  has_suggestion: boolean
+  current: DifficultyLevel
+  suggested: DifficultyLevel | null
+  direction: 'up' | 'down' | null
+  reason: string | null
+}
+
+// ── 学習ダッシュボード（F4 / ADR-072） ────────────────────────────────
+/** クイズ成績の推移1点分。エピソード横断で「各エピソードの最新採点」を graded_at 昇順に
+ *  並べた列の要素 ── 同一エピソードを解き直して伸びる改善曲線ではない（ADR-072 決定3-3）。 */
+export interface QuizTrendPoint {
+  graded_at: string // ISO8601
+  correct_rate: number
+}
+
+/** クイズ成績の集約。quizzed_episodes は「クイズを解いた distinct エピソード数」で、
+ *  retake が上書きされるため延べ受験回数ではない（ADR-070 決定8-1・ADR-072 決定3-3）。 */
+export interface QuizStats {
+  quizzed_episodes: number
+  average_correct_rate: number | null // クイズ済みエピソード0件ならnull（ゼロ除算回避）
+  trend: QuizTrendPoint[]
+}
+
+/** 月ごとの聴取日数（listeningDays を "YYYY-MM" で集計・ADR-072 決定2）。 */
+export interface MonthlyActivity {
+  month: string // "YYYY-MM"
+  active_days: number
+}
+
+/** GET /users/me/learning-dashboard のレスポンス（F4・既存シグナルの read-only 集約・ADR-072）。
+ *  streak は既存 ListeningStreak 型を入れ子で再利用する（DRY・ADR-072 決定4）。
+ *  current_difficulty は現在の設定値のみで、学習で到達したレベルの履歴ではない（ADR-072 決定3-3）。 */
+export interface LearningDashboard {
+  streak: ListeningStreak
+  total_episodes: number
+  vocabulary_acquired: number
+  quiz: QuizStats
+  monthly_activity: MonthlyActivity[]
+  current_difficulty: string
 }
 
 // ── Passkey / WebAuthn ───────────────────────────────────────────────
