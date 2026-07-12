@@ -370,6 +370,69 @@ describe('getDifficultySuggestion', () => {
   })
 })
 
+// ==========================================================
+// getLearningDashboard — GET /api/backend/users/me/learning-dashboard（ADR-072・F4）
+// ==========================================================
+describe('getLearningDashboard', () => {
+  const SAMPLE_DASHBOARD = {
+    streak: { current_streak_days: 5, today_listened: true, last_listened_day: '2026-07-07' },
+    total_episodes: 12,
+    vocabulary_acquired: 34,
+    quiz: {
+      quizzed_episodes: 3,
+      average_correct_rate: 0.75,
+      trend: [
+        { graded_at: '2026-07-01T00:00:00Z', correct_rate: 0.6 },
+        { graded_at: '2026-07-05T00:00:00Z', correct_rate: 0.9 },
+      ],
+    },
+    monthly_activity: [{ month: '2026-07', active_days: 5 }],
+    current_difficulty: 'toeic_600',
+  }
+
+  test('sends GET to /api/backend/users/me/learning-dashboard', async () => {
+    mockFetchOk(SAMPLE_DASHBOARD)
+    const client = makeClient()
+    await client.getLearningDashboard()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/learning-dashboard',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns streak/total_episodes/vocabulary_acquired/quiz/monthly_activity/current_difficulty fields (interface contract)', async () => {
+    mockFetchOk(SAMPLE_DASHBOARD)
+    const client = makeClient()
+    const result = await client.getLearningDashboard()
+
+    expect(result).toEqual(SAMPLE_DASHBOARD)
+  })
+
+  test('new user response has all-zero/empty/null fields without error', async () => {
+    const emptyDashboard = {
+      streak: { current_streak_days: 0, today_listened: false, last_listened_day: null },
+      total_episodes: 0,
+      vocabulary_acquired: 0,
+      quiz: { quizzed_episodes: 0, average_correct_rate: null, trend: [] },
+      monthly_activity: [],
+      current_difficulty: 'toeic_600',
+    }
+    mockFetchOk(emptyDashboard)
+    const client = makeClient()
+    const result = await client.getLearningDashboard()
+
+    expect(result).toEqual(emptyDashboard)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getLearningDashboard()).rejects.toThrow(ApiError)
+  })
+})
+
 describe('dismissArticle', () => {
   test('sends POST to /api/backend/articles/{id}/dismiss', async () => {
     mockFetchOk({ status: 'dismissed', article_id: 'a1' })
