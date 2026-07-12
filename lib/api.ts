@@ -31,6 +31,7 @@ import type {
   RevokeSessionsResponse,
   GenerationQuota,
   ListeningStreak,
+  DifficultySuggestion,
   QuizAnswerResponse,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
@@ -222,6 +223,11 @@ export function createApiClient() {
     /** 聴取ストリーク。current_streak_days=0 でも last_listened_day が非null の場合がある（途切れ）。issue #165 / ADR-062。 */
     getListeningStreak() {
       return request<ListeningStreak>('/api/backend/users/me/listening-streak', { method: 'GET' })
+    },
+
+    /** 難易度自動適応の推奨。常に 200・has_suggestion=false で推奨なしを表現する。ADR-071 F3。 */
+    getDifficultySuggestion() {
+      return request<DifficultySuggestion>('/api/backend/users/me/difficulty-suggestion', { method: 'GET' })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {

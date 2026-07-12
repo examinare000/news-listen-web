@@ -7,6 +7,7 @@ import { AppProvider, useApp } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import type { createApiClient } from '@/lib/api'
+import type { UserPreferences, UserPreferencesPatch } from '@/types/index'
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
@@ -17,6 +18,7 @@ vi.mock('@/lib/api', () => ({
     updatePreferences: vi.fn(),
     getGenerationQuota: vi.fn(),
     getListeningStreak: vi.fn(),
+    getDifficultySuggestion: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(public status: number, public detail: string) {
@@ -668,6 +670,196 @@ describe('SettingsPage — listening streak (issue #165)', () => {
     await waitFor(() => {
       expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
     })
+  })
+})
+
+// ==========================================================
+// Settings 画面 — おすすめ難易度バナー（ADR-071 F3 難易度自動適応）
+// ==========================================================
+describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
+  function mockClientWithSuggestion(getDifficultySuggestion: ReturnType<typeof vi.fn>) {
+    return {
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 0,
+        used: 0,
+        remaining: null,
+        reset_at: '2026-07-07T00:00:00Z',
+      }),
+      getListeningStreak: vi.fn().mockResolvedValue({
+        current_streak_days: 0,
+        today_listened: false,
+        last_listened_day: null,
+      }),
+      getDifficultySuggestion,
+    } as unknown as ReturnType<typeof createApiClient>
+  }
+
+  test('Given has_suggestion is true, shows the reason and an apply button for the suggested difficulty', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithSuggestion(
+        vi.fn().mockResolvedValue({
+          has_suggestion: true,
+          current: 'toeic_600',
+          suggested: 'ielts_55',
+          direction: 'up',
+          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('おすすめ難易度')).toBeInTheDocument()
+      expect(screen.getByText('直近の理解度が高いため IELTS 5.5 を提案します')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('button', { name: /適用/ })).toBeInTheDocument()
+  })
+
+  test('Given has_suggestion is false, hides the banner', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithSuggestion(
+        vi.fn().mockResolvedValue({
+          has_suggestion: false,
+          current: 'toeic_600',
+          suggested: null,
+          direction: null,
+          reason: null,
+        }),
+      ),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('おすすめ難易度')).not.toBeInTheDocument()
+  })
+
+  // Graceful: フェッチ失敗（404含む・エンドポイント未提供の旧デプロイ等）は常にバナー非表示。画面は壊さない。
+  test('Given getDifficultySuggestion fails, hides the banner without crashing the page', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue(
+      mockClientWithSuggestion(vi.fn().mockRejectedValue(new Error('network error'))),
+    )
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('デフォルト難易度')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('おすすめ難易度')).not.toBeInTheDocument()
+  })
+
+  test('Clicking apply calls updatePreferences with default_difficulty set to the suggested difficulty, then hides the banner', async () => {
+    const updatePreferences = vi.fn().mockResolvedValue({})
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      ...mockClientWithSuggestion(
+        vi.fn().mockResolvedValue({
+          has_suggestion: true,
+          current: 'toeic_600',
+          suggested: 'ielts_55',
+          direction: 'up',
+          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+        }),
+      ),
+      updatePreferences,
+    })
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /適用/ }))
+    await userEvent.click(screen.getByRole('button', { name: /適用/ }))
+
+    await waitFor(() => {
+      expect(updatePreferences).toHaveBeenCalledWith({ default_difficulty: 'ielts_55' })
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('おすすめ難易度')).not.toBeInTheDocument()
+    })
+  })
+
+  // レビュー指摘の再現テスト: バナー適用が handleDifficultyChange と別経路の
+  // updatePreferences を叩いていたため、requestId ガード（issue #164）の外側で
+  // 動いてしまい、先行して遅延中だったドロップダウン変更の stale な失敗が
+  // 適用成功後の値を上書きしてしまう。適用が既存のガード付き経路を再利用して
+  // いれば、stale な失敗は無視されて適用済みの値が保持されるはずである。
+  test('Given a slower difficulty-change request is still in flight, applying the suggestion is not later rolled back by its stale failure', async () => {
+    const rejectStack: Array<() => void> = []
+    const updatePreferences = vi.fn(async (params: UserPreferencesPatch): Promise<UserPreferences> => {
+      if (params.default_difficulty === 'toeic_900') {
+        // ドロップダウン変更（先行・遅延・後で失敗する）
+        return new Promise<UserPreferences>((_resolve, reject) => {
+          rejectStack.push(() => reject(new Error('network error')))
+        })
+      }
+      // バナー適用（後続・即座に成功する）
+      return {
+        default_difficulty: params.default_difficulty ?? 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }
+    })
+
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      ...mockClientWithSuggestion(
+        vi.fn().mockResolvedValue({
+          has_suggestion: true,
+          current: 'toeic_600',
+          suggested: 'ielts_55',
+          direction: 'up',
+          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+        }),
+      ),
+      updatePreferences,
+    })
+
+    renderSettingsPage()
+
+    await waitFor(() => screen.getByRole('button', { name: /適用/ }))
+    const diffSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+
+    // 先行: ドロップダウンでの変更（遅延中・まだ完了していない）
+    await userEvent.selectOptions(diffSelect, 'toeic_900')
+    expect(diffSelect.value).toBe('toeic_900')
+
+    // 後続: バナーの適用（即座に成功する）
+    await userEvent.click(screen.getByRole('button', { name: /適用/ }))
+
+    await waitFor(() => {
+      expect(diffSelect.value).toBe('ielts_55')
+    })
+
+    // stale なドロップダウン変更の失敗を後から解決する
+    const staleReject = rejectStack[0]
+    if (staleReject) staleReject()
+
+    // WHY: catch ハンドラの setState は React イベントハンドラの外側（reject された
+    // Promise のコールバック）から呼ばれるため、コミットまでにマイクロタスクを跨いだ
+    // スケジューリングが挟まる。マクロタスクを一度挟んで再レンダーを確実に完了させてから
+    // 検証しないと、ロールバックが実際には発生していてもアサーションが「変化前の一瞬」を
+    // 捉えてすり抜けてしまう（waitFor は最初の同期チェックで即座に成功し得るため）。
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    // stale な失敗によって適用済みの値がロールバックされないこと（requestId ガードの再利用）
+    await waitFor(() => {
+      expect(diffSelect.value).toBe('ielts_55')
+    })
+    expect(screen.queryByText('推奨難易度の適用に失敗しました')).not.toBeInTheDocument()
+    expect(screen.queryByText('難易度設定の保存に失敗しました')).not.toBeInTheDocument()
   })
 })
 

@@ -309,6 +309,67 @@ describe('getListeningStreak', () => {
   })
 })
 
+// ==========================================================
+// getDifficultySuggestion — GET /api/backend/users/me/difficulty-suggestion（ADR-071 F3）
+// ==========================================================
+describe('getDifficultySuggestion', () => {
+  test('sends GET to /api/backend/users/me/difficulty-suggestion', async () => {
+    mockFetchOk({
+      has_suggestion: false,
+      current: 'toeic_600',
+      suggested: null,
+      direction: null,
+      reason: null,
+    })
+    const client = makeClient()
+    await client.getDifficultySuggestion()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/users/me/difficulty-suggestion',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns has_suggestion/current/suggested/direction/reason fields (interface contract)', async () => {
+    const suggestion = {
+      has_suggestion: true,
+      current: 'toeic_600',
+      suggested: 'ielts_55',
+      direction: 'up',
+      reason: '直近の理解度が高いため一段上の難易度を提案します',
+    }
+    mockFetchOk(suggestion)
+    const client = makeClient()
+    const result = await client.getDifficultySuggestion()
+
+    expect(result).toEqual(suggestion)
+  })
+
+  test('has_suggestion is false with all optional fields null when there is no recommendation', async () => {
+    mockFetchOk({
+      has_suggestion: false,
+      current: 'toeic_600',
+      suggested: null,
+      direction: null,
+      reason: null,
+    })
+    const client = makeClient()
+    const result = await client.getDifficultySuggestion()
+
+    expect(result.has_suggestion).toBe(false)
+    expect(result.suggested).toBeNull()
+    expect(result.direction).toBeNull()
+    expect(result.reason).toBeNull()
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getDifficultySuggestion()).rejects.toThrow(ApiError)
+  })
+})
+
 describe('dismissArticle', () => {
   test('sends POST to /api/backend/articles/{id}/dismiss', async () => {
     mockFetchOk({ status: 'dismissed', article_id: 'a1' })
