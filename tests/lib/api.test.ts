@@ -913,6 +913,67 @@ describe('updatePosition', () => {
 })
 
 // ==========================================================
+// markCompleted — POST /api/backend/podcasts/:id/completed（ADR-075: 完聴イベント発火）
+// ボディ不要・fire-and-forget（サーバ側で first-write-wins）。updatePosition の鏡像。
+// ==========================================================
+describe('markCompleted', () => {
+  test('sends POST to /api/backend/podcasts/:id/completed with no body', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 0,
+    }
+    mockFetchOk(podcast)
+    const client = makeClient()
+    await client.markCompleted('p1')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/podcasts/p1/completed',
+      expect.objectContaining({ method: 'POST' })
+    )
+    // ボディ不要（ADR-075）: リクエストに body フィールドが含まれない
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(call[1]).not.toHaveProperty('body')
+  })
+
+  test('returns the updated Podcast', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 300,
+    }
+    mockFetchOk(podcast)
+    const client = makeClient()
+    const result = await client.markCompleted('p1')
+
+    expect(result.id).toBe('p1')
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.markCompleted('p1')).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
 // 管理者専用: おすすめサイト管理 CRUD
 describe('listFeaturedSites', () => {
   test('sends GET to /api/backend/admin/featured-sites', async () => {

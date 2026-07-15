@@ -9,7 +9,7 @@ import type { MockAudio } from '../helpers/mockAudio'
 import { setupMockAudio } from '../helpers/mockAudio'
 import type { Podcast } from '@/types'
 
-// issue #81: provider 配線（再生終了 → キューの次へ自動遷移 / 空キュー停止）の結合テスト。
+// ADR-075 決定3: 再生終了（ended・自然終端）で completed イベントを発火する結合テスト。
 
 function pod(id: string): Podcast {
   return {
@@ -27,17 +27,28 @@ function pod(id: string): Podcast {
   }
 }
 
-// WHY vi.hoisted: vi.mock ファクトリは import より前に巻き上げられるため、外側の
-// bare const を直接参照すると TDZ ReferenceError になる（completion.test.tsx と同じ理由）。
-const { markCompleted } = vi.hoisted(() => ({
+const { getPodcast, updatePosition, markCompleted } = vi.hoisted(() => ({
+  getPodcast: vi.fn((id: string) => Promise.resolve({
+    id,
+    type: 'single',
+    article_ids: [],
+    difficulty: 'toeic_900',
+    audio_url: `https://storage.example.com/${id}.mp3`,
+    japanese_intro_text: `intro ${id}`,
+    duration_seconds: 60,
+    created_at: '2026-06-10T09:00:00Z',
+    status: 'completed',
+    error_message: null,
+    playback_position_seconds: 0,
+  })),
+  updatePosition: vi.fn(() => Promise.resolve()),
   markCompleted: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
-    // getPodcast は id ごとに新しい署名付き URL を返す体で、id をそのまま反映する。
-    getPodcast: vi.fn((id: string) => Promise.resolve(pod(id))),
-    updatePosition: vi.fn(() => Promise.resolve()),
+    getPodcast,
+    updatePosition,
     markCompleted,
   })),
   ApiError: class ApiError extends Error {
@@ -82,8 +93,35 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('AudioPlayerContext queue auto-advance', () => {
-  test('plays the next queued episode when the current one ends', async () => {
+describe('AudioPlayerContext completion event (ADR-075)', () => {
+  test('calls markCompleted with the podcast id when playback ends', async () => {
+    const user = userEvent.setup()
+    renderHarness()
+
+    await user.click(screen.getByText('playA'))
+    await waitFor(() => expect(mockAudio.src).toContain('a.mp3'))
+
+    mockAudio.fireEnded()
+
+    await waitFor(() => expect(markCompleted).toHaveBeenCalledWith('a'))
+  })
+
+  test('does not interrupt playback state when markCompleted rejects (fire-and-forget)', async () => {
+    markCompleted.mockRejectedValueOnce(new Error('network error'))
+    const user = userEvent.setup()
+    renderHarness()
+
+    await user.click(screen.getByText('playA'))
+    await waitFor(() => expect(mockAudio.src).toContain('a.mp3'))
+
+    mockAudio.fireEnded()
+
+    await waitFor(() => expect(markCompleted).toHaveBeenCalledWith('a'))
+    // 'ended' 発火のため isPlaying=false（markCompleted の失敗が例外化して再生状態を壊さない）
+    expect(screen.getByTestId('playing').textContent).toBe('no')
+  })
+
+  test('calls markCompleted once per episode, in order, as a 2-song queue advances (a then b)', async () => {
     const user = userEvent.setup()
     renderHarness()
 
@@ -93,26 +131,16 @@ describe('AudioPlayerContext queue auto-advance', () => {
     await user.click(screen.getByText('addB'))
     await waitFor(() => expect(screen.getByTestId('upnext').textContent).toBe('b'))
 
-    // 現在(a)が終了 → 自動で b を再生する。
+    // a が終了 → 自動で b へ進む。
     mockAudio.fireEnded()
     await waitFor(() => expect(mockAudio.src).toContain('b.mp3'))
 
-    // ADR-075: 完聴イベントは「終了したトラック（a）」の id で 1 回だけ発火する
-    // （advance で podcastIdRef が b に切り替わった後の stale-id 誤用が無いことの固定）。
-    expect(markCompleted).toHaveBeenCalledTimes(1)
-    expect(markCompleted).toHaveBeenCalledWith('a')
-  })
-
-  test('stops when the queue has no next episode', async () => {
-    const user = userEvent.setup()
-    renderHarness()
-
-    await user.click(screen.getByText('playA'))
-    await waitFor(() => expect(mockAudio.src).toContain('a.mp3'))
-
-    // 次が無い → 停止（再生されず isPlaying=false）。
+    // b が終了 → 次が無いため停止。
     mockAudio.fireEnded()
     await waitFor(() => expect(screen.getByTestId('playing').textContent).toBe('no'))
-    expect(mockAudio.src).toContain('a.mp3') // b へは進まない
+
+    expect(markCompleted).toHaveBeenCalledTimes(2)
+    expect(markCompleted).toHaveBeenNthCalledWith(1, 'a')
+    expect(markCompleted).toHaveBeenNthCalledWith(2, 'b')
   })
 })

@@ -17,6 +17,9 @@ interface UseAudioPlayerOptions {
   // Called when the current episode finishes playing (issue #81: auto-advance to queue's next).
   // WHY: queue/advance logic belongs in the provider, not in this pure audio hook.
   onEnded?: () => void
+  // Fired on natural end-of-track, before the position=0 save (ADR-075 決定3: 完聴イベント).
+  // WHY: hook does not import fetch — server sync (markCompleted) is caller's responsibility.
+  onCompleted?: (podcastId: string) => void
 }
 
 interface AudioPlayerState {
@@ -78,10 +81,12 @@ export function useAudioPlayer(
   const onErrorRef = useRef(opts?.onError)
   const onPositionSaveRef = useRef(opts?.onPositionSave)
   const onEndedRef = useRef(opts?.onEnded)
+  const onCompletedRef = useRef(opts?.onCompleted)
   useEffect(() => {
     onErrorRef.current = opts?.onError
     onPositionSaveRef.current = opts?.onPositionSave
     onEndedRef.current = opts?.onEnded
+    onCompletedRef.current = opts?.onCompleted
   })
 
   // Single audio element shared across the hook's lifetime
@@ -127,6 +132,10 @@ export function useAudioPlayer(
     const handleEnded = () => {
       setIsPlaying(false)
       if (podcastIdRef.current) {
+        // ADR-075 決定3: 完聴イベントは position=0 保存より前に発火する。position=0 は
+        // 「完聴して0に戻った」と「未再生」をサーバ側で区別できなくする問題があり、
+        // completed イベントがその唯一の真実の記録になるため。
+        onCompletedRef.current?.(podcastIdRef.current)
         savePosition(podcastIdRef.current, 0)
         // Save ended position to server as well
         onPositionSaveRef.current?.(podcastIdRef.current, 0)

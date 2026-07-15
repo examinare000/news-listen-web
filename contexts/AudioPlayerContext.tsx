@@ -61,12 +61,22 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       })
   }, [])
 
+  // ADR-075 決定3: 完聴イベント発火。fire-and-forget（失敗は再生体験に影響させない・リトライ不要）。
+  const onCompleted = useCallback((podcastId: string) => {
+    createApiClient()
+      .markCompleted(podcastId)
+      .catch(() => {
+        // Silent catch: network failures should not interrupt playback
+      })
+  }, [])
+
   // player を作る前に onEnded から呼ぶ関数を ref で前方参照する（初期化順の循環を避ける）。
   const advanceRef = useRef<() => void>(() => {})
 
   const player = useAudioPlayer({
     onError: () => showToast('音声を再生できません', 'error'),
     onPositionSave,
+    onCompleted,
     onEnded: () => advanceRef.current(),
   })
 

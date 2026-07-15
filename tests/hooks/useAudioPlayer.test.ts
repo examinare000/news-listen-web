@@ -594,3 +594,70 @@ describe('onPositionSave callback', () => {
     expect(onPositionSave).toHaveBeenCalledTimes(2)
   })
 })
+
+// ==========================================================
+// onCompleted callback — 完聴イベント発火（ADR-075 決定3）
+// ==========================================================
+describe('onCompleted callback', () => {
+  test('Given track ended, calls onCompleted with the podcast id', async () => {
+    const onCompleted = vi.fn()
+    const { result } = renderHook(() => useAudioPlayer({ onCompleted }))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    act(() => {
+      mockAudio.fireEnded()
+    })
+
+    expect(onCompleted).toHaveBeenCalledWith('p1')
+  })
+
+  test('Given onCompleted not provided, does not throw', async () => {
+    const { result } = renderHook(() => useAudioPlayer({}))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    act(() => {
+      mockAudio.fireEnded()
+    })
+
+    // Should not throw
+    expect(true).toBe(true)
+  })
+
+  test('calls onCompleted before onPositionSave (completed 発火 → position=0 保存の順序・ADR-075)', async () => {
+    const callOrder: string[] = []
+    const onCompleted = vi.fn(() => callOrder.push('completed'))
+    const onPositionSave = vi.fn(() => callOrder.push('positionSave'))
+    const { result } = renderHook(() => useAudioPlayer({ onCompleted, onPositionSave }))
+    mockAudio.duration = 300
+
+    act(() => {
+      result.current.load('https://example.com/audio.mp3', 0, 'p1')
+    })
+
+    await act(async () => {
+      await result.current.play()
+    })
+
+    act(() => {
+      mockAudio.fireEnded()
+    })
+
+    expect(callOrder).toEqual(['completed', 'positionSave'])
+  })
+})
