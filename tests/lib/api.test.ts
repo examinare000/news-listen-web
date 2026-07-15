@@ -913,6 +913,134 @@ describe('updatePosition', () => {
 })
 
 // ==========================================================
+// markCompleted — POST /api/backend/podcasts/:id/completed（ADR-075: 完聴イベント発火）
+// ボディ不要・fire-and-forget（サーバ側で first-write-wins）。updatePosition の鏡像。
+// ==========================================================
+describe('markCompleted', () => {
+  test('sends POST to /api/backend/podcasts/:id/completed with no body', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 0,
+    }
+    mockFetchOk(podcast)
+    const client = makeClient()
+    await client.markCompleted('p1')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/podcasts/p1/completed',
+      expect.objectContaining({ method: 'POST' })
+    )
+    // ボディ不要（ADR-075）: リクエストに body フィールドが含まれない
+    const call = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect(call[1]).not.toHaveProperty('body')
+  })
+
+  test('returns the updated Podcast', async () => {
+    const podcast = {
+      id: 'p1',
+      type: 'single',
+      article_ids: ['a1'],
+      difficulty: 'toeic_900',
+      audio_url: 'https://storage.example.com/audio.mp3',
+      japanese_intro_text: 'test',
+      duration_seconds: 300,
+      created_at: '2026-06-10T09:00:00+09:00',
+      status: 'completed' as const,
+      error_message: null,
+      playback_position_seconds: 300,
+    }
+    mockFetchOk(podcast)
+    const client = makeClient()
+    const result = await client.markCompleted('p1')
+
+    expect(result.id).toBe('p1')
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.markCompleted('p1')).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
+// getMetrics — GET /api/backend/admin/metrics（ADR-075: C0 ゲート判定用リテンション計測）
+// ==========================================================
+describe('getMetrics', () => {
+  // backend api/schemas.py 確定契約: ラッパー無しでスナップショットを直接返す（ADR-075）。
+  const SAMPLE_METRICS = {
+    date: '2026-07-14',
+    d7: { eligible: 20, retained: 8, rate: 0.4 },
+    d30: { eligible: 10, retained: 3, rate: 0.3 },
+    completion: {
+      started: 50,
+      completed: 28,
+      delivered: 60,
+      rate_started: 0.56,
+      rate_delivered: 0.4667,
+    },
+    weekly_star: { total_stars: 42, active_users: 8, avg_per_active_user: 5.2 },
+    generated_at: '2026-07-15T00:10:00Z',
+  }
+
+  test('sends GET to /api/backend/admin/metrics', async () => {
+    mockFetchOk(SAMPLE_METRICS)
+    const client = makeClient()
+    await client.getMetrics()
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/admin/metrics',
+      expect.objectContaining({ method: 'GET' })
+    )
+  })
+
+  test('returns the snapshot fields directly, without a wrapper (interface contract)', async () => {
+    mockFetchOk(SAMPLE_METRICS)
+    const client = makeClient()
+    const result = await client.getMetrics()
+
+    expect(result).toEqual(SAMPLE_METRICS)
+  })
+
+  test('throws ApiError(404) when no snapshot exists for the date (aggregation job has not run yet)', async () => {
+    mockFetchError(404, 'Metrics snapshot not found')
+    const client = makeClient()
+
+    try {
+      await client.getMetrics()
+      throw new Error('should have thrown')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApiError)
+      expect((e as ApiError).status).toBe(404)
+    }
+  })
+
+  test('throws ApiError on 403 for non-admin users', async () => {
+    mockFetchError(403, 'Admin access required')
+    const client = makeClient()
+
+    await expect(client.getMetrics()).rejects.toThrow(ApiError)
+  })
+
+  test('throws ApiError on network failure', async () => {
+    mockFetchNetworkError()
+    const client = makeClient()
+
+    await expect(client.getMetrics()).rejects.toThrow(ApiError)
+  })
+})
+
+// ==========================================================
 // 管理者専用: おすすめサイト管理 CRUD
 describe('listFeaturedSites', () => {
   test('sends GET to /api/backend/admin/featured-sites', async () => {

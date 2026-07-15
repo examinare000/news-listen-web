@@ -320,3 +320,40 @@ export type PushSubscriptionState =
   | 'subscribing'  // 購読処理中
   | 'subscribed'   // 購読済み
   | 'error'        // エラー発生
+
+// ── リテンション計測（ADR-075・backend api/schemas.py 確定契約） ─────────────
+/** D_N コホート継続率 1 点分。eligible=0（評価適格ユーザーがいない）は rate が null（ゼロ除算回避・ADR-075 §2）。 */
+export interface RetentionCohortMetric {
+  eligible: number
+  retained: number
+  rate: number | null
+}
+
+/** エピソード完聴率。primary（gate 判定用）は completed/started（rate_started）、
+ *  secondary は completed/delivered（rate_delivered）（ADR-075 §2・両分母 0 は null）。 */
+export interface CompletionMetrics {
+  started: number
+  completed: number
+  delivered: number
+  rate_started: number | null
+  rate_delivered: number | null
+}
+
+/** 週次 Star 数（gate 外の secondary エンゲージメント指標・ADR-075 §2）。 */
+export interface WeeklyStarMetrics {
+  total_stars: number
+  active_users: number
+  avg_per_active_user: number | null
+}
+
+/** GET /admin/metrics のレスポンス（metricsDaily/{date} 1 件分・匿名集計のみ・ラッパー無しで
+ *  直接返る・ADR-075 §5）。指定日（省略時は当日 Asia/Tokyo）のスナップショット未生成時は
+ *  404（呼び出し側で ApiError.status===404 を「集計データ未蓄積」として扱う・ADR-075 §6）。 */
+export interface MetricsSnapshot {
+  date: string
+  d7: RetentionCohortMetric
+  d30: RetentionCohortMetric
+  completion: CompletionMetrics
+  weekly_star: WeeklyStarMetrics
+  generated_at: string
+}

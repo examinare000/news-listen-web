@@ -642,6 +642,16 @@ export function AccountSection() {
               開く
             </Link>
           </div>
+
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">計測ダッシュボード</div>
+              <div className="settings-row-desc">D7/D30 継続率・完聴率・週次 Star 数（管理者のみ・ADR-075）</div>
+            </div>
+            <Link className="btn btn-ghost" href="/admin/metrics" aria-label="計測ダッシュボードを開く">
+              開く
+            </Link>
+          </div>
         </>
       )}
 

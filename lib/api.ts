@@ -25,6 +25,7 @@ import type {
   UserPreferencesPatch,
   VapidPublicKeyResponse,
   PushSubscriptionJSON,
+  MetricsSnapshot,
   PasskeyOptionsResponse,
   PasskeyCredentialsListResponse,
   SessionsListResponse,
@@ -154,6 +155,18 @@ export function createApiClient() {
           method: 'PATCH',
           body: JSON.stringify({ position_seconds: positionSeconds }),
         },
+      )
+    },
+
+    /**
+     * 完聴イベント発火（ADR-075 決定3）。ended（自然終端）到達時に呼ぶ。ボディ不要・
+     * サーバ側で first-write-wins のため、呼び出し側は fire-and-forget（失敗握りつぶし）でよい。
+     * updatePosition の鏡像だが、責務が別（同期 vs イベント）のため専用エンドポイントに分離する。
+     */
+    markCompleted(id: string) {
+      return request<Podcast>(
+        `/api/backend/podcasts/${id}/completed`,
+        { method: 'POST' },
       )
     },
 
@@ -303,6 +316,15 @@ export function createApiClient() {
         method: 'DELETE',
         body: JSON.stringify({ current_password: currentPassword }),
       })
+    },
+
+    /**
+     * リテンション計測ダッシュボード用スナップショット（ADR-075 決定 E1・require_admin・
+     * backend api/schemas.py 確定契約）。指定日（省略時は当日 Asia/Tokyo）のスナップショットが
+     * 未生成の場合は 404（呼び出し側で ApiError.status===404 を「集計データ未蓄積」として扱う）。
+     */
+    getMetrics() {
+      return request<MetricsSnapshot>('/api/backend/admin/metrics', { method: 'GET' })
     },
 
     // ── 管理者によるユーザー管理 ────────────────────────────────
