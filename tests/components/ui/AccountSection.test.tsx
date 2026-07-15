@@ -1,8 +1,9 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AccountSection } from '@/components/ui/AccountSection'
+import { useAuth } from '@/contexts/AuthContext'
 import type { PasskeyCredential } from '@/types/index'
 
 // vi.hoisted で mock 変数を宣言する（vi.mock のホイスティングより前に評価される）
@@ -672,5 +673,47 @@ describe('AccountSection — accessibility', () => {
       const errorDiv = screen.getByText(/ログイン中のデバイスの読み込みに失敗/)?.closest('.form-error')
       expect(errorDiv).toHaveAttribute('role', 'alert')
     })
+  })
+})
+
+// ==========================================================
+// AccountSection — 管理者導線（ADR-075: 計測ダッシュボードへのリンク）
+// ==========================================================
+describe('AccountSection — admin metrics link (ADR-075)', () => {
+  // WHY: mockReturnValue はテスト間で永続する（clearAllMocks は実装を消さない）ため、
+  // このブロック専用に admin ロールへ張り替えた後、必ずデフォルト（一般ユーザー）へ戻す。
+  afterEach(() => {
+    vi.mocked(useAuth).mockReturnValue({
+      status: 'authenticated',
+      user: MOCK_USER,
+      login: vi.fn(),
+      logout: mockLogout,
+      register: vi.fn(),
+      refreshMe: mockRefreshMe,
+      loginWithPasskey: vi.fn(),
+    })
+  })
+
+  test('admin ユーザーには計測ダッシュボードへのリンクが表示される', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      status: 'authenticated',
+      user: { username: 'admin', role: 'admin', display_name: 'Admin' },
+      login: vi.fn(),
+      logout: mockLogout,
+      register: vi.fn(),
+      refreshMe: mockRefreshMe,
+      loginWithPasskey: vi.fn(),
+    })
+
+    render(<AccountSection />)
+
+    const link = await screen.findByLabelText('計測ダッシュボードを開く')
+    expect(link).toHaveAttribute('href', '/admin/metrics')
+  })
+
+  test('一般ユーザーには計測ダッシュボードへのリンクが表示されない', () => {
+    render(<AccountSection />)
+
+    expect(screen.queryByLabelText('計測ダッシュボードを開く')).not.toBeInTheDocument()
   })
 })
