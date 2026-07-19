@@ -408,6 +408,103 @@ describe('FeedPage — Tabs', () => {
 })
 
 // ==========================================================
+// Feed 画面 — Star 状態のサーバ側復元（issue #84）
+// リロード・手動更新時、サーバの is_starred からスター済みタブを復元する
+// ==========================================================
+describe('FeedPage — Star restoration on fetch (#84)', () => {
+  test('Given an article with is_starred=true, shows it under the starred tab after the initial fetch', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({
+        articles: [
+          { ...SAMPLE_ARTICLES[0], is_starred: true },
+          { ...SAMPLE_ARTICLES[1], is_starred: false },
+        ],
+        date: '2026-06-10',
+      }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    expect(screen.queryByText('Next.js 15 Features')).not.toBeInTheDocument()
+  })
+
+  test('Given articles without is_starred (backward compat with old backend), does not break and starred tab stays empty', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+  })
+
+  test('Given article starred, refresh button pressed, and server still returns is_starred=false, keeps the optimistic star state (#84)', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    let fetchCallCount = 0
+    const getFeed = vi.fn(() => {
+      fetchCallCount++
+      // First call: is_starred=false; second call (after refresh): still false (simulating delayed sync)
+      return Promise.resolve({
+        articles: [
+          { ...SAMPLE_ARTICLES[0], is_starred: false },
+          { ...SAMPLE_ARTICLES[1], is_starred: false },
+        ],
+        date: '2026-06-10',
+      })
+    })
+
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed,
+      starArticle,
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // Wait for initial load
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    expect(fetchCallCount).toBe(1)
+
+    // Star the first article
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+    await waitFor(() => screen.getByText(/Star しました/))
+
+    // Verify it's in the starred tab
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+
+    // Refresh
+    await userEvent.click(screen.getByRole('button', { name: /更新|refresh/i }))
+    await waitFor(() => {
+      expect(getFeed).toHaveBeenCalledTimes(2)
+    })
+
+    // Star state should still be kept (optimistic update not rolled back)
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+  })
+})
+
+// ==========================================================
 // Feed 画面 — ページヘッダー
 // ==========================================================
 describe('FeedPage — Page header', () => {

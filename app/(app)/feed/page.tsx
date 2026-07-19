@@ -83,6 +83,15 @@ export default function FeedPage() {
     try {
       const data = await createApiClient().getFeed()
       setArticles(data.articles)
+      // サーバ値は追加方向にのみ反映する（issue #84）。undefined = 未対応 backend の可能性があり、
+      // 明示 false と区別できないため解除はしない。セッション内の楽観 Star を手動更新で失わないため。
+      setStarredIds((prev) => {
+        const next = new Set(prev)
+        for (const a of data.articles) {
+          if (a.is_starred) next.add(a.id)
+        }
+        return next
+      })
       setFeedDate(data.date ?? null)
     } catch (err) {
       if (err instanceof ApiError) {
