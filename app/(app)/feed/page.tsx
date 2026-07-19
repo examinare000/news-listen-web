@@ -25,6 +25,10 @@ function starSuccessMessage(remaining: number | null | undefined): string {
 
 type FeedTab = 'all' | 'starred'
 
+// issue #83: ローディング中に描画するスケルトン枚数。実際の1日あたりフィード件数の
+// 目安に合わせ、実データ表示時の高さの変化（レイアウト飛び）を軽減する。
+const SKELETON_COUNT = 6
+
 function SkeletonCard() {
   // WHY: カード本体（タイトル2行 + メタ + スコア行）と同等の高さ・角丸を
   // インラインで与える。globals.css は T01 完成後の編集禁止のため
@@ -223,14 +227,24 @@ export default function FeedPage() {
 
   function renderContent() {
     if (loading) {
-      return <SkeletonCard />
+      // issue #83: スケルトン1枚のみだと実データ表示時にレイアウトが大きく飛ぶため、
+      // 実際のフィード件数に近い枚数（SKELETON_COUNT）を描画してブレを抑える。
+      // role="status" + aria-live="polite" でローディング中であることを支援技術へ通知する。
+      return (
+        <div className="article-list" role="status" aria-live="polite" aria-label="読み込み中">
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      )
     }
 
     if (errorMessage) {
       return (
         <div className="empty-state">
           <div className="empty-state-icon" aria-hidden="true">⚠</div>
-          <div className="empty-state-title">{errorMessage}</div>
+          {/* issue #83: subscriptions/settings 画面と揃え、エラー本文に role="alert" を付与する */}
+          <div className="empty-state-title" role="alert">{errorMessage}</div>
           <div className="empty-state-desc">右上の更新ボタンで再試行できます</div>
         </div>
       )
