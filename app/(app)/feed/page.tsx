@@ -126,6 +126,10 @@ export default function FeedPage() {
         } else {
           showToast(`エラーが発生しました (${err.status})`, 'error')
         }
+      } else {
+        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+        showToast('予期しないエラーが発生しました', 'error')
       }
     } finally {
       setBusyIds((prev) => {
@@ -144,6 +148,10 @@ export default function FeedPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(`エラーが発生しました (${err.status})`, 'error')
+      } else {
+        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+        showToast('予期しないエラーが発生しました', 'error')
       }
     } finally {
       setBusyIds((prev) => {

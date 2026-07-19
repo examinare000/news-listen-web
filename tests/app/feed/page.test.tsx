@@ -290,6 +290,24 @@ describe('FeedPage — Star', () => {
       expect(screen.getByText(/本日の生成上限に達しました（約12時間後に可能）/)).toBeInTheDocument()
     })
   })
+
+  test('Given star throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/予期しないエラーが発生しました/)).toBeInTheDocument()
+    })
+  })
 })
 
 // ==========================================================
@@ -311,6 +329,24 @@ describe('FeedPage — Dismiss', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
+    })
+  })
+
+  test('Given dismiss throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: /dismiss|×|非表示/i })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/予期しないエラーが発生しました/)).toBeInTheDocument()
     })
   })
 })
