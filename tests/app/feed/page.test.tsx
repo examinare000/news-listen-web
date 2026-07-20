@@ -60,7 +60,11 @@ beforeEach(() => {
 // Feed 画面 — データ取得・表示
 // ==========================================================
 describe('FeedPage — data fetching', () => {
-  test('Given loading state, displays SkeletonCard', async () => {
+  // issue #83: スケルトン1枚のみだと実データ表示時にレイアウトが大きく飛ぶため、
+  // 実際のフィード件数に近い複数枚を描画して高さのブレを抑える。
+  // また role="status" + aria-live="polite" が無いとローディング中であることが
+  // 支援技術に通知されないため、あわせて検証する。
+  test('Given loading state, displays multiple SkeletonCards and announces loading via role="status" (#83)', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn(() => new Promise(() => {})), // never resolves
@@ -69,7 +73,10 @@ describe('FeedPage — data fetching', () => {
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
-    expect(screen.getByTestId('skeleton-card')).toBeInTheDocument()
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(within(status).getAllByTestId('skeleton-card')).toHaveLength(6)
   })
 
   test('Given articles returned, renders article cards', async () => {
@@ -465,6 +472,23 @@ describe('FeedPage — Network error', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/サーバーに接続できません/)).toBeInTheDocument()
+    })
+  })
+
+  // issue #83: subscriptions/settings 画面のエラー表示は role="alert" を付与済みだが
+  // feed 画面のみ欠けていたため非一貫だった。他画面と揃える。
+  test('Given a fetch error, the error message has role="alert" (#83)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバーに接続できません')
     })
   })
 })

@@ -87,7 +87,11 @@ export default function AdminMetricsPage() {
     }
 
     if (!hasLoaded) {
-      return <p className="settings-row-desc">読み込み中…</p>
+      // issue #83: プレーンなテキストのみだとローディング中であることが支援技術に
+      // 通知されないため、role="status" + aria-live="polite" を付与する。
+      return (
+        <p className="settings-row-desc" role="status" aria-live="polite">読み込み中…</p>
+      )
     }
 
     if (notFound || !metrics) {
