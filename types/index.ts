@@ -21,6 +21,9 @@ export interface Article {
   source: string
   score: number
   published_at: string
+  // Star 状態のサーバ側真実（issue #84）。旧 backend 応答は未送信のため optional
+  // で後方互換を保つ（lib/api.ts の retryAfterSeconds/remaining と同方針）。
+  is_starred?: boolean
 }
 
 export interface FeedResponse {
