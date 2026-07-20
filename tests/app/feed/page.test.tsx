@@ -60,7 +60,11 @@ beforeEach(() => {
 // Feed 画面 — データ取得・表示
 // ==========================================================
 describe('FeedPage — data fetching', () => {
-  test('Given loading state, displays SkeletonCard', async () => {
+  // issue #83: スケルトン1枚のみだと実データ表示時にレイアウトが大きく飛ぶため、
+  // 実際のフィード件数に近い複数枚を描画して高さのブレを抑える。
+  // また role="status" + aria-live="polite" が無いとローディング中であることが
+  // 支援技術に通知されないため、あわせて検証する。
+  test('Given loading state, displays multiple SkeletonCards and announces loading via role="status" (#83)', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn(() => new Promise(() => {})), // never resolves
@@ -69,7 +73,10 @@ describe('FeedPage — data fetching', () => {
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
-    expect(screen.getByTestId('skeleton-card')).toBeInTheDocument()
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(within(status).getAllByTestId('skeleton-card')).toHaveLength(6)
   })
 
   test('Given articles returned, renders article cards', async () => {
@@ -308,6 +315,33 @@ describe('FeedPage — Star', () => {
       expect(screen.getByText(/予期しないエラーが発生しました/)).toBeInTheDocument()
     })
   })
+
+  // issue #82 / ADR-073: 月次上限 429（backend detail に "Monthly" を含む）は
+  // 日次上限と文言を出し分ける。
+  test('Given star returns 429 for the monthly limit, shows a monthly-specific toast', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      // 2678400 秒 = 約31日後
+      starArticle: vi.fn().mockRejectedValue(
+        new ApiError(
+          429,
+          'Monthly podcast generation limit reached for this user. Please try again next month.',
+          2678400,
+        ),
+      ),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/今月の生成上限に達しました（約31日後に可能）/)).toBeInTheDocument()
+    })
+  })
 })
 
 // ==========================================================
@@ -503,6 +537,23 @@ describe('FeedPage — Network error', () => {
       expect(screen.getByText(/サーバーに接続できません/)).toBeInTheDocument()
     })
   })
+
+  // issue #83: subscriptions/settings 画面のエラー表示は role="alert" を付与済みだが
+  // feed 画面のみ欠けていたため非一貫だった。他画面と揃える。
+  test('Given a fetch error, the error message has role="alert" (#83)', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('サーバーに接続できません')
+    })
+  })
 })
 
 // ==========================================================
@@ -652,5 +703,78 @@ describe('FeedPage — Bulk Star', () => {
 
     // チェックボックスが非表示になる（選択モード終了）
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Feed 画面 — 生成上限の月次判別（指摘2: ADR-073 準拠）
+// ==========================================================
+describe('FeedPage — generation limit message (issue #82 / ADR-073)', () => {
+  test('Shows "今月の生成上限" when detail contains "Monthly"', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    const { ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockRejectedValue(
+        new ApiError(429, 'Monthly podcast generation limit reached for this user.', 3600)
+      ),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const starButton = screen.getByTestId('star-button-a1')
+    await userEvent.click(starButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/今月の生成上限に達しました/)).toBeInTheDocument()
+    })
+  })
+
+  test('Shows "今月の生成上限" when retryAfterSeconds > 86400 (24h) even without "Monthly" in detail', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    const { ApiError } = await import('@/lib/api')
+    // ADR-073: backend 文言変更時の耐障害性。detail に "Monthly" がなくても
+    // Retry-After 24時間超なら月次判定（フォールバック戦略）
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockRejectedValue(
+        new ApiError(429, 'Podcast generation limit reached.', 86401) // 24時間超
+      ),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const starButton = screen.getByTestId('star-button-a1')
+    await userEvent.click(starButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/今月の生成上限に達しました/)).toBeInTheDocument()
+    })
+  })
+
+  test('Shows "本日の生成上限" when retryAfterSeconds <= 86400 and no "Monthly" in detail', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    const { ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockRejectedValue(
+        new ApiError(429, 'Daily podcast generation limit reached.', 3600) // 1時間（24時間未満）
+      ),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const starButton = screen.getByTestId('star-button-a1')
+    await userEvent.click(starButton)
+
+    await waitFor(() => {
+      expect(screen.getByText(/本日の生成上限に達しました/)).toBeInTheDocument()
+    })
   })
 })

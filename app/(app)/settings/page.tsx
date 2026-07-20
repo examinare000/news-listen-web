@@ -12,7 +12,7 @@ import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
 import type { DifficultyLevel, GenerationQuota, ListeningStreak, DifficultySuggestion } from '@/types/index'
-import { formatDuration, formatBytes } from '@/lib/format'
+import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
 
 type TimeFormat = 'absolute' | 'relative'
@@ -266,6 +266,21 @@ export default function SettingsPage() {
                 </div>
               </div>
             )
+          )}
+
+          {/* 月次生成クォータの可視化（issue #82 / ADR-073 決定5）。limit<=0（無制限）の行は
+              日次と同じ規約で非表示にする。取得失敗時は quotaLoadError 側で日次と共通のバナーを出す。
+              monthly 欠落時（backend 版ずれ）は行全体を非表示（graceful degradation）。 */}
+          {!quotaLoadError && quota?.monthly && quota.monthly.limit > 0 && (
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">今月の残り生成回数</div>
+                <div className="settings-row-desc">
+                  {quota.monthly.remaining ?? 0} / {quota.monthly.limit} 回（
+                  {formatDate(quota.monthly.reset_at)}にリセット）
+                </div>
+              </div>
+            </div>
           )}
 
           <div className="settings-row">

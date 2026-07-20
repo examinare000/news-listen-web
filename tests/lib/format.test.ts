@@ -256,6 +256,14 @@ describe('formatRetryAfter (#82)', () => {
   test('境界（3599秒）は「約60分後」ではなく「約1時間後」', () => {
     expect(formatRetryAfter(3599)).toBe('約1時間後')
   })
+  // issue #82: 月次上限（最大で翌月初までの秒数）は24時間を超えうるため日単位に切り替える。
+  test('24時間以上は日単位（月次上限のリセットまでの日数表示に使用）', () => {
+    expect(formatRetryAfter(86400)).toBe('約1日後')
+    expect(formatRetryAfter(2678400)).toBe('約31日後')
+  })
+  test('境界（86399秒）は「約24時間後」ではなく「約1日後」', () => {
+    expect(formatRetryAfter(86399)).toBe('約1日後')
+  })
 })
 
 // issue #167: 設定画面のオフラインキャッシュ使用量表示（navigator.storage.estimate() の bytes を整形）
