@@ -7,12 +7,14 @@ import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
 import type { Article, DifficultyLevel } from '@/types/index'
 
-// 生成上限超過（429）時のユーザー向けメッセージ（issue #82）。次回可能時刻があれば併記する。
-function generationLimitMessage(retryAfterSeconds: number | undefined): string {
-  const when = formatRetryAfter(retryAfterSeconds)
-  return when
-    ? `本日の生成上限に達しました（${when}に可能）`
-    : '本日の生成上限に達しました'
+// 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
+// ADR-073: backend 文言変更・版ずれ時の耐障害性のため、detail の "Monthly" 文言判定と
+// Retry-After 24時間超の両方で月次判定を行う（フォールバック戦略）。
+function generationLimitMessage(err: ApiError): string {
+  const when = formatRetryAfter(err.retryAfterSeconds)
+  const isMonthly = /monthly/i.test(err.detail) || (err.retryAfterSeconds ?? 0) > 86400
+  const label = isMonthly ? '今月の生成上限' : '本日の生成上限'
+  return when ? `${label}に達しました（${when}に可能）` : `${label}に達しました`
 }
 
 // Star 成功時のメッセージ（issue #164 / ADR-061）。remaining が数値の場合のみ残回数を併記する。
@@ -24,6 +26,10 @@ function starSuccessMessage(remaining: number | null | undefined): string {
 }
 
 type FeedTab = 'all' | 'starred'
+
+// issue #83: ローディング中に描画するスケルトン枚数。実際の1日あたりフィード件数の
+// 目安に合わせ、実データ表示時の高さの変化（レイアウト飛び）を軽減する。
+const SKELETON_COUNT = 6
 
 function SkeletonCard() {
   // WHY: カード本体（タイトル2行 + メタ + スコア行）と同等の高さ・角丸を
@@ -131,10 +137,14 @@ export default function FeedPage() {
         } else if (err.status === 401) {
           showToast('API キーが正しくありません', 'error')
         } else if (err.status === 429) {
-          showToast(generationLimitMessage(err.retryAfterSeconds), 'error')
+          showToast(generationLimitMessage(err), 'error')
         } else {
           showToast(`エラーが発生しました (${err.status})`, 'error')
         }
+      } else {
+        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+        showToast('予期しないエラーが発生しました', 'error')
       }
     } finally {
       setBusyIds((prev) => {
@@ -153,6 +163,10 @@ export default function FeedPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(`エラーが発生しました (${err.status})`, 'error')
+      } else {
+        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+        showToast('予期しないエラーが発生しました', 'error')
       }
     } finally {
       setBusyIds((prev) => {
@@ -203,7 +217,7 @@ export default function FeedPage() {
             r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 429,
         )
         if (limit) {
-          showToast(generationLimitMessage((limit.reason as ApiError).retryAfterSeconds), 'error')
+          showToast(generationLimitMessage(limit.reason as ApiError), 'error')
         } else {
           showToast(`${failed.length}件のスターに失敗しました`, 'error')
         }
@@ -232,14 +246,24 @@ export default function FeedPage() {
 
   function renderContent() {
     if (loading) {
-      return <SkeletonCard />
+      // issue #83: スケルトン1枚のみだと実データ表示時にレイアウトが大きく飛ぶため、
+      // 実際のフィード件数に近い枚数（SKELETON_COUNT）を描画してブレを抑える。
+      // role="status" + aria-live="polite" でローディング中であることを支援技術へ通知する。
+      return (
+        <div className="article-list" role="status" aria-live="polite" aria-label="読み込み中">
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
+      )
     }
 
     if (errorMessage) {
       return (
         <div className="empty-state">
           <div className="empty-state-icon" aria-hidden="true">⚠</div>
-          <div className="empty-state-title">{errorMessage}</div>
+          {/* issue #83: subscriptions/settings 画面と揃え、エラー本文に role="alert" を付与する */}
+          <div className="empty-state-title" role="alert">{errorMessage}</div>
           <div className="empty-state-desc">右上の更新ボタンで再試行できます</div>
         </div>
       )

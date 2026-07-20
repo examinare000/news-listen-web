@@ -99,6 +99,28 @@ describe('SubscriptionsPage — fetch errors', () => {
 })
 
 // ==========================================================
+// Subscriptions — ローディング
+// issue #83: プレーンな「読み込み中...」テキストのみだとローディング中であることが
+// 支援技術に通知されないため、role="status" + aria-live="polite" を付与する。
+// ==========================================================
+describe('SubscriptionsPage — loading', () => {
+  test('Given getSources has not resolved yet, shows a loading status announced to assistive tech (#83)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn(() => new Promise(() => {})), // never resolves
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status).toHaveTextContent('読み込み中')
+  })
+})
+
+// ==========================================================
 // Subscriptions — 削除エラー
 // ==========================================================
 describe('SubscriptionsPage — delete errors', () => {
