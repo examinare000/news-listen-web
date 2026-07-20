@@ -406,6 +406,7 @@ describe('SettingsPage — generation quota (issue #164)', () => {
         used: 2,
         remaining: 3,
         reset_at: '2026-07-07T00:00:00Z',
+        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
       }),
     } as unknown as ReturnType<typeof createApiClient>)
 
@@ -432,6 +433,7 @@ describe('SettingsPage — generation quota (issue #164)', () => {
         used: 12,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
+        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
       }),
     } as unknown as ReturnType<typeof createApiClient>)
 
@@ -452,6 +454,7 @@ describe('SettingsPage — generation quota (issue #164)', () => {
         used: 1,
         remaining: 4,
         reset_at: '2026-07-07T00:00:00Z',
+        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
       })
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
@@ -522,6 +525,73 @@ describe('SettingsPage — generation quota (issue #164)', () => {
     })
     expect(screen.getByRole('button', { name: /残り生成回数を再読み込み/ })).toBeInTheDocument()
   })
+
+  // issue #82 / ADR-073 決定5: 月次クォータ（GenerationQuotaResponse.monthly）の可視化。
+  // backend/api/schemas.py MonthlyGenerationQuotaResponse と同じフィールド名。
+  test('Given monthly.limit > 0, shows monthly remaining / limit and reset date', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 5,
+        used: 2,
+        remaining: 3,
+        reset_at: '2026-07-07T00:00:00Z',
+        monthly: {
+          limit: 100,
+          used: 40,
+          remaining: 60,
+          reset_at: '2026-08-01T00:00:00Z',
+        },
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('今月の残り生成回数')).toBeInTheDocument()
+      expect(screen.getByText(/60 \/ 100 回/)).toBeInTheDocument()
+      expect(screen.getByText(/8\/1/)).toBeInTheDocument()
+    })
+  })
+
+  test('Given monthly.limit === 0 (unlimited), hides the monthly row', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1.0,
+        digest_enabled: true,
+        digest_article_count: 10,
+      }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 5,
+        used: 2,
+        remaining: 3,
+        reset_at: '2026-07-07T00:00:00Z',
+        monthly: {
+          limit: 0,
+          used: 40,
+          remaining: null,
+          reset_at: '2026-08-01T00:00:00Z',
+        },
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('本日の残り生成回数')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('今月の残り生成回数')).not.toBeInTheDocument()
+  })
 })
 
 // ==========================================================
@@ -545,6 +615,7 @@ describe('SettingsPage — listening streak (issue #165)', () => {
         used: 0,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
+        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
       }),
       getListeningStreak,
     } as unknown as ReturnType<typeof createApiClient>
@@ -691,6 +762,7 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
         used: 0,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
+        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
       }),
       getListeningStreak: vi.fn().mockResolvedValue({
         current_streak_days: 0,
@@ -1005,6 +1077,85 @@ describe('SettingsPage — offline cache (issue #167)', () => {
     await waitFor(() => {
       expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
     })
+  })
+})
+
+// ==========================================================
+// Settings 画面 — 生成上限（指摘1: monthly 欠落への防御）
+// ==========================================================
+describe('SettingsPage — generation quota with missing monthly (issue #82 / ADR-073)', () => {
+  test('gracefully handles missing monthly field without crashing', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 10,
+        used: 5,
+        remaining: 5,
+        reset_at: '2026-07-21T00:00:00Z',
+        // monthly は undefined（backend 版ずれ）
+      }),
+      getListeningStreak: vi.fn().mockRejectedValue({ status: 404 }),
+      getDifficultySuggestion: vi.fn().mockRejectedValue({ status: 404 }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    // 日次行は表示される
+    await waitFor(() => {
+      expect(screen.getByText(/本日の残り生成回数/)).toBeInTheDocument()
+    })
+
+    // 月次行は非表示になる（graceful degradation）
+    expect(screen.queryByText(/今月の残り生成回数/)).not.toBeInTheDocument()
+  })
+
+  test('displays monthly quota when monthly field is present', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi
+        .fn()
+        .mockResolvedValue({
+          default_difficulty: 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+        }),
+      updatePreferences: vi.fn().mockResolvedValue({}),
+      getGenerationQuota: vi.fn().mockResolvedValue({
+        limit: 10,
+        used: 5,
+        remaining: 5,
+        reset_at: '2026-07-21T00:00:00Z',
+        monthly: {
+          limit: 100,
+          used: 50,
+          remaining: 50,
+          reset_at: '2026-08-01T00:00:00Z',
+        },
+      }),
+      getListeningStreak: vi.fn().mockRejectedValue({ status: 404 }),
+      getDifficultySuggestion: vi.fn().mockRejectedValue({ status: 404 }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    // 日次・月次の両行が表示される
+    await waitFor(() => {
+      expect(screen.getByText(/本日の残り生成回数/)).toBeInTheDocument()
+      expect(screen.getByText(/今月の残り生成回数/)).toBeInTheDocument()
+    })
+
+    // 月次の値が正しく表示されている
+    expect(screen.getByText(/50 \/ 100 回/)).toBeInTheDocument()
   })
 })
 

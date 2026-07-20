@@ -7,12 +7,14 @@ import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
 import type { Article, DifficultyLevel } from '@/types/index'
 
-// 生成上限超過（429）時のユーザー向けメッセージ（issue #82）。次回可能時刻があれば併記する。
-function generationLimitMessage(retryAfterSeconds: number | undefined): string {
-  const when = formatRetryAfter(retryAfterSeconds)
-  return when
-    ? `本日の生成上限に達しました（${when}に可能）`
-    : '本日の生成上限に達しました'
+// 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
+// ADR-073: backend 文言変更・版ずれ時の耐障害性のため、detail の "Monthly" 文言判定と
+// Retry-After 24時間超の両方で月次判定を行う（フォールバック戦略）。
+function generationLimitMessage(err: ApiError): string {
+  const when = formatRetryAfter(err.retryAfterSeconds)
+  const isMonthly = /monthly/i.test(err.detail) || (err.retryAfterSeconds ?? 0) > 86400
+  const label = isMonthly ? '今月の生成上限' : '本日の生成上限'
+  return when ? `${label}に達しました（${when}に可能）` : `${label}に達しました`
 }
 
 // Star 成功時のメッセージ（issue #164 / ADR-061）。remaining が数値の場合のみ残回数を併記する。
@@ -126,7 +128,7 @@ export default function FeedPage() {
         } else if (err.status === 401) {
           showToast('API キーが正しくありません', 'error')
         } else if (err.status === 429) {
-          showToast(generationLimitMessage(err.retryAfterSeconds), 'error')
+          showToast(generationLimitMessage(err), 'error')
         } else {
           showToast(`エラーが発生しました (${err.status})`, 'error')
         }
@@ -198,7 +200,7 @@ export default function FeedPage() {
             r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 429,
         )
         if (limit) {
-          showToast(generationLimitMessage((limit.reason as ApiError).retryAfterSeconds), 'error')
+          showToast(generationLimitMessage(limit.reason as ApiError), 'error')
         } else {
           showToast(`${failed.length}件のスターに失敗しました`, 'error')
         }
