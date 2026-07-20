@@ -298,6 +298,24 @@ describe('FeedPage — Star', () => {
     })
   })
 
+  test('Given star throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
+      dismissArticle: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/予期しないエラーが発生しました/)).toBeInTheDocument()
+    })
+  })
+
   // issue #82 / ADR-073: 月次上限 429（backend detail に "Monthly" を含む）は
   // 日次上限と文言を出し分ける。
   test('Given star returns 429 for the monthly limit, shows a monthly-specific toast', async () => {
@@ -345,6 +363,24 @@ describe('FeedPage — Dismiss', () => {
 
     await waitFor(() => {
       expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
+    })
+  })
+
+  test('Given dismiss throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await userEvent.click(screen.getAllByRole('button', { name: /dismiss|×|非表示/i })[0])
+
+    await waitFor(() => {
+      expect(screen.getByText(/予期しないエラーが発生しました/)).toBeInTheDocument()
     })
   })
 })
