@@ -12,6 +12,7 @@
 - UI 実装は `agent-rules/15-frontend-design.md` を必ず参照（AIっぽいUIスロップを避ける）。
 - TDD 必須（`agent-rules/11-testing-strategy.md`）。コンポーネントもテスト先行。
 - 入力検証・XSS 対策は `agent-rules/12-security-guidelines.md` 準拠。
+- TypeScript のバージョン制約は `agent-rules/70-typescript-version-policy.md` 準拠（root は TS6 固定・TS7 は typescript7 エイリアス）。
 
 ## このモジュールで触らないこと
 - `next-env.d.ts` 等の自動生成ファイルは手動編集しない。
