@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "typecheck:ts7": "node node_modules/typescript7/bin/tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -35,6 +36,7 @@
     "jsdom": "^29.1.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.65.0",
+    "typescript7": "npm:typescript@7.0.2",
     "vitest": "^4.1.10"
   }
 }
