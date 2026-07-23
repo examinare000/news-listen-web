@@ -174,7 +174,9 @@ export default function SubscriptionsPage() {
 
       <div className="content-area">
         {loading ? (
-          <div>読み込み中...</div>
+          // issue #83: プレーンなテキストのみだとローディング中であることが支援技術に
+          // 通知されないため、role="status" + aria-live="polite" を付与する。
+          <div role="status" aria-live="polite">読み込み中...</div>
         ) : fetchError ? (
           <div className="empty-state">
             <p role="alert" className="empty-state-title">{fetchError}</p>
