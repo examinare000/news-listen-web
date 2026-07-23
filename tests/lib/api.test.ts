@@ -252,6 +252,23 @@ describe('getGenerationQuota', () => {
     expect(result.remaining).toBeNull()
   })
 
+  // issue #82 / ADR-073 決定5: GenerationQuotaResponse.monthly（per-user 月次クォータ）を
+  // そのまま透過する（backend/api/schemas.py MonthlyGenerationQuotaResponse と同じフィールド名）。
+  test('returns the monthly field as-is (interface contract, issue #82)', async () => {
+    const quota = {
+      limit: 5,
+      used: 2,
+      remaining: 3,
+      reset_at: '2026-07-07T00:00:00Z',
+      monthly: { limit: 100, used: 40, remaining: 60, reset_at: '2026-08-01T00:00:00Z' },
+    }
+    mockFetchOk(quota)
+    const client = makeClient()
+    const result = await client.getGenerationQuota()
+
+    expect(result.monthly).toEqual(quota.monthly)
+  })
+
   test('throws ApiError on network failure', async () => {
     mockFetchNetworkError()
     const client = makeClient()

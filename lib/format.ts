@@ -18,8 +18,10 @@ export function formatDuration(seconds: number): string {
 
 /**
  * Retry-After 秒数を「次回可能時刻」のおおまかな日本語表記に整形する（issue #82）。
- * 例: 30 → "まもなく", 3600 → "約1時間後", 43200 → "約12時間後"。
+ * 例: 30 → "まもなく", 3600 → "約1時間後", 43200 → "約12時間後", 2678400 → "約31日後"。
  * undefined/0 以下なら null（時間情報なし）。
+ * 24時間以上は日単位に切り替える（月次上限の Retry-After は翌月初までの秒数となり、
+ * 時間単位のままでは "約720時間後" のような読みづらい表記になるため）。
  */
 export function formatRetryAfter(seconds: number | undefined): string | null {
   if (seconds === undefined || seconds <= 0) return null
@@ -27,7 +29,9 @@ export function formatRetryAfter(seconds: number | undefined): string | null {
   const minutes = Math.ceil(seconds / 60)
   if (minutes < 60) return `約${minutes}分後`
   const hours = Math.ceil(seconds / 3600)
-  return `約${hours}時間後`
+  if (hours < 24) return `約${hours}時間後`
+  const days = Math.ceil(seconds / 86400)
+  return `約${days}日後`
 }
 
 /**

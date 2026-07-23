@@ -21,6 +21,9 @@ export interface Article {
   source: string
   score: number
   published_at: string
+  // Star 状態のサーバ側真実（issue #84）。旧 backend 応答は未送信のため optional
+  // で後方互換を保つ（lib/api.ts の retryAfterSeconds/remaining と同方針）。
+  is_starred?: boolean
 }
 
 export interface FeedResponse {
@@ -190,12 +193,25 @@ export interface UserPreferences {
 export type UserPreferencesPatch = Partial<UserPreferences>
 
 // ── 生成残回数（issue #164 / ADR-061） ────────────────────────────────
-/** GET /users/me/generation-quota のレスポンス。limit=0 は無制限（remaining は null）。 */
+/** GenerationQuotaResponse.monthly（backend/api/schemas.py MonthlyGenerationQuotaResponse・ADR-073 決定5）。
+ *  per-user 月次クォータの現在値。limit<=0（無効・無制限）のとき remaining は null（日次と同じ規約）。 */
+export interface MonthlyGenerationQuota {
+  limit: number
+  used: number
+  remaining: number | null
+  reset_at: string // ISO 8601
+}
+
+/** GET /users/me/generation-quota のレスポンス。limit=0 は無制限（remaining は null）。
+ *  monthly は版ずれ対応のため optional。backend が 旧バージョン（monthly 未対応）で返す際の
+ *  後方互換性と、デプロイタイミング分離による frontend 先行 deploy での守りを両立させる
+ *  （既存トップレベルの日次フィールドは不変・ADR-073 決定5 の拡張）。 */
 export interface GenerationQuota {
   limit: number
   used: number
   remaining: number | null
   reset_at: string // ISO 8601
+  monthly?: MonthlyGenerationQuota
 }
 
 // ── 聴取ストリーク（issue #165 / ADR-062） ─────────────────────────────

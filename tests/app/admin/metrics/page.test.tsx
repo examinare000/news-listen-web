@@ -67,6 +67,17 @@ describe('AdminMetricsPage', () => {
     await waitFor(() => expect(getMetrics).toHaveBeenCalled())
   })
 
+  // issue #83: プレーンな「読み込み中…」テキストのみだとローディング中であることが
+  // 支援技術に通知されないため、role="status" + aria-live="polite" を付与する。
+  test('Given getMetrics has not resolved yet, shows a loading status announced to assistive tech (#83)', () => {
+    getMetrics.mockReturnValue(new Promise(() => {})) // never resolves
+    renderPage()
+
+    const status = screen.getByRole('status')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    expect(status).toHaveTextContent('読み込み中')
+  })
+
   test('renders D7/D30 retention rates as percentages', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('40%')).toBeInTheDocument())
