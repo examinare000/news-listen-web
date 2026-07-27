@@ -463,6 +463,46 @@ describe('dismissArticle', () => {
   })
 })
 
+// WHY: X-CSRF-Token 付与は `request()` 共通実装の振る舞い（HTTPメソッド単位）であり、
+// DELETE の付与は既に `describe('CSRF token injection')` の
+// 'adds X-CSRF-Token header to DELETE when csrf_token cookie is present' で
+// deleteSource を通じて検証済み。unstarArticle 固有のCSRFテストはこの既存カバレッジと
+// 重複するため追加しない（他の各エンドポイントdescribeもメソッド単位のCSRFテストを
+// 個別には持たない、という既存の一貫した方針に合わせる）。
+describe('unstarArticle', () => {
+  test('sends DELETE to /api/backend/articles/{id}/star', async () => {
+    mockFetchOk({ status: 'unstarred', article_id: 'a1' })
+    const client = makeClient()
+    await client.unstarArticle('a1')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/articles/a1/star',
+      expect.objectContaining({ method: 'DELETE' })
+    )
+  })
+
+  test('throws ApiError on failure', async () => {
+    mockFetchError(404, 'Article not found')
+    const client = makeClient()
+
+    await expect(client.unstarArticle('a1')).rejects.toThrow(ApiError)
+  })
+
+  // backend の DELETE /articles/{id}/star は 200 + ActionResponse
+  // （{status: "unstarred", article_id}）を返す（204 は返さない。
+  // backend/api/routers/articles.py の unstar_article・
+  // backend/tests/test_api_articles.py の
+  // test_unstar_article_returns_200_and_removes_star で確認済み）。
+  test('resolves with the actual 200 response body ({status, article_id})', async () => {
+    mockFetchOk({ status: 'unstarred', article_id: 'a1' })
+    const client = makeClient()
+
+    const result = await client.unstarArticle('a1')
+    expect(result.status).toBe('unstarred')
+    expect(result.article_id).toBe('a1')
+  })
+})
+
 // ==========================================================
 // getPodcasts / getPodcast
 // ==========================================================

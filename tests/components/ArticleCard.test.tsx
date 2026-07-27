@@ -20,8 +20,10 @@ function renderCard(overrides: Partial<{
   article: Article
   onStar: (id: string) => void
   onDismiss: (id: string) => void
+  onUnstar: (id: string) => void
   busy: boolean
   starred: boolean
+  readOnly: boolean
   timeFormat?: 'absolute' | 'relative'
 }> = {}) {
   const props = {
@@ -252,5 +254,47 @@ describe('ArticleCard difficulty menu (issue #163)', () => {
 
     expect(onStar).toHaveBeenCalledWith(SAMPLE_ARTICLE.id)
     expect(onStar).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ==========================================================
+// ArticleCard — Starタブのun-star導線
+// ==========================================================
+describe('ArticleCard unstar', () => {
+  test('Given readOnly and onUnstar, renders an unstar button', () => {
+    renderCard({ readOnly: true, onUnstar: vi.fn() })
+
+    const button = screen.getByTestId(`unstar-button-${SAMPLE_ARTICLE.id}`)
+    expect(button).toBeInTheDocument()
+    expect(button).toHaveAttribute('aria-label', 'スター解除')
+  })
+
+  test('Given readOnly without onUnstar, renders no actions as before', () => {
+    renderCard({ readOnly: true })
+
+    expect(screen.queryByTestId(`unstar-button-${SAMPLE_ARTICLE.id}`)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'スターする' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '非表示' })).not.toBeInTheDocument()
+  })
+
+  test('Given readOnly=false even with onUnstar, does not render the unstar button', () => {
+    renderCard({ readOnly: false, onUnstar: vi.fn() })
+
+    expect(screen.queryByTestId(`unstar-button-${SAMPLE_ARTICLE.id}`)).not.toBeInTheDocument()
+  })
+
+  test('Given the unstar button clicked, calls onUnstar with the article id', async () => {
+    const onUnstar = vi.fn()
+    renderCard({ readOnly: true, onUnstar })
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLE.id}`))
+
+    expect(onUnstar).toHaveBeenCalledWith(SAMPLE_ARTICLE.id)
+  })
+
+  test('Given busy=true, the unstar button is disabled', () => {
+    renderCard({ readOnly: true, onUnstar: vi.fn(), busy: true })
+
+    expect(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLE.id}`)).toBeDisabled()
   })
 })
