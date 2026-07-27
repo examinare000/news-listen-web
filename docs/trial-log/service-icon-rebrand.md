@@ -23,7 +23,8 @@
 - icon-192/512 への角丸焼き込み → `purpose:any` でプラットフォームマスクと二重角丸になるため不透明フルブリード維持
 
 ## 残タスク / 注意
-- OG画像の絶対URL検証は Vercel プレビューで実施（ローカル不可）
+- OG画像の絶対URL検証は Vercel プレビューで実施予定だったが、**プレビューは認証保護(302)のため本番デプロイ後の確認に変更**（ローカル実測では metadataBase により絶対URL解決を確認済み）
+- **インストール表示（PWAスプラッシュ等）の目視は本番デプロイ後の実インストールで実施**（計画からの逸脱として記録。any アイコンはユーザー承認済みのフルブリード原画そのものであり、マスク適用面は maskable がセーフ円逸脱0%で担保）
 - Android ネイティブのランチャーアイコンは別issue（本ブランチのスコープ外）
 
 ---
@@ -155,3 +156,16 @@ export const metadata: Metadata = {
 
 ### 不確実な点
 - なし。全検証（テスト・型・lint）で要件を満たしていることを確認済み。
+
+## 2026-07-27 コードレビュー対応（implementation-coder）
+
+### 対応内容
+1. **BrandLogo.tsx の単体テスト追加**: tests/components/BrandLogo.test.tsx を新規作成。デフォルトレンダリング・カスタムクラス指定・aria-hidden 属性を検証（5件パス）
+2. **BrandLogo.tsx から 'use client' 削除**: hooks/イベント/ブラウザAPIなし＝純表示コンポーネントのためサーバーコンポーネント化可能
+3. **NavigationBar.tsx コメント更新**: L11 の docs 参照行番号を L1388-1414 → L1392-1418 へ修正（docs 側の4行増加に追従）
+
+### 検証
+- npx vitest BrandLogo.test.tsx / NavigationBar.test.tsx: 30 passed
+- npm test: 1053 passed (77 files)
+- npx tsc --noEmit: clean
+- npm run lint: 対象ファイルに新規エラーなし
