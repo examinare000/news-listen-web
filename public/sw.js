@@ -90,7 +90,7 @@ self.addEventListener('fetch', (event) => {
 })
 
 self.addEventListener('push', (event) => {
-  let title = 'News Listen'
+  let title = 'NewsListen'
   let body = '新しいニュースがあります'
   let url = '/'
 
