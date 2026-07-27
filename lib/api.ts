@@ -149,6 +149,15 @@ export function createApiClient() {
       )
     },
 
+    // Star解除。backend側は冪等・生成済みPodcastも削除する。200 + ActionResponse
+    // （{status: "unstarred", article_id}）を返す（204は返さない）。
+    unstarArticle(id: string) {
+      return request<{ status: string; article_id: string }>(
+        `/api/backend/articles/${id}/star`,
+        { method: 'DELETE' },
+      )
+    },
+
     getPodcasts() {
       return request<PodcastsResponse>('/api/backend/podcasts', { method: 'GET' })
     },
