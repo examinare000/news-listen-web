@@ -1,5 +1,3 @@
-'use client'
-
 interface BrandLogoProps {
   /**
    * ラッパーのクラス名。既定値は 'logo-mark'。
