@@ -50,9 +50,25 @@ const themeInitScript = `
 `
 
 export const metadata: Metadata = {
-  title: 'Podcast App',
+  metadataBase: new URL('https://www.news-listen.com'),
+  title: 'NewsListen',
   description: 'English learning podcast app',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/favicon.ico', sizes: '48x48' },
+      { url: '/icon-192.png', type: 'image/png', sizes: '192x192' },
+    ],
+    apple: '/apple-touch-icon.png',
+  },
+  openGraph: {
+    title: 'NewsListen',
+    siteName: 'NewsListen',
+    type: 'website',
+    url: '/',
+    images: [{ url: '/og-image.png', width: 1200, height: 630 }],
+  },
+  twitter: { card: 'summary_large_image' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
