@@ -248,7 +248,7 @@ describe('public/sw.js', () => {
       await Promise.all(waitUntilCalls)
 
       expect(fakeSelf.registration.showNotification).toHaveBeenCalledWith(
-        'News Listen',
+        'NewsListen',
         expect.objectContaining({ body: '新しいニュースがあります', data: { url: '/' } }),
       )
     })
@@ -267,7 +267,7 @@ describe('public/sw.js', () => {
       await Promise.all(waitUntilCalls)
 
       expect(fakeSelf.registration.showNotification).toHaveBeenCalledWith(
-        'News Listen',
+        'NewsListen',
         expect.objectContaining({ body: '新しいニュースがあります' }),
       )
     })
