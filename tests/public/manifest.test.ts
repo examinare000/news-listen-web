@@ -55,7 +55,7 @@ describe('public/manifest.json — PWA installability', () => {
   test('every declared icon file exists under public/', () => {
     const publicDir = join(__dirname, '../../public')
     for (const icon of manifest.icons ?? []) {
-      const iconPath = join(publicDir, icon.src.replace(/^\//, ''))
+      const iconPath = join(publicDir, icon.src.replace(/^\//, '').split('?')[0])
       expect(existsSync(iconPath), `${icon.src} should exist`).toBe(true)
     }
   })

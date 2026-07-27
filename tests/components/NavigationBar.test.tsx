@@ -162,11 +162,15 @@ describe('NavigationBar', () => {
     )
   })
 
-  test('renders the AudioNews logo text', () => {
+  test('renders the NewsListen logo text', () => {
     render(<NavigationBar />)
-    // ロゴは「Audio」+ amber の「News」に分割されるため部分一致で検証
-    expect(screen.getByText('Audio')).toBeInTheDocument()
-    expect(screen.getByText('News')).toBeInTheDocument()
+    // ロゴテキスト「NewsListen」の textContent を確認
+    const logoText = screen.getByRole('complementary').querySelector('.logo-text')
+    expect(logoText).toBeInTheDocument()
+    expect(logoText?.textContent).toBe('NewsListen')
+    // span 要素が「Listen」を含むことを確認（アンバー着色用）
+    const listenSpan = logoText?.querySelector('span')
+    expect(listenSpan?.textContent).toBe('Listen')
   })
 
   test('renders the theme toggle in the sidebar footer', () => {

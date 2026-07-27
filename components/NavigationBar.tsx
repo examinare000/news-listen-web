@@ -5,9 +5,10 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 import { useAuth } from '@/contexts/AuthContext'
 
-// アイコン SVG は docs/design/app-ui.html L1388-1414 をインライン移植
+// アイコン SVG は docs/design/app-ui.html L1392-1418 をインライン移植
 // WHY: アイコンライブラリを導入しない方針（依存追加ゼロ）。NAV_ITEMS はデザイン正本と
 // 完全一致。admin 限定の「おすすめサイト管理」の星アイコンは正本未定義のため独自追加
 const NAV_ITEMS = [
@@ -122,27 +123,7 @@ export function NavigationBar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-mark">
-          <div className="logo-icon">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-          </div>
-          <span className="logo-text">
-            Audio<span>News</span>
-          </span>
-        </div>
+        <BrandLogo />
       </div>
 
       <div className="nav-section-label">メニュー</div>

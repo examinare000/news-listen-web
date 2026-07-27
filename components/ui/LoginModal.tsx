@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { ApiError } from '@/lib/api'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 
 interface LoginModalProps {
@@ -115,27 +116,7 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
             </svg>
           </button>
         )}
-        <div className="modal-logo">
-          <div className="logo-icon">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-          </div>
-          <span className="logo-text">
-            Audio<span>News</span>
-          </span>
-        </div>
+        <BrandLogo wrapperClassName="modal-logo" />
 
         <h2 id="login-modal-title" className="modal-title">
           ログイン
