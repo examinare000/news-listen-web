@@ -19,9 +19,11 @@ interface ArticleCardProps {
   selectionMode?: boolean
   isSelected?: boolean
   onToggleSelect?: (id: string) => void
-  // WHY: un-star API が現状無いため、Star タブでの Star/Dismiss 操作は成立しない
-  // （un-star は follow-up）。Star タブでは閲覧専用としてアクション自体を出さない。
+  // WHY: Star タブでは Star/Dismiss 操作は成立しない（閲覧専用）ため、
+  // readOnly 時はそれらのアクションを出さない。un-star のみ、呼び出し元が
+  // onUnstar を渡した場合に限り readOnly ブロックとは独立して描画する。
   readOnly?: boolean
+  onUnstar?: (id: string) => void
 }
 
 // デザイン app-ui.html L1489 の塗りスター（starred 時）
@@ -71,6 +73,7 @@ export function ArticleCard({
   isSelected = false,
   onToggleSelect,
   readOnly = false,
+  onUnstar,
 }: ArticleCardProps) {
   const { state } = useApp()
 
@@ -119,9 +122,27 @@ export function ArticleCard({
         </div>
       </div>
 
+      {/* WHY: Star タブでのun-star導線。readOnlyブロック（下記）とは独立させ、
+          readOnly=falseの通常タブ（Star/Dismiss操作が有効）では onUnstar を渡していても
+          表示しない二重ゲートにする。 */}
+      {readOnly && onUnstar && (
+        <div className="article-actions">
+          <button
+            type="button"
+            className="action-btn star active"
+            onClick={() => onUnstar(article.id)}
+            disabled={busy}
+            aria-label="スター解除"
+            data-testid={`unstar-button-${article.id}`}
+          >
+            <StarFilledIcon />
+          </button>
+        </div>
+      )}
+
       {/* デザインは div だが、キーボード操作・スクリーンリーダー対応のため button を維持する */}
-      {/* WHY: Star タブは閲覧専用（un-star API が無いため Star/Dismiss 操作が成立しない。
-          un-star は follow-up）。readOnly 時はアクション自体を出さない。 */}
+      {/* WHY: Star タブは閲覧専用。Star/Dismiss操作は成立しないため、readOnly時は
+          このブロック自体を出さない（un-starは上の独立ブロックで扱う）。 */}
       {!readOnly && (
         <div className="article-actions">
           <div className="star-group">
