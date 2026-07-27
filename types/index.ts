@@ -31,6 +31,12 @@ export interface FeedResponse {
   date: string
 }
 
+// backend が GET /feed から star 済み記事を恒久除外する移行に伴い、Star タブは
+// 新設の GET /articles/starred（サーバ側の star 順一覧）を真実の源として使う。
+export interface StarredArticlesResponse {
+  articles: Article[]
+}
+
 /** トランスクリプトのセリフ1件（話者ラベルと発話テキスト）。GET /podcasts/:id の segments 要素。 */
 export interface TranscriptSegment {
   speaker: string

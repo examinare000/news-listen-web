@@ -8,6 +8,7 @@
 import type {
   DifficultyLevel,
   FeedResponse,
+  StarredArticlesResponse,
   PodcastsResponse,
   SourcesResponse,
   Podcast,
@@ -119,6 +120,14 @@ export function createApiClient() {
   return {
     getFeed() {
       return request<FeedResponse>('/api/backend/feed', { method: 'GET' })
+    },
+
+    /**
+     * Star 済み記事のサーバ側一覧（新しい star 順）。backend が GET /feed から star 済み記事を
+     * 恒久除外する移行に伴い、Star タブの真実の源をこちらへ切り替える。
+     */
+    getStarredArticles() {
+      return request<StarredArticlesResponse>('/api/backend/articles/starred', { method: 'GET' })
     },
 
     // difficulty 省略時は backend 側で prefs のデフォルト難易度が使われる（後方互換・issue #163）。
