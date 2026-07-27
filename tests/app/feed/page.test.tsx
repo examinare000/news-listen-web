@@ -891,6 +891,38 @@ describe('FeedPage — Starred tab independence from feed fetch failure', () => 
 })
 
 // ==========================================================
+// Feed 画面 — getStarredArticles の契約耐性（PR #99 CI e2e failure対応）
+// e2e のcatch-allスタブは未スタブの /api/backend/** に 200 + {} を返す。移行期・プロキシ経由で
+// getStarredArticles() が articles を含まない 200 応答を返しても画面全体を壊さない。
+// ==========================================================
+describe('FeedPage — getStarredArticles contract resilience', () => {
+  test('Given getStarredArticles resolves a 200 body without an articles array (e.g. {}), the page does not crash: feed articles render and the starred tab shows the true empty state', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      // 未スタブ経路のcatch-allスタブ等が返しうる、契約外の {} 応答を模す
+      getStarredArticles: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // all タブのフィード記事が表示され、画面全体がクラッシュしない
+    await waitFor(() => {
+      expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+
+    // Star タブは（エラーではなく）本当の空状態を表示する
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
 // Feed 画面 — ページヘッダー
 // ==========================================================
 describe('FeedPage — Page header', () => {

@@ -117,7 +117,13 @@ export default function FeedPage() {
     // このPromiseが reject した場合に unhandled rejection になり得るため。
     const starredPromise = api
       .getStarredArticles()
-      .then((result) => ({ ok: true as const, articles: result.articles }))
+      .then((result) => ({
+        ok: true as const,
+        // WHY: 移行期・プロキシ経由で 200 かつ想定外の body（例: 未スタブ経路の catch-all が
+        // 返す {}）が来ても articles が配列であることを確定させ、画面全体を壊さない
+        // （is_starred が undefined の場合を「未対応 backend」として許容する既存の防御姿勢と同型）。
+        articles: Array.isArray(result.articles) ? result.articles : [],
+      }))
       .catch((e) => {
         // WHY: getFeed 単独失敗時はフィード全体を壊さず楽観 starのみで継続するが、原因調査の
         // ため運用ログには残す（getFeed 側の失敗はユーザー向け errorMessage で可視化される
