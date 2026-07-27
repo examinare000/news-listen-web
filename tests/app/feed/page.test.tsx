@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor, within, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import FeedPage from '@/app/(app)/feed/page'
@@ -12,6 +12,7 @@ vi.mock('@/lib/api', () => ({
     getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     starArticle: vi.fn(),
     dismissArticle: vi.fn(),
+    unstarArticle: vi.fn(),
   })),
   ApiError: class ApiError extends Error {
     constructor(
@@ -626,17 +627,19 @@ describe('FeedPage — Starred tab as server source of truth (#84)', () => {
 // ==========================================================
 // Feed 画面 — Star タブの退行修正（正確性レビュー指摘対応）
 // backend の feed 除外移行後、Star タブは「サーバ確定済み一覧 ∪ セッション内の楽観 star」を
-// 表示する。un-star API が現状無いため、Star タブは閲覧専用（Star/Dismiss アクション非表示）
-// とし、Dismiss による永久残留（backend が dismiss で starred_article_ids を除去せず
-// /articles/starred も dismissed をフィルタしないため、再取得しても消えない）を構造的に防ぐ。
+// 表示する。Star タブは閲覧専用（Star/Dismiss アクション非表示）とし、Dismiss による
+// 永久残留（backend が dismiss で starred_article_ids を除去せず /articles/starred も
+// dismissed をフィルタしないため、再取得しても消えない）を構造的に防ぐ。
+// un-star 導線（DELETE /articles/{id}/star）のみ閲覧専用ゲートとは独立に表示する。
 // ==========================================================
 describe('FeedPage — Starred tab regression fixes', () => {
-  test('Given the starred tab is active, article cards do not render Star/Dismiss action buttons (view-only)', async () => {
+  test('Given the starred tab is active, article cards do not render Star/Dismiss action buttons but do render the unstar button (view-only)', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      unstarArticle: vi.fn(),
       // サーバ側で確定済みの star 済み記事として a1 を返す
       getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
     } as unknown as ReturnType<typeof createApiClient>)
@@ -653,6 +656,7 @@ describe('FeedPage — Starred tab regression fixes', () => {
     expect(screen.queryByRole('button', { name: '非表示' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'スターする' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'スター済み' })).not.toBeInTheDocument()
+    expect(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`)).toBeInTheDocument()
   })
 
   test('Given an article present in both the all tab and the server starred list, dismissing it from the all tab also removes it from the starred tab', async () => {
@@ -824,6 +828,281 @@ describe('FeedPage — Starred tab regression fixes', () => {
 
     // この経路から starArticle が発火し得ないことも確認（再star によるクォータ消費防止）
     expect(starArticle).not.toHaveBeenCalled()
+  })
+})
+
+// ==========================================================
+// Feed 画面 — Starタブのun-star導線（backend DELETE /articles/{id}/star）
+// ==========================================================
+describe('FeedPage — Unstar', () => {
+  test('Given the all tab is active, article cards do not render the unstar button', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    expect(screen.queryByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`)).not.toBeInTheDocument()
+  })
+
+  test('Given the user confirms the unstar dialog, sends DELETE, removes the article from the starred tab, decrements the count, and shows a success toast', async () => {
+    const unstarArticle = vi.fn().mockResolvedValue(undefined)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('2')
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getByText('スターを解除しますか？')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: '確認' }))
+
+    await waitFor(() => {
+      expect(unstarArticle).toHaveBeenCalledWith(SAMPLE_ARTICLES[0].id)
+    })
+    await waitFor(() => {
+      expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+    expect(screen.getByText('スターを解除しました')).toBeInTheDocument()
+  })
+
+  test('Given the user cancels the unstar dialog, does not call unstarArticle and the article remains', async () => {
+    const unstarArticle = vi.fn().mockResolvedValue(undefined)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    const dialog = screen.getByRole('dialog')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'キャンセル' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(unstarArticle).not.toHaveBeenCalled()
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+  })
+
+  test('Given the last starred article is unstarred, shows the empty starred state', async () => {
+    const unstarArticle = vi.fn().mockResolvedValue(undefined)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '確認' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    })
+  })
+
+  test('Given unstarArticle rejects with a 500 error, keeps the article visible and shows an error toast', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    const unstarArticle = vi.fn().mockRejectedValue(new ApiError(500, 'Internal Server Error'))
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '確認' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('エラーが発生しました (500)')).toBeInTheDocument()
+    })
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+  })
+
+  test('Given unstarArticle rejects with a 404 error (article no longer exists), removes it from the starred tab locally', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    const unstarArticle = vi.fn().mockRejectedValue(new ApiError(404, 'Article not found'))
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '確認' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+  })
+
+  test('Given unstarArticle is still pending (busyIds), the unstar button is disabled to prevent a duplicate DELETE', async () => {
+    let resolveUnstar: (v: unknown) => void = () => {}
+    const unstarArticle = vi.fn(() => new Promise((res) => { resolveUnstar = res }))
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '確認' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`)).toBeDisabled()
+    })
+
+    // WHY: pending中のPromiseを未決着のまま終了するとテスト境界を越えてstate更新が
+    // 走りact警告・flakinessの原因になる。テスト内で確実に解決させる。唯一のstarred
+    // 記事を解除するため、解決後はボタンではなく空状態に遷移することを確認する。
+    resolveUnstar(undefined)
+    await waitFor(() => {
+      expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    })
+  })
+
+  test('Given handleUnstarConfirm is invoked while the article is already busy (in-flight DELETE), does not send a second DELETE (double-confirm-click guard)', async () => {
+    let resolveUnstar: (v: unknown) => void = () => {}
+    const unstarArticle = vi.fn(() => new Promise((res) => { resolveUnstar = res }))
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    const confirmButton = within(screen.getByRole('dialog')).getByRole('button', { name: '確認' })
+
+    // WHY: ConfirmDialogの「確認」ボタン自体はbusyIdsに連動して無効化されない
+    // （ArticleCard側の非表示ボタンとは別コンポーネント）。React の再レンダー・
+    // ダイアログのアンマウントが確定する前に2回連続クリックが処理される競合を、
+    // 単一の act() 内で2回 fireEvent.click することで模す（間に await を挟むと
+    // 1回目の act() が同期的に反映されダイアログが既にアンマウントされてしまい、
+    // 本来検知したい競合を再現できない）。
+    await act(async () => {
+      fireEvent.click(confirmButton)
+      fireEvent.click(confirmButton)
+    })
+
+    expect(unstarArticle).toHaveBeenCalledTimes(1)
+
+    // WHY: pendingのPromiseを未決着のまま終えるとテスト境界を越えてstate更新が走り
+    // act警告・flakinessの原因になるため、テスト内で確実に解決させる。唯一のstarred
+    // 記事を解除するため、解決後はボタンではなく空状態に遷移することを確認する。
+    resolveUnstar(undefined)
+    await waitFor(() => {
+      expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    })
+  })
+
+  test('Given an article unstarred from the starred tab, switching to the all tab shows its star button as not starred', async () => {
+    const unstarArticle = vi.fn().mockResolvedValue(undefined)
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      unstarArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    await userEvent.click(screen.getByTestId(`unstar-button-${SAMPLE_ARTICLES[0].id}`))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: '確認' }))
+    await waitFor(() => {
+      expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    })
+
+    await userEvent.click(tabs.getByRole('button', { name: /すべて/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    expect(screen.getAllByRole('button', { name: 'スターする' })[0]).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'スター済み' })).not.toBeInTheDocument()
   })
 })
 

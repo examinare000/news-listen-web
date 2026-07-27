@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
 import type { Article, DifficultyLevel } from '@/types/index'
@@ -96,6 +97,17 @@ export default function FeedPage() {
   const [activeTab, setActiveTab] = useState<FeedTab>('all')
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // Star タブのun-star確認ダイアログ。開いている間の対象記事idをここに保持する
+  // （nullなら非表示）。busy中の記事は handleUnstar 側で二重起動を防ぐ。
+  const [confirmUnstarId, setConfirmUnstarId] = useState<string | null>(null)
+  // WHY: ConfirmDialogの「確認」ボタンの連続クリックがReactの再レンダー確定前に
+  // 2回処理されると、同一レンダーのclosureが読む busyIds state はまだ更新前の値の
+  // ままのため、handleUnstarConfirm内で `busyIds.has(id)` を見るだけでは2回目の
+  // 呼び出しを止められない（stateはバッチ更新されるため、同一tick内の2回目の
+  // 呼び出し時点ではまだ反映されていない）。ref は再レンダーを介さず同期的に
+  // 可視化されるため、真の排他制御にはこちらを用いる。busyIds state 自体は
+  // ボタンのdisabled表示用に引き続き使う。
+  const unstarInFlightRef = useRef<Set<string>>(new Set())
 
   // WHY: 手動更新の連打・マウント直後の再取得等でリクエストが入れ替わって完了すると、
   // 後発（新しい）リクエストの反映後に先発（古い）リクエストの応答が遅れて届き、
@@ -192,12 +204,13 @@ export default function FeedPage() {
     })
   }
 
-  // WHY: 記事が一覧から完全に失われた（Dismiss成功・Star404）場合、serverStarred /
-  // optimisticStarred からもクライアント側で除去する。ただしこれは同一セッション内の
-  // 表示上の防御に過ぎない。backend の Dismiss は starred_article_ids を除去せず、
-  // /articles/starred も dismissed 済みをフィルタしないため、次回リフレッシュで
-  // serverStarred がサーバ応答（この記事を含む）で丸ごと置き換わると再び表示され得る
-  // （un-star・一覧からの永続的な除去は follow-up）。
+  // WHY: 記事が一覧から完全に失われた（Dismiss成功・Star404・Unstar成功/404）場合、
+  // serverStarred / optimisticStarred からもクライアント側で除去する。ただし
+  // Dismiss経路については、これは同一セッション内の表示上の防御に過ぎない。backend の
+  // Dismiss は starred_article_ids を除去せず、/articles/starred も dismissed 済みを
+  // フィルタしないため、次回リフレッシュで serverStarred がサーバ応答（この記事を含む）で
+  // 丸ごと置き換わると再び表示され得る。一方 Unstar（DELETE /articles/{id}/star）は
+  // backend側で永続的に解除するため、この経路では再表示されない。
   function removeFromStarredCollections(id: string) {
     setServerStarred((prev) => prev.filter((a) => a.id !== id))
     setOptimisticStarred((prev) => prev.filter((a) => a.id !== id))
@@ -255,6 +268,71 @@ export default function FeedPage() {
         showToast('予期しないエラーが発生しました', 'error')
       }
     } finally {
+      setBusyIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+    }
+  }
+
+  // WHY: busy中（既にDELETE送信中）の記事は確認ダイアログすら開かせず、二重DELETEの
+  // 起点を断つ（handleUnstarConfirm 側の unstarInFlightRef ガードと合わせた二重防御）。
+  function handleUnstar(id: string) {
+    if (busyIds.has(id)) return
+    setConfirmUnstarId(id)
+  }
+
+  async function handleUnstarConfirm() {
+    const id = confirmUnstarId
+    if (!id) return
+    // WHY: ConfirmDialogの「確認」ボタンはbusyIdsに連動して無効化されない
+    // （ArticleCard側のスター解除ボタンとは別コンポーネント）。連続クリックが
+    // Reactの再レンダー確定前に2回処理されると、この関数が同じidで2回走り、
+    // 二重DELETEが送信され得る。busyIds（state）はバッチ更新されるため同一tick内の
+    // 2回目の呼び出しには反映が間に合わず、state だけのガードでは防げない
+    // （実測: state のみのガードでは2回とも通過し、実際に2回送信されることを
+    // テストで確認した）。unstarInFlightRef（同期的に可視のref）で真の排他制御をする。
+    if (unstarInFlightRef.current.has(id)) return
+    unstarInFlightRef.current.add(id)
+    setConfirmUnstarId(null)
+    setBusyIds((prev) => new Set(prev).add(id))
+    try {
+      await createApiClient().unstarArticle(id)
+      // WHY: setStarredIds からの削除は、fetchFeed 内の「サーバ値は追加方向にのみ反映する」
+      // （issue #84）というルールの例外である。あのルールは undefined = 未対応backendの曖昧さに対する防御だが、
+      // ここはユーザーの明示的なun-star操作の成功応答であり曖昧さが無いため、削除して良い
+      // （all タブへ戻した際に star ボタンが「未star」に正しく戻るために必要）。
+      setStarredIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
+      removeFromStarredCollections(id)
+      showToast('スターを解除しました', 'success')
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 404) {
+          // WHY: 記事doc自体が既に無い（handleStarの404分岐 と同型）。ローカルの
+          // 全コレクションから除去し、以後の操作対象から外す。
+          showToast('記事が見つかりません', 'error')
+          setArticles((prev) => prev.filter((a) => a.id !== id))
+          setStarredIds((prev) => {
+            const next = new Set(prev)
+            next.delete(id)
+            return next
+          })
+          removeFromStarredCollections(id)
+        } else if (err.status === 401) {
+          showToast('API キーが正しくありません', 'error')
+        } else {
+          showToast(`エラーが発生しました (${err.status})`, 'error')
+        }
+      } else {
+        showToast('予期しないエラーが発生しました', 'error')
+      }
+    } finally {
+      unstarInFlightRef.current.delete(id)
       setBusyIds((prev) => {
         const next = new Set(prev)
         next.delete(id)
@@ -326,8 +404,8 @@ export default function FeedPage() {
     setSelectionMode(false)
   }
 
-  // WHY: Star タブは閲覧専用（un-star API が無いため操作が成立しない）。all タブで
-  // 選択モードを開始したままタブを切替えると、選択状態がそのまま持ち越されて
+  // WHY: Star タブは Star/Dismiss/一括操作については閲覧専用（un-starのみ独立して操作可）。
+  // all タブで選択モードを開始したままタブを切替えると、選択状態がそのまま持ち越されて
   // Star タブでもチェックボックス・一括スターフッターが表示されてしまい、閲覧専用の
   // ゲートを回避できてしまう（正確性レビュー指摘）。タブ切替時は選択状態を必ずリセットする。
   function handleTabChange(tab: FeedTab) {
@@ -340,13 +418,13 @@ export default function FeedPage() {
   // セッション内の楽観 star（optimisticStarred。star した時点のスナップショットのため、
   // 後続の GET /feed 応答から当該記事が消えても保持され続ける）を追加表示する
   // （サーバ一覧 ∪ 楽観追加。サーバ項目を先頭にしてidでdedup）。
-  // 件数・表示対象はこれらから都度導出する。Dismiss（成功時）・Star の 404 除去パスでは
-  // removeFromStarredCollections() が serverStarred/optimisticStarred 双方から同一セッション内で
-  // 除去するが、これはクライアント側のみの防御である。backend の Dismiss は
-  // starred_article_ids を除去せず、/articles/starred も dismissed 済みをフィルタしないため、
-  // dismiss 済みでも star 済みの記事は次回リフレッシュ時にサーバ応答へ再び含まれ得る
-  // （un-star・一覧からの永続的な除去は follow-up。Star タブ自体は閲覧専用のため、
-  // Star タブ内からの除去操作は無い）。
+  // 件数・表示対象はこれらから都度導出する。Dismiss（成功時）・Star の 404・Unstar
+  // （成功時/404）の各除去パスでは removeFromStarredCollections() が
+  // serverStarred/optimisticStarred 双方から除去する。Dismiss経路はクライアント側のみの
+  // 防御である。backend の Dismiss は starred_article_ids を除去せず、/articles/starred も
+  // dismissed 済みをフィルタしないため、dismiss 済みでも star 済みの記事は次回リフレッシュ時に
+  // サーバ応答へ再び含まれ得る。一方 Unstar は backend側で永続的に解除するため、
+  // Star タブ内からの明示的な除去操作として成立する。
   const serverStarredIds = new Set(serverStarred.map((a) => a.id))
   const optimisticOnlyStarred = optimisticStarred.filter((a) => !serverStarredIds.has(a.id))
   const starredArticles = [...serverStarred, ...optimisticOnlyStarred]
@@ -430,6 +508,7 @@ export default function FeedPage() {
               isSelected={selectedIds.has(article.id)}
               onToggleSelect={handleToggleSelection}
               readOnly={activeTab === 'starred'}
+              onUnstar={activeTab === 'starred' ? handleUnstar : undefined}
             />
           ))}
         </div>
@@ -471,8 +550,8 @@ export default function FeedPage() {
           </div>
         </div>
         <div className="header-actions">
-          {/* WHY: Star タブは閲覧専用（un-star API が無いため選択して一括starする操作が
-              成立しない）。all タブでのみ選択モードを開始できるようにする。 */}
+          {/* WHY: Star タブでは選択して一括starする操作は成立しない（既に星済みのため）。
+              all タブでのみ選択モードを開始できるようにする。 */}
           {!selectionMode && activeTab === 'all' && (
             <button
               type="button"
@@ -520,6 +599,14 @@ export default function FeedPage() {
       </div>
 
       <div className="content-area">{renderContent()}</div>
+
+      <ConfirmDialog
+        isOpen={confirmUnstarId !== null}
+        title="スターを解除しますか？"
+        message="この記事から生成されたポッドキャストも削除されます。もう一度スターすると本日の生成回数を消費します。"
+        onConfirm={handleUnstarConfirm}
+        onCancel={() => setConfirmUnstarId(null)}
+      />
     </>
   )
 }
