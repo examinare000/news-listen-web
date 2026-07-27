@@ -9,6 +9,7 @@ import { ToastProvider } from '@/components/ui/Toast'
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     getFeed: vi.fn(),
+    getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     starArticle: vi.fn(),
     dismissArticle: vi.fn(),
   })),
@@ -70,6 +71,7 @@ describe('FeedPage — data fetching', () => {
       getFeed: vi.fn(() => new Promise(() => {})), // never resolves
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -85,6 +87,7 @@ describe('FeedPage — data fetching', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -101,6 +104,7 @@ describe('FeedPage — data fetching', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: [], date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -123,6 +127,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -144,6 +149,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockRejectedValue(new ApiError(404, 'Article not found')),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -162,6 +168,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockRejectedValue(new ApiError(401, 'Invalid or missing API key')),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -181,6 +188,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -205,6 +213,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -226,6 +235,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -248,6 +258,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -267,6 +278,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -286,6 +298,7 @@ describe('FeedPage — Star', () => {
       // 43200 秒 = 約12時間後
       starArticle: vi.fn().mockRejectedValue(new ApiError(429, 'Daily limit reached', 43200)),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -304,6 +317,7 @@ describe('FeedPage — Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -331,6 +345,7 @@ describe('FeedPage — Star', () => {
         ),
       ),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -354,6 +369,7 @@ describe('FeedPage — Dismiss', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn().mockResolvedValue({ status: 'dismissed', article_id: 'a1' }),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -372,6 +388,7 @@ describe('FeedPage — Dismiss', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn().mockRejectedValue(new TypeError('Cannot read property of undefined')),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -405,6 +422,7 @@ describe('FeedPage — Tabs', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' }),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
     renderFeedPage()
     await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
@@ -478,22 +496,29 @@ describe('FeedPage — Tabs', () => {
 })
 
 // ==========================================================
-// Feed 画面 — Star 状態のサーバ側復元（issue #84）
-// リロード・手動更新時、サーバの is_starred からスター済みタブを復元する
+// Feed 画面 — Star 済み記事一覧のサーバ側真実（issue #84 → backend feed 除外移行）
+// backend が GET /feed から star 済み記事を恒久除外するため、Star タブは
+// GET /articles/starred（サーバ側一覧）を真実の源とし、セッション内の楽観 star を
+// 加算表示する（サーバ一覧 ∪ 楽観追加）。
 // ==========================================================
-describe('FeedPage — Star restoration on fetch (#84)', () => {
-  test('Given an article with is_starred=true, shows it under the starred tab after the initial fetch', async () => {
+describe('FeedPage — Starred tab as server source of truth (#84)', () => {
+  const EXCLUDED_STARRED_ARTICLE = {
+    id: 'a3',
+    title: 'Already Starred, Excluded From Feed',
+    url: 'https://example.com/a3',
+    source: 'Example',
+    score: 0.5,
+    published_at: '2026-06-09T00:00:00+09:00',
+  }
+
+  test('Given getStarredArticles returns an article absent from the feed response, shows it under the starred tab', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
-      getFeed: vi.fn().mockResolvedValue({
-        articles: [
-          { ...SAMPLE_ARTICLES[0], is_starred: true },
-          { ...SAMPLE_ARTICLES[1], is_starred: false },
-        ],
-        date: '2026-06-10',
-      }),
+      // backend が star 済み記事を feed から除外した後の応答を模す（a3 を含まない）
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [EXCLUDED_STARRED_ARTICLE] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -503,16 +528,19 @@ describe('FeedPage — Star restoration on fetch (#84)', () => {
     const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
     await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
 
-    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
-    expect(screen.queryByText('Next.js 15 Features')).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText('Already Starred, Excluded From Feed')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
   })
 
-  test('Given articles without is_starred (backward compat with old backend), does not break and starred tab stays empty', async () => {
+  test('Given getStarredArticles returns an empty list, starred tab stays empty', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -525,26 +553,22 @@ describe('FeedPage — Star restoration on fetch (#84)', () => {
     expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
   })
 
-  test('Given article starred, refresh button pressed, and server still returns is_starred=false, keeps the optimistic star state (#84)', async () => {
+  test('Given article starred optimistically, refresh pressed, and getStarredArticles still does not include it (server indexing lag), keeps the optimistic star state', async () => {
     const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
     let fetchCallCount = 0
     const getFeed = vi.fn(() => {
       fetchCallCount++
-      // First call: is_starred=false; second call (after refresh): still false (simulating delayed sync)
-      return Promise.resolve({
-        articles: [
-          { ...SAMPLE_ARTICLES[0], is_starred: false },
-          { ...SAMPLE_ARTICLES[1], is_starred: false },
-        ],
-        date: '2026-06-10',
-      })
+      return Promise.resolve({ articles: SAMPLE_ARTICLES, date: '2026-06-10' })
     })
+    // 一貫して空 = サーバ側インデックスがまだ star を反映していない状況を模す
+    const getStarredArticles = vi.fn().mockResolvedValue({ articles: [] })
 
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getFeed,
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles,
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -557,7 +581,7 @@ describe('FeedPage — Star restoration on fetch (#84)', () => {
     await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
     await waitFor(() => screen.getByText(/Star しました/))
 
-    // Verify it's in the starred tab
+    // Verify it's in the starred tab (optimistic addition)
     const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
     await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
     expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
@@ -568,9 +592,333 @@ describe('FeedPage — Star restoration on fetch (#84)', () => {
       expect(getFeed).toHaveBeenCalledTimes(2)
     })
 
-    // Star state should still be kept (optimistic update not rolled back)
+    // Star state should still be kept (optimistic addition not rolled back)
     expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
     expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+  })
+
+  test('Given getStarredArticles rejects, the page does not break and shows only the optimistic stars', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockRejectedValue(new Error('network error')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // ページ自体は壊れずフィードを表示する
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+
+    // 楽観 star のみで Star タブが機能する
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+    await waitFor(() => screen.getByText(/Star しました/))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// Feed 画面 — Star タブの退行修正（正確性レビュー指摘対応）
+// backend の feed 除外移行後、Star タブは「サーバ確定済み一覧 ∪ セッション内の楽観 star」を
+// 表示する。un-star API が現状無いため、Star タブは閲覧専用（Star/Dismiss アクション非表示）
+// とし、Dismiss による永久残留（backend が dismiss で starred_article_ids を除去せず
+// /articles/starred も dismissed をフィルタしないため、再取得しても消えない）を構造的に防ぐ。
+// ==========================================================
+describe('FeedPage — Starred tab regression fixes', () => {
+  test('Given the starred tab is active, article cards do not render Star/Dismiss action buttons (view-only)', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      // サーバ側で確定済みの star 済み記事として a1 を返す
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '非表示' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'スターする' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'スター済み' })).not.toBeInTheDocument()
+  })
+
+  test('Given an article present in both the all tab and the server starred list, dismissing it from the all tab also removes it from the starred tab', async () => {
+    const dismissArticle = vi.fn().mockResolvedValue({ status: 'dismissed', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      // a1 は移行途中で feed にも残っており、かつ既に server 側で star 済み（レース状況を模す）
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle,
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // all タブから a1 を Dismiss
+    await userEvent.click(screen.getAllByRole('button', { name: /dismiss|×|非表示/i })[0])
+    await waitFor(() => {
+      expect(screen.queryByText('TypeScript 5.5 Released')).not.toBeInTheDocument()
+    })
+
+    // Star タブにも残留していない（serverStarred からも除去済み）
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+  })
+
+  test('Given an article optimistically starred, and a later feed refresh excludes it entirely (backend permanent exclusion) while getStarredArticles still does not include it, the starred tab keeps showing it', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const getFeed = vi
+      .fn()
+      // 1回目: まだ backend が除外する前（移行途中）の応答
+      .mockResolvedValueOnce({ articles: SAMPLE_ARTICLES, date: '2026-06-10' })
+      // 2回目（リフレッシュ後）: backend が star 済み a1 を feed から恒久除外した後の本番形
+      .mockResolvedValueOnce({ articles: [SAMPLE_ARTICLES[1]], date: '2026-06-11' })
+    const getStarredArticles = vi.fn().mockResolvedValue({ articles: [] }) // サーバ側インデックスは常に未反映
+
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed,
+      starArticle,
+      dismissArticle: vi.fn(),
+      getStarredArticles,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // a1 を楽観 star
+    await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
+    await waitFor(() => screen.getByText(/Star しました/))
+
+    // リフレッシュ（2回目の getFeed は a1 を含まない）
+    await userEvent.click(screen.getByRole('button', { name: /更新|refresh/i }))
+    await waitFor(() => {
+      expect(getFeed).toHaveBeenCalledTimes(2)
+    })
+    await waitFor(() => screen.getByText('Next.js 15 Features'))
+
+    // articles から a1 が消えても、Star タブでは楽観 star が保持され続ける
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+  })
+
+  test('Given the same article id appears in both the server starred list and the local optimistic star, the starred tab shows it only once', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // a1 は既に server 側で star 済み。ここでさらにユーザーが同じ a1 を star する
+    // （楽観セットにも同じ id が入り、サーバ一覧と重複する）
+    await userEvent.click(screen.getAllByRole('button', { name: 'スター済み' })[0])
+    await waitFor(() => screen.getByText(/Star しました/))
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    expect(screen.getAllByText('TypeScript 5.5 Released')).toHaveLength(1)
+    expect(tabs.getByRole('button', { name: /スター済み/ })).toHaveTextContent('1')
+  })
+
+  test('Given getStarredArticles rejects, logs the failure for operational visibility (not fully silent)', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = new Error('network error')
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockRejectedValue(error),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    await waitFor(() => {
+      expect(consoleErrorSpy).toHaveBeenCalledWith('[feed] starred一覧の取得に失敗', error)
+    })
+
+    consoleErrorSpy.mockRestore()
+  })
+
+  test('Given the starred tab is active, the "複数選択" (multi-select) button is not shown', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+    // all タブでは「複数選択」ボタンが存在することを確認（サニティチェック）
+    expect(screen.getByRole('button', { name: '複数選択' })).toBeInTheDocument()
+
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    expect(screen.queryByRole('button', { name: '複数選択' })).not.toBeInTheDocument()
+  })
+
+  test('Given selection mode started on the all tab, switching to the starred tab exits selection mode, hides checkboxes, and hides the bulk-star footer (readOnly bypass fix)', async () => {
+    const starArticle = vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' })
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle,
+      dismissArticle: vi.fn(),
+      // a1 は既にサーバ側で star 済み（Star タブに表示される）
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // all タブで実際に選択モードを起動し、記事を選択する
+    await userEvent.click(screen.getByRole('button', { name: '複数選択' }))
+    const checkbox = screen.getAllByRole('checkbox')[0]
+    await userEvent.click(checkbox)
+    expect(screen.getByRole('button', { name: /件を一括スター/ })).toBeInTheDocument()
+
+    // Star タブへ切替
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    await waitFor(() => screen.getByText('TypeScript 5.5 Released'))
+
+    // 選択モードが解除され、チェックボックス・一括スターフッターが出ない
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /件を一括スター/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'キャンセル' })).not.toBeInTheDocument()
+
+    // この経路から starArticle が発火し得ないことも確認（再star によるクォータ消費防止）
+    expect(starArticle).not.toHaveBeenCalled()
+  })
+})
+
+// ==========================================================
+// Feed 画面 — フィード取得失敗時の Star タブ独立性（should-fix）
+// ==========================================================
+describe('FeedPage — Starred tab independence from feed fetch failure', () => {
+  test('Given getFeed fails but getStarredArticles succeeds, the starred tab still shows the server-starred articles', async () => {
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockRejectedValue(new ApiError(500, 'Internal error')),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [SAMPLE_ARTICLES[0]] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // all タブはエラー表示になる
+    await waitFor(() => {
+      expect(screen.getByText(/エラーが発生しました/)).toBeInTheDocument()
+    })
+
+    // Star タブはフィード取得失敗に道連れにならず、サーバ starred 一覧を表示する
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    })
+    expect(screen.queryByText(/エラーが発生しました/)).not.toBeInTheDocument()
+  })
+
+  test('Given both getFeed and getStarredArticles fail (offline / backend outage), the starred tab shows an error state with retry guidance instead of the false "no starred articles" empty state', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const { createApiClient, ApiError } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockRejectedValue(new Error('network error')),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // all タブはエラー表示
+    await waitFor(() => {
+      expect(screen.getByText('サーバーに接続できません')).toBeInTheDocument()
+    })
+
+    // Star タブへ切替
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+
+    // starred 取得も失敗しているため、真の空状態（「スター済みの記事はありません」）を
+    // 事実と異なる形で表示してはいけない。エラー表示＋再試行導線を出す。
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('スター済みの記事はありません')).not.toBeInTheDocument()
+    expect(screen.getByText(/右上の更新ボタンで再試行できます/)).toBeInTheDocument()
+
+    consoleErrorSpy.mockRestore()
+  })
+})
+
+// ==========================================================
+// Feed 画面 — getStarredArticles の契約耐性（PR #99 CI e2e failure対応）
+// e2e のcatch-allスタブは未スタブの /api/backend/** に 200 + {} を返す。移行期・プロキシ経由で
+// getStarredArticles() が articles を含まない 200 応答を返しても画面全体を壊さない。
+// ==========================================================
+describe('FeedPage — getStarredArticles contract resilience', () => {
+  test('Given getStarredArticles resolves a 200 body without an articles array (e.g. {}), the page does not crash: feed articles render and the starred tab shows the true empty state', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      // 未スタブ経路のcatch-allスタブ等が返しうる、契約外の {} 応答を模す
+      getStarredArticles: vi.fn().mockResolvedValue({}),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // all タブのフィード記事が表示され、画面全体がクラッシュしない
+    await waitFor(() => {
+      expect(screen.getByText('TypeScript 5.5 Released')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+
+    // Star タブは（エラーではなく）本当の空状態を表示する
+    const tabs = within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+    await userEvent.click(tabs.getByRole('button', { name: /スター済み/ }))
+    expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 })
 
@@ -584,6 +932,7 @@ describe('FeedPage — Page header', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -605,6 +954,7 @@ describe('FeedPage — Refresh', () => {
       getFeed,
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -613,6 +963,59 @@ describe('FeedPage — Refresh', () => {
     await userEvent.click(screen.getByRole('button', { name: /リフレッシュ|更新|refresh/i }))
 
     expect(getFeed).toHaveBeenCalledTimes(2)
+  })
+
+  test('Given the initial fetch resolves after a newer refresh request, the stale response is ignored (requestId guard)', async () => {
+    let resolveFeed1: (v: unknown) => void = () => {}
+    let resolveFeed2: (v: unknown) => void = () => {}
+    const getFeed = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((res) => { resolveFeed1 = res }))
+      .mockImplementationOnce(() => new Promise((res) => { resolveFeed2 = res }))
+
+    let resolveStarred1: (v: unknown) => void = () => {}
+    let resolveStarred2: (v: unknown) => void = () => {}
+    const getStarredArticles = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise((res) => { resolveStarred1 = res }))
+      .mockImplementationOnce(() => new Promise((res) => { resolveStarred2 = res }))
+
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getFeed,
+      starArticle: vi.fn(),
+      dismissArticle: vi.fn(),
+      getStarredArticles,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderFeedPage()
+
+    // 初回 fetch（call1）が発火するのを待つ（まだ pending）
+    await waitFor(() => expect(getFeed).toHaveBeenCalledTimes(1))
+
+    // call1 がまだ解決していない間にリフレッシュし、2回目の fetch（call2・より新しいリクエスト）を発火する
+    await userEvent.click(screen.getByRole('button', { name: /更新|refresh/i }))
+    await waitFor(() => expect(getFeed).toHaveBeenCalledTimes(2))
+
+    // 新しい方（call2）を先に解決させる
+    resolveFeed2({ articles: [SAMPLE_ARTICLES[1]], date: '2026-06-11' })
+    resolveStarred2({ articles: [] })
+    await waitFor(() => screen.getByText('Next.js 15 Features'))
+
+    // 古い方（call1）が後から解決する（stale な遅延応答）
+    resolveFeed1({ articles: SAMPLE_ARTICLES, date: '2026-06-10' })
+    resolveStarred1({ articles: [] })
+
+    // stale な call1 の応答で articles/feedDate が巻き戻らないこと。
+    // WHY: queryByText + 素の not.toBeInTheDocument() は resolveFeed1 の後続 await
+    // チェーン（マイクロタスク）がまだ反映される前に synchronously 判定してしまい、
+    // バグがあっても誤って green になり得る。waitFor で実際に一定時間ポーリングし、
+    // 「最終的にも現れない」ことを積極的に確認する。
+    await expect(
+      waitFor(() => screen.getByText('TypeScript 5.5 Released'), { timeout: 300 }),
+    ).rejects.toThrow()
+    expect(screen.getByText('Next.js 15 Features')).toBeInTheDocument()
+    expect(screen.getByText(/2026-06-11/)).toBeInTheDocument()
   })
 })
 
@@ -626,6 +1029,7 @@ describe('FeedPage — Network error', () => {
       getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -643,6 +1047,7 @@ describe('FeedPage — Network error', () => {
       getFeed: vi.fn().mockRejectedValue(new ApiError(0, 'Network error')),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -663,6 +1068,7 @@ describe('FeedPage — Bulk Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn().mockResolvedValue({ status: 'starred', article_id: 'a1' }),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -684,6 +1090,7 @@ describe('FeedPage — Bulk Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -716,6 +1123,7 @@ describe('FeedPage — Bulk Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -749,6 +1157,7 @@ describe('FeedPage — Bulk Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle,
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -785,6 +1194,7 @@ describe('FeedPage — Bulk Star', () => {
       getFeed: vi.fn().mockResolvedValue({ articles: SAMPLE_ARTICLES, date: '2026-06-10' }),
       starArticle: vi.fn(),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -816,6 +1226,7 @@ describe('FeedPage — generation limit message (issue #82 / ADR-073)', () => {
         new ApiError(429, 'Monthly podcast generation limit reached for this user.', 3600)
       ),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -840,6 +1251,7 @@ describe('FeedPage — generation limit message (issue #82 / ADR-073)', () => {
         new ApiError(429, 'Podcast generation limit reached.', 86401) // 24時間超
       ),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()
@@ -862,6 +1274,7 @@ describe('FeedPage — generation limit message (issue #82 / ADR-073)', () => {
         new ApiError(429, 'Daily podcast generation limit reached.', 3600) // 1時間（24時間未満）
       ),
       dismissArticle: vi.fn(),
+      getStarredArticles: vi.fn().mockResolvedValue({ articles: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
     renderFeedPage()

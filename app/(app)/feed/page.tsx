@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
 import { createApiClient, ApiError } from '@/lib/api'
@@ -79,15 +79,64 @@ export default function FeedPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set())
   const [starredIds, setStarredIds] = useState<Set<string>>(new Set())
+  // Star タブの真実の源（issue #84 → backend feed 除外移行）。backend が GET /feed から
+  // star 済み記事を恒久除外するため、フィード応答からは star 済み記事の実体を得られない。
+  const [serverStarred, setServerStarred] = useState<Article[]>([])
+  // WHY: getStarredArticles の失敗は従来 console.error のみで不可視化していたが、
+  // getFeed も同時に失敗する（オフライン・backend障害という最も一般的な形）場合、
+  // Star タブが「スター済みの記事はありません」という事実と異なる空状態を表示してしまう
+  // （iOS の ListDisplayState と同じく、ロード失敗と「本当に空」を同一の空状態に畳まない）。
+  const [starredErrorMessage, setStarredErrorMessage] = useState<string | null>(null)
+  // WHY: セッション内で楽観 star した記事の実体スナップショット。`articles` から都度
+  // 導出すると、リフレッシュで backend が該当記事を feed から除外した瞬間に articles から
+  // 消え、まだ serverStarred（サーバ側インデックス）に反映される前の楽観 star が Star タブから
+  // 消えてしまう（正確性レビュー指摘）。star した時点の記事オブジェクトをここに保持し、
+  // articles の現在の中身に依存せず Star タブへ表示し続ける。
+  const [optimisticStarred, setOptimisticStarred] = useState<Article[]>([])
   const [activeTab, setActiveTab] = useState<FeedTab>('all')
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
+  // WHY: 手動更新の連打・マウント直後の再取得等でリクエストが入れ替わって完了すると、
+  // 後発（新しい）リクエストの反映後に先発（古い）リクエストの応答が遅れて届き、
+  // 最新表示を上書きしてしまう（settings/page.tsx の issue #164 パターンと同じ問題）。
+  // リクエスト連番で最新リクエストの応答のみを反映し、stale な応答は無視する。
+  const fetchRequestIdRef = useRef(0)
+
   const fetchFeed = useCallback(async () => {
+    const requestId = ++fetchRequestIdRef.current
     setLoading(true)
     setErrorMessage(null)
+    setStarredErrorMessage(null)
+    const api = createApiClient()
+    // Star タブの一覧はサーバ側一覧（issue #84 → backend feed 除外移行）。フィード取得と
+    // 並行で取りに行く。失敗してもフィード表示自体は壊さず、楽観 star のみで機能させる
+    // （backend 側の一時的な不調でフィード全体が見られなくなるのを避けるため）。
+    // WHY: catch はここで即座に（同期的に）アタッチし、成功/失敗を判別可能な結果オブジェクトへ
+    // 正規化する。await を後段まで遅延させつつ catch だけ先に付けないと、getFeed 側の await 中に
+    // このPromiseが reject した場合に unhandled rejection になり得るため。
+    const starredPromise = api
+      .getStarredArticles()
+      .then((result) => ({
+        ok: true as const,
+        // WHY: 移行期・プロキシ経由で 200 かつ想定外の body（例: 未スタブ経路の catch-all が
+        // 返す {}）が来ても articles が配列であることを確定させ、画面全体を壊さない
+        // （is_starred が undefined の場合を「未対応 backend」として許容する既存の防御姿勢と同型）。
+        articles: Array.isArray(result.articles) ? result.articles : [],
+      }))
+      .catch((e) => {
+        // WHY: getFeed 単独失敗時はフィード全体を壊さず楽観 starのみで継続するが、原因調査の
+        // ため運用ログには残す（getFeed 側の失敗はユーザー向け errorMessage で可視化される
+        // のに対し、こちらはサイレントすぎるという指摘への対応）。加えて、getFeed も同時に
+        // 失敗する（オフライン・backend障害）場合は、Star タブが「スター済みの記事は
+        // ありません」という事実と異なる空状態を表示しないよう、失敗を starredErrorMessage
+        // として可視化する（iOS の ListDisplayState 相当・正確性レビュー指摘）。
+        console.error('[feed] starred一覧の取得に失敗', e)
+        return { ok: false as const }
+      })
     try {
-      const data = await createApiClient().getFeed()
+      const data = await api.getFeed()
+      if (requestId !== fetchRequestIdRef.current) return // stale: 後発リクエストが既に走っている
       setArticles(data.articles)
       // サーバ値は追加方向にのみ反映する（issue #84）。undefined = 未対応 backend の可能性があり、
       // 明示 false と区別できないため解除はしない。セッション内の楽観 Star を手動更新で失わないため。
@@ -100,6 +149,7 @@ export default function FeedPage() {
       })
       setFeedDate(data.date ?? null)
     } catch (err) {
+      if (requestId !== fetchRequestIdRef.current) return // stale
       if (err instanceof ApiError) {
         if (err.status === 0) {
           setErrorMessage('サーバーに接続できません')
@@ -112,13 +162,46 @@ export default function FeedPage() {
         setErrorMessage('予期しないエラーが発生しました')
       }
     } finally {
-      setLoading(false)
+      if (requestId === fetchRequestIdRef.current) {
+        setLoading(false)
+      }
+    }
+
+    const starredOutcome = await starredPromise
+    if (requestId === fetchRequestIdRef.current) {
+      if (starredOutcome.ok) {
+        setServerStarred(starredOutcome.articles)
+        setStarredErrorMessage(null)
+      } else {
+        setStarredErrorMessage('スター済み記事の取得に失敗しました')
+      }
     }
   }, [])
 
   useEffect(() => {
     fetchFeed()
   }, [fetchFeed])
+
+  // WHY: star 済み記事のオブジェクトを楽観セットへ追加する。articles 中に見つからない場合
+  // （既に一覧から消えている等）は何もしない。
+  function addOptimisticStarred(id: string) {
+    setOptimisticStarred((prev) => {
+      if (prev.some((a) => a.id === id)) return prev
+      const original = articles.find((a) => a.id === id)
+      return original ? [...prev, original] : prev
+    })
+  }
+
+  // WHY: 記事が一覧から完全に失われた（Dismiss成功・Star404）場合、serverStarred /
+  // optimisticStarred からもクライアント側で除去する。ただしこれは同一セッション内の
+  // 表示上の防御に過ぎない。backend の Dismiss は starred_article_ids を除去せず、
+  // /articles/starred も dismissed 済みをフィルタしないため、次回リフレッシュで
+  // serverStarred がサーバ応答（この記事を含む）で丸ごと置き換わると再び表示され得る
+  // （un-star・一覧からの永続的な除去は follow-up）。
+  function removeFromStarredCollections(id: string) {
+    setServerStarred((prev) => prev.filter((a) => a.id !== id))
+    setOptimisticStarred((prev) => prev.filter((a) => a.id !== id))
+  }
 
   async function handleStar(id: string, difficulty?: DifficultyLevel) {
     setBusyIds((prev) => new Set(prev).add(id))
@@ -128,12 +211,14 @@ export default function FeedPage() {
       const api = createApiClient()
       const res = difficulty ? await api.starArticle(id, difficulty) : await api.starArticle(id)
       setStarredIds((prev) => new Set(prev).add(id))
+      addOptimisticStarred(id)
       showToast(starSuccessMessage(res.remaining), 'success')
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 404) {
           showToast('記事が見つかりません', 'error')
           setArticles((prev) => prev.filter((a) => a.id !== id))
+          removeFromStarredCollections(id)
         } else if (err.status === 401) {
           showToast('API キーが正しくありません', 'error')
         } else if (err.status === 429) {
@@ -160,6 +245,7 @@ export default function FeedPage() {
     try {
       await createApiClient().dismissArticle(id)
       setArticles((prev) => prev.filter((a) => a.id !== id))
+      removeFromStarredCollections(id)
     } catch (err) {
       if (err instanceof ApiError) {
         showToast(`エラーが発生しました (${err.status})`, 'error')
@@ -207,6 +293,7 @@ export default function FeedPage() {
       // 成功した分を starredIds に追加
       if (successful.length > 0) {
         setStarredIds((prev) => new Set([...prev, ...successful]))
+        successful.forEach((id) => addOptimisticStarred(id))
         showToast(`${successful.length}件をスターしました`, 'success')
       }
 
@@ -239,10 +326,34 @@ export default function FeedPage() {
     setSelectionMode(false)
   }
 
-  // WHY: 件数・表示対象は articles と starredIds から都度導出する。
-  // Dismiss で記事が消えた際にも別カウンタの同期処理なしで件数が追従するため
-  const starredArticles = articles.filter((a) => starredIds.has(a.id))
+  // WHY: Star タブは閲覧専用（un-star API が無いため操作が成立しない）。all タブで
+  // 選択モードを開始したままタブを切替えると、選択状態がそのまま持ち越されて
+  // Star タブでもチェックボックス・一括スターフッターが表示されてしまい、閲覧専用の
+  // ゲートを回避できてしまう（正確性レビュー指摘）。タブ切替時は選択状態を必ずリセットする。
+  function handleTabChange(tab: FeedTab) {
+    setActiveTab(tab)
+    setSelectionMode(false)
+    setSelectedIds(new Set())
+  }
+
+  // WHY: Star タブはサーバ一覧（serverStarred）を真実の源とし、まだサーバに反映されていない
+  // セッション内の楽観 star（optimisticStarred。star した時点のスナップショットのため、
+  // 後続の GET /feed 応答から当該記事が消えても保持され続ける）を追加表示する
+  // （サーバ一覧 ∪ 楽観追加。サーバ項目を先頭にしてidでdedup）。
+  // 件数・表示対象はこれらから都度導出する。Dismiss（成功時）・Star の 404 除去パスでは
+  // removeFromStarredCollections() が serverStarred/optimisticStarred 双方から同一セッション内で
+  // 除去するが、これはクライアント側のみの防御である。backend の Dismiss は
+  // starred_article_ids を除去せず、/articles/starred も dismissed 済みをフィルタしないため、
+  // dismiss 済みでも star 済みの記事は次回リフレッシュ時にサーバ応答へ再び含まれ得る
+  // （un-star・一覧からの永続的な除去は follow-up。Star タブ自体は閲覧専用のため、
+  // Star タブ内からの除去操作は無い）。
+  const serverStarredIds = new Set(serverStarred.map((a) => a.id))
+  const optimisticOnlyStarred = optimisticStarred.filter((a) => !serverStarredIds.has(a.id))
+  const starredArticles = [...serverStarred, ...optimisticOnlyStarred]
   const visibleArticles = activeTab === 'starred' ? starredArticles : articles
+  // WHY: サーバ由来の starred 項目は starredIds（楽観セット）に無くても真に star 済みのため、
+  // ArticleCard の star ボタン状態はこの合成集合で判定する（starredIds 自体は変更しない）。
+  const isStarred = (id: string) => starredIds.has(id) || serverStarredIds.has(id)
 
   function renderContent() {
     if (loading) {
@@ -258,7 +369,10 @@ export default function FeedPage() {
       )
     }
 
-    if (errorMessage) {
+    // WHY: Star タブはサーバ一覧を真実の源とし GET /feed に依存しないため、getFeed の失敗を
+    // Star タブの表示にまで道連れにしない。errorMessage は all タブのみに適用し、Star タブは
+    // starredArticles / starredErrorMessage の状態（下の分岐）で独立に描画する。
+    if (errorMessage && activeTab === 'all') {
       return (
         <div className="empty-state">
           <div className="empty-state-icon" aria-hidden="true">⚠</div>
@@ -271,6 +385,19 @@ export default function FeedPage() {
 
     if (visibleArticles.length === 0) {
       if (activeTab === 'starred') {
+        // WHY: getStarredArticles が失敗しており表示できる楽観 star も無い場合、
+        // 「スター済みの記事はありません」という事実と異なる空状態を出してはいけない
+        // （ロード失敗と「本当に空」を同一の空状態に畳まない・iOS の ListDisplayState 相当）。
+        // エラー表示＋再試行導線（右上の更新ボタン＝fetchFeed 再実行）を出す。
+        if (starredErrorMessage) {
+          return (
+            <div className="empty-state">
+              <div className="empty-state-icon" aria-hidden="true">⚠</div>
+              <div className="empty-state-title" role="alert">{starredErrorMessage}</div>
+              <div className="empty-state-desc">右上の更新ボタンで再試行できます</div>
+            </div>
+          )
+        }
         return (
           <div className="empty-state">
             <div className="empty-state-icon" aria-hidden="true">★</div>
@@ -298,14 +425,17 @@ export default function FeedPage() {
               onStar={handleStar}
               onDismiss={handleDismiss}
               busy={busyIds.has(article.id)}
-              starred={starredIds.has(article.id)}
+              starred={isStarred(article.id)}
               selectionMode={selectionMode}
               isSelected={selectedIds.has(article.id)}
               onToggleSelect={handleToggleSelection}
+              readOnly={activeTab === 'starred'}
             />
           ))}
         </div>
-        {selectionMode && (
+        {/* WHY: Star タブは閲覧専用のため、選択モードが（切替直後の一瞬等で）true のままでも
+            一括スターフッターは出さない（handleTabChange によるリセットと二重の防御）。 */}
+        {selectionMode && activeTab === 'all' && (
           <div className="bulk-star-footer">
             {selectedIds.size > 0 && (
               <button
@@ -341,7 +471,9 @@ export default function FeedPage() {
           </div>
         </div>
         <div className="header-actions">
-          {!selectionMode && (
+          {/* WHY: Star タブは閲覧専用（un-star API が無いため選択して一括starする操作が
+              成立しない）。all タブでのみ選択モードを開始できるようにする。 */}
+          {!selectionMode && activeTab === 'all' && (
             <button
               type="button"
               className="btn btn-icon"
@@ -373,7 +505,7 @@ export default function FeedPage() {
           type="button"
           aria-pressed={activeTab === 'all'}
           className={activeTab === 'all' ? 'feed-tab active' : 'feed-tab'}
-          onClick={() => setActiveTab('all')}
+          onClick={() => handleTabChange('all')}
         >
           すべて <span style={tabCountStyle}>{articles.length}</span>
         </button>
@@ -381,7 +513,7 @@ export default function FeedPage() {
           type="button"
           aria-pressed={activeTab === 'starred'}
           className={activeTab === 'starred' ? 'feed-tab active' : 'feed-tab'}
-          onClick={() => setActiveTab('starred')}
+          onClick={() => handleTabChange('starred')}
         >
           ★ スター済み <span style={tabCountStyle}>{starredArticles.length}</span>
         </button>

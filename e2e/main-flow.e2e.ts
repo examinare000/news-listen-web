@@ -139,6 +139,17 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
     })
   })
 
+  // GET /articles/starred — server-side starred-articles list (issue #84 → backend feed
+  // exclusion migration). WHY empty here: this flow only exercises the optimistic star path;
+  // the server-confirmed list catching up is out of scope for this e2e.
+  await page.route('**/api/backend/articles/starred', (route) => {
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ articles: [] }),
+    })
+  })
+
   // GET /podcasts — returns one ready podcast
   await page.route('**/api/backend/podcasts', (route) => {
     route.fulfill({

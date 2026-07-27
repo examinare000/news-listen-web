@@ -19,6 +19,9 @@ interface ArticleCardProps {
   selectionMode?: boolean
   isSelected?: boolean
   onToggleSelect?: (id: string) => void
+  // WHY: un-star API が現状無いため、Star タブでの Star/Dismiss 操作は成立しない
+  // （un-star は follow-up）。Star タブでは閲覧専用としてアクション自体を出さない。
+  readOnly?: boolean
 }
 
 // デザイン app-ui.html L1489 の塗りスター（starred 時）
@@ -67,6 +70,7 @@ export function ArticleCard({
   selectionMode = false,
   isSelected = false,
   onToggleSelect,
+  readOnly = false,
 }: ArticleCardProps) {
   const { state } = useApp()
 
@@ -77,7 +81,10 @@ export function ArticleCard({
 
   return (
     <div className={starred ? 'article-card starred' : 'article-card'}>
-      {selectionMode && (
+      {/* WHY: Star タブは閲覧専用（readOnly）。selectionMode がタブ切替のリセット漏れ等で
+          true のまま持ち越されても、チェックボックス自体をここでも二重にゲートし、
+          一括star操作の起点にならないようにする。 */}
+      {selectionMode && !readOnly && (
         <div className="article-checkbox">
           <input
             type="checkbox"
@@ -113,46 +120,50 @@ export function ArticleCard({
       </div>
 
       {/* デザインは div だが、キーボード操作・スクリーンリーダー対応のため button を維持する */}
-      <div className="article-actions">
-        <div className="star-group">
+      {/* WHY: Star タブは閲覧専用（un-star API が無いため Star/Dismiss 操作が成立しない。
+          un-star は follow-up）。readOnly 時はアクション自体を出さない。 */}
+      {!readOnly && (
+        <div className="article-actions">
+          <div className="star-group">
+            <button
+              type="button"
+              className={starred ? 'action-btn star active' : 'action-btn star'}
+              onClick={() => onStar(article.id)}
+              disabled={busy}
+              aria-pressed={starred}
+              aria-label={starred ? 'スター済み' : 'スターする'}
+              data-testid={`star-button-${article.id}`}
+            >
+              {starred ? <StarFilledIcon /> : <StarOutlineIcon />}
+            </button>
+
+            {/* スター済み記事は難易度選び直しの余地がないため、メニューごと出さない（issue #163） */}
+            {!starred && (
+              <Menu
+                triggerLabel="記事の生成難易度を指定"
+                triggerContent={<span aria-hidden="true">▾</span>}
+                triggerClassName="action-btn"
+                disabled={busy}
+                items={DIFFICULTY_MENU_ORDER.map((difficulty) => ({
+                  key: difficulty,
+                  label: DIFFICULTY_LABELS[difficulty],
+                  onSelect: () => onStar(article.id, difficulty),
+                }))}
+              />
+            )}
+          </div>
+
           <button
             type="button"
-            className={starred ? 'action-btn star active' : 'action-btn star'}
-            onClick={() => onStar(article.id)}
+            className="action-btn dismiss"
+            onClick={() => onDismiss(article.id)}
             disabled={busy}
-            aria-pressed={starred}
-            aria-label={starred ? 'スター済み' : 'スターする'}
-            data-testid={`star-button-${article.id}`}
+            aria-label="非表示"
           >
-            {starred ? <StarFilledIcon /> : <StarOutlineIcon />}
+            <DismissIcon />
           </button>
-
-          {/* スター済み記事は難易度選び直しの余地がないため、メニューごと出さない（issue #163） */}
-          {!starred && (
-            <Menu
-              triggerLabel="記事の生成難易度を指定"
-              triggerContent={<span aria-hidden="true">▾</span>}
-              triggerClassName="action-btn"
-              disabled={busy}
-              items={DIFFICULTY_MENU_ORDER.map((difficulty) => ({
-                key: difficulty,
-                label: DIFFICULTY_LABELS[difficulty],
-                onSelect: () => onStar(article.id, difficulty),
-              }))}
-            />
-          )}
         </div>
-
-        <button
-          type="button"
-          className="action-btn dismiss"
-          onClick={() => onDismiss(article.id)}
-          disabled={busy}
-          aria-label="非表示"
-        >
-          <DismissIcon />
-        </button>
-      </div>
+      )}
     </div>
   )
 }
