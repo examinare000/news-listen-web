@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 import { ApiError } from '@/lib/api'
 
 // WHY: backend の shared/username_policy 相当（招待コード新規登録）。normalize（trim+lowercase）
@@ -141,27 +142,7 @@ function SignupForm() {
   return (
     <div className="signup-shell">
       <div className="signup-card modal-box">
-        <div className="modal-logo">
-          <div className="logo-icon">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-          </div>
-          <span className="logo-text">
-            Audio<span>News</span>
-          </span>
-        </div>
+        <BrandLogo wrapperClassName="modal-logo" />
 
         <h1 className="modal-title">新規登録</h1>
         <p className="modal-desc">招待コードをお持ちの方のみご登録いただけます。</p>

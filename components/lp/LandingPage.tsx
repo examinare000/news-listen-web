@@ -1,5 +1,6 @@
 import React from 'react'
 import Link from 'next/link'
+import { BrandLogo } from '@/components/ui/BrandLogo'
 
 interface LandingPageProps {
   /** ヘッダー/ヒーローの「ログイン」ボタン押下時（root gate 側で LoginModal を開く）。 */
@@ -45,27 +46,7 @@ export function LandingPage({ onLoginClick }: LandingPageProps) {
   return (
     <div className="lp-page">
       <header className="lp-header">
-        <div className="logo-mark">
-          <div className="logo-icon">
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              aria-hidden="true"
-            >
-              <path d="M9 18V5l12-2v13" />
-              <circle cx="6" cy="18" r="3" />
-              <circle cx="18" cy="16" r="3" />
-            </svg>
-          </div>
-          <span className="logo-text">
-            Audio<span>News</span>
-          </span>
-        </div>
+        <BrandLogo />
 
         <div className="lp-header-actions">
           <button type="button" className="btn btn-ghost" onClick={onLoginClick}>
@@ -77,7 +58,7 @@ export function LandingPage({ onLoginClick }: LandingPageProps) {
         </div>
       </header>
 
-      <section className="lp-hero" data-testid="lp-hero" aria-label="AudioNews の紹介">
+      <section className="lp-hero" data-testid="lp-hero" aria-label="NewsListen の紹介">
         <div className="lp-hero-copy">
           <h1 className="lp-hero-title">今日の海外テックニュースを、聴く英語学習に。</h1>
           <p className="lp-hero-subcopy">
@@ -105,7 +86,7 @@ export function LandingPage({ onLoginClick }: LandingPageProps) {
 
       <section className="lp-features" aria-labelledby="lp-features-heading">
         <h2 id="lp-features-heading" className="sr-only">
-          AudioNews の特徴
+          NewsListen の特徴
         </h2>
         <ul className="lp-features-grid">
           {FEATURES.map((feature) => (
