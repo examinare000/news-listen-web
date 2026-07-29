@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
+import { useStreak } from '@/contexts/StreakContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
@@ -11,7 +12,7 @@ import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
-import type { DifficultyLevel, GenerationQuota, ListeningStreak, DifficultySuggestion } from '@/types/index'
+import type { DifficultyLevel, GenerationQuota, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
 
@@ -28,6 +29,7 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
 
 export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
+  const { streak } = useStreak()
   const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
@@ -80,32 +82,6 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadQuota()
   }, [loadQuota])
-
-  // issue #165 / ADR-062: 聴取ストリークの可視化。
-  const [streak, setStreak] = useState<ListeningStreak | null>(null)
-  const [streakLoadError, setStreakLoadError] = useState(false)
-
-  const loadStreak = useCallback(async () => {
-    try {
-      const s = await createApiClient().getListeningStreak()
-      setStreak(s)
-      setStreakLoadError(false)
-    } catch (err) {
-      // WHY: quota（:60-75）と同じ設計 — 404（エンドポイント未実装）時は graceful degradation で
-      // セクション全体を非表示。404 以外（500・ネットワーク断等）は一時障害として扱い、
-      // エラーバナー + 再試行導線を出す（一律非表示だとユーザーが再試行手段を失うため）。
-      if (err instanceof ApiError && err.status === 404) {
-        setStreak(null)
-        setStreakLoadError(false)
-      } else {
-        setStreakLoadError(true)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadStreak()
-  }, [loadStreak])
 
   // ADR-071 F3: おすすめ難易度バナー。has_suggestion=false や取得失敗（404含む・旧デプロイ等）は
   // 常にバナー非表示へ倒す（quota/streak と異なり 500 でも再試行導線は出さない。非破壊の推奨に過ぎず、
@@ -397,9 +373,8 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* セクション 3: 聴取ストリーク（issue #165 / ADR-062）。
-            404（graceful degradation）時は streak も streakLoadError も立たないためセクション自体が非表示になる。 */}
-        {(streak || streakLoadError) && (
+        {/* Shared shell status: transient failures remain silent and retain prior data. */}
+        {streak && (
           <section className="settings-section">
             <div className="settings-section-header">
               <div className="settings-section-icon" style={{ background: 'var(--amber-dim)' }} aria-hidden="true">
@@ -408,34 +383,18 @@ export default function SettingsPage() {
               <h2 className="settings-section-title">聴取ストリーク</h2>
             </div>
 
-            {streakLoadError ? (
-              <div className="settings-row-desc form-error" role="alert" style={{ padding: '0 20px 12px' }}>
-                聴取ストリークの取得に失敗しました。
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => loadStreak()}
-                  aria-label="聴取ストリークを再読み込み"
-                  style={{ marginLeft: 8 }}
-                >
-                  再試行
-                </button>
-              </div>
-            ) : (
-              streak && (
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row-label">連続聴取日数</div>
-                    <div className="settings-row-desc">
-                      {streak.last_listened_day === null
-                        ? 'まだ聴取記録がありません'
-                        : streak.current_streak_days === 0
-                          ? `連続0日・最終聴取日 ${streak.last_listened_day}`
-                          : `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`}
-                    </div>
-                  </div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">連続聴取日数</div>
+                <div className="settings-row-desc">
+                  {streak.last_listened_day === null
+                    ? 'まだ聴取記録がありません'
+                    : streak.current_streak_days === 0
+                      ? `連続0日・最終聴取日 ${streak.last_listened_day}`
+                      : `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`}
                 </div>
-              )
-            )}
+              </div>
+            </div>
           </section>
         )}
 

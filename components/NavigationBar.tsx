@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { useAuth } from '@/contexts/AuthContext'
+import { useStreak } from '@/contexts/StreakContext'
 
 // アイコン SVG は docs/design/app-ui.html L1392-1418 をインライン移植
 // WHY: アイコンライブラリを導入しない方針（依存追加ゼロ）。NAV_ITEMS はデザイン正本と
@@ -116,6 +117,7 @@ const NAV_ITEMS = [
 export function NavigationBar() {
   const pathname = usePathname()
   const { user } = useAuth()
+  const { streak, isPulsing } = useStreak()
   const isAdmin = user?.role === 'admin'
   const isAdminLinkActive = pathname === '/admin/featured-sites'
   const isInvitesLinkActive = pathname === '/admin/invites'
@@ -196,6 +198,11 @@ export function NavigationBar() {
       </nav>
 
       <div className="sidebar-footer">
+        {streak && streak.current_streak_days > 0 ? (
+          <div className="nav-streak">
+            <span className={`${isPulsing ? 'pulse' : ''}`}>{streak.current_streak_days} 日連続</span>
+          </div>
+        ) : null}
         <SidebarAccount />
         <ThemeToggle />
       </div>
