@@ -194,6 +194,7 @@ export interface UserPreferences {
   default_playback_speed: number
   digest_enabled: boolean
   digest_article_count: number
+  weekly_goal_episodes: 3 | 5 | 7 | 10
 }
 
 export type UserPreferencesPatch = Partial<UserPreferences>
@@ -263,7 +264,25 @@ export interface MonthlyActivity {
   active_days: number
 }
 
-/** GET /users/me/learning-dashboard のレスポンス（F4・既存シグナルの read-only 集約・ADR-072）。
+export interface WeeklyGoalRecord {
+  week: string // "YYYY-Www"
+  goal: number
+  completed: number
+}
+
+export interface WeeklyGoal {
+  goal_episodes: number
+  week: string // "YYYY-Www"
+  completed_this_week: number
+  history: WeeklyGoalRecord[]
+}
+
+export interface Achievement {
+  id: string
+  unlocked_at: string // ISO 8601 date
+}
+
+/** GET /users/me/learning-dashboard のレスポンス（F4・ADR-072/086）。
  *  streak は既存 ListeningStreak 型を入れ子で再利用する（DRY・ADR-072 決定4）。
  *  current_difficulty は現在の設定値のみで、学習で到達したレベルの履歴ではない（ADR-072 決定3-3）。 */
 export interface LearningDashboard {
@@ -273,6 +292,45 @@ export interface LearningDashboard {
   quiz: QuizStats
   monthly_activity: MonthlyActivity[]
   current_difficulty: string
+  weekly_goal: WeeklyGoal
+  achievements: Achievement[]
+}
+
+// ── 個人語彙帳・単語テスト（ADR-087） ───────────────────────────────
+export interface VocabularyItem {
+  vocabulary_id: string
+  podcast_id: string
+  term: string
+  meaning: string
+  example: string
+  registered_at: string
+}
+
+export interface VocabularyListResponse {
+  vocabulary: VocabularyItem[]
+  count: number
+}
+
+export interface VocabularyTestItem {
+  vocabulary_id: string
+  term: string
+  meaning: string
+  example: string
+  distractors: string[]
+}
+
+export interface VocabularyTestSessionResponse {
+  items: VocabularyTestItem[]
+}
+
+export interface VocabularyTestResultItem {
+  vocabulary_id: string
+  self_known: boolean
+  retest_correct: boolean | null
+}
+
+export interface VocabularyTestResultResponse {
+  updated: number
 }
 
 // ── Passkey / WebAuthn ───────────────────────────────────────────────

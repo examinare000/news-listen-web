@@ -1,7 +1,17 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import DashboardPage from '@/app/(app)/dashboard/page'
+
+const { playSfx, showToast } = vi.hoisted(() => ({
+  playSfx: vi.fn(),
+  showToast: vi.fn(),
+}))
+
+vi.mock('@/lib/sfx', () => ({ playSfx }))
+vi.mock('@/components/ui/Toast', () => ({
+  useToast: () => ({ showToast }),
+}))
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
@@ -28,6 +38,15 @@ const POPULATED_DASHBOARD = {
   },
   monthly_activity: [{ month: '2026-07', active_days: 5 }],
   current_difficulty: 'toeic_600',
+  weekly_goal: {
+    goal_episodes: 5,
+    week: '2026-W31',
+    completed_this_week: 3,
+    history: [{ week: '2026-W30', goal: 5, completed: 4 }],
+  },
+  achievements: [
+    { id: 'first_episode_completed', unlocked_at: '2026-07-01' },
+  ],
 }
 
 const EMPTY_DASHBOARD = {
@@ -37,6 +56,13 @@ const EMPTY_DASHBOARD = {
   quiz: { quizzed_episodes: 0, average_correct_rate: null, trend: [] },
   monthly_activity: [],
   current_difficulty: 'toeic_600',
+  weekly_goal: {
+    goal_episodes: 3,
+    week: '2026-W31',
+    completed_this_week: 0,
+    history: [],
+  },
+  achievements: [],
 }
 
 beforeEach(() => {
@@ -134,6 +160,116 @@ describe('DashboardPage — display', () => {
     render(<DashboardPage />)
 
     expect(await screen.findByText('TOEIC 600')).toBeInTheDocument()
+  })
+
+  test('renders weekly progress, factual history, and CSS activity bars without warning language', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText('今週 3/5 本')).toBeInTheDocument()
+    expect(screen.getByText('目標: 5 → 実績: 4')).toBeInTheDocument()
+    expect(screen.getAllByRole('meter').length).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/未達|失敗|あと.*本/)).not.toBeInTheDocument()
+  })
+
+  test('renders all seven catalog achievements with unlocked date and subdued locked entries', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText('実績')).toBeInTheDocument()
+    expect(screen.getByText('初回エピソード完聴')).toBeInTheDocument()
+    expect(screen.getByText('解錠: 2026-07-01')).toBeInTheDocument()
+    expect(screen.getByText('100 日連続聴取')).toBeInTheDocument()
+    expect(document.querySelectorAll('.achievement-item')).toHaveLength(7)
+    expect(document.querySelectorAll('.achievement-item.locked')).toHaveLength(6)
+  })
+
+  test('detects only achievements added after the initial response and emits editorial toast + sound', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    const getLearningDashboard = vi
+      .fn()
+      .mockResolvedValueOnce(POPULATED_DASHBOARD)
+      .mockResolvedValueOnce({
+        ...POPULATED_DASHBOARD,
+        achievements: [
+          ...POPULATED_DASHBOARD.achievements,
+          { id: 'first_quiz_correct', unlocked_at: '2026-07-29' },
+        ],
+      })
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard,
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    render(<DashboardPage />)
+    await screen.findByText('解錠: 2026-07-01')
+    expect(showToast).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'ダッシュボードを再読み込み' }))
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith('実績を解錠しました：初回クイズ正解', 'success')
+    })
+    expect(playSfx).toHaveBeenCalledWith('achievement')
+  })
+
+  test('shows registered vocabulary count/latest five and hides the test link when no words are due', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
+      getVocabulary: vi.fn().mockResolvedValue({
+        count: 6,
+        vocabulary: Array.from({ length: 6 }, (_, index) => ({
+          vocabulary_id: `v${index}`,
+          podcast_id: 'p1',
+          term: `term-${index}`,
+          meaning: `meaning-${index}`,
+          example: `example-${index}`,
+          registered_at: `2026-07-${29 - index}`,
+        })),
+      }),
+      getVocabularyTestSession: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByText('登録語彙')).toBeInTheDocument()
+    expect(screen.getByText('6 語')).toBeInTheDocument()
+    expect(screen.getByText('term-0')).toBeInTheDocument()
+    expect(screen.getByText('term-4')).toBeInTheDocument()
+    expect(screen.queryByText('term-5')).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '単語テスト' })).not.toBeInTheDocument()
+  })
+
+  test('shows the vocabulary test link when at least one due word exists', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
+      getVocabulary: vi.fn().mockResolvedValue({ count: 0, vocabulary: [] }),
+      getVocabularyTestSession: vi.fn().mockResolvedValue({
+        items: [{
+          vocabulary_id: 'v1',
+          term: 'accelerate',
+          meaning: '加速する',
+          example: 'Sales accelerate.',
+          distractors: [],
+        }],
+      }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    render(<DashboardPage />)
+
+    expect(await screen.findByRole('link', { name: '単語テスト' })).toHaveAttribute(
+      'href',
+      '/vocabulary-test',
+    )
   })
 })
 
