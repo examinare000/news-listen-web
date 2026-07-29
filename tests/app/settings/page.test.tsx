@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import SettingsPage from '@/app/(app)/settings/page'
 import { AppProvider, useApp } from '@/contexts/AppContext'
+import { StreakProvider } from '@/contexts/StreakContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import type { createApiClient } from '@/lib/api'
@@ -62,9 +63,11 @@ vi.mock('@/contexts/AuthContext', () => ({
 function renderSettingsPage() {
   return render(
     <AppProvider>
-      <ToastProvider>
-        <SettingsPage />
-      </ToastProvider>
+      <StreakProvider>
+        <ToastProvider>
+          <SettingsPage />
+        </ToastProvider>
+      </StreakProvider>
     </AppProvider>
   )
 }
@@ -142,10 +145,12 @@ describe('SettingsPage — save settings', () => {
 
     render(
       <AppProvider>
-        <ToastProvider>
-          <SettingsPage />
-          <TestConsumer />
-        </ToastProvider>
+        <StreakProvider>
+          <ToastProvider>
+            <SettingsPage />
+            <TestConsumer />
+          </ToastProvider>
+        </StreakProvider>
       </AppProvider>
     )
 
@@ -729,30 +734,18 @@ describe('SettingsPage — listening streak (issue #165)', () => {
     expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
   })
 
-  // 404 以外（500・ネットワーク断等）は一時障害として扱い、再試行手段を残す（quota と同じ設計）
-  test('Given getListeningStreak returns 500, shows an inline error with a retry button that refetches', async () => {
+  test('Given shared streak refresh fails, hides the section silently without a page-level duplicate retry', async () => {
     const getListeningStreak = vi
       .fn()
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({
-        current_streak_days: 5,
-        today_listened: true,
-        last_listened_day: '2026-07-07',
-      })
+      .mockRejectedValue(new Error('network error'))
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue(mockClientWithStreak(getListeningStreak))
 
     renderSettingsPage()
 
-    await waitFor(() => screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
-    expect(screen.getByText(/聴取ストリークの取得に失敗/)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
-
-    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(2))
-    await waitFor(() => {
-      expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
-    })
+    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /聴取ストリークを再読み込み/ })).not.toBeInTheDocument()
   })
 })
 

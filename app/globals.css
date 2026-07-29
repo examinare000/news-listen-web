@@ -2073,6 +2073,38 @@ mark {
   }
 }
 
+/* ── Learning engagement ───────────────────────────────────────
+ * Progress is expressed as text and ruled meters so it stays factual rather
+ * than turning study pace into a game-like score. */
+.nav-streak {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nav-streak span.pulse {
+  animation: streak-pulse 0.3s ease;
+}
+
+@keyframes streak-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-streak span.pulse {
+    animation: none;
+  }
+}
+
 /* ── Star Stamp Animation ──────────────────────────────────────
    インクスタンプ風アニメーション：記事スター確定時に Scale + 回転 */
 @keyframes star-stamp {

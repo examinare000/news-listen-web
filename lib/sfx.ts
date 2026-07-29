@@ -28,8 +28,7 @@ const VOCABULARY: Record<SfxName, readonly Voice[]> = {
     { frequency: 330, duration: 0.12, gain: 0.08, type: 'sine' },
     { frequency: 480, duration: 0.14, gain: 0.09, delay: 0.06, type: 'triangle' },
   ],
-  // WHY: count-up 表示トリガー実装まで保留（ADR-088 適用順序の意図的後回し）。
-  // 現在は定義のみで使用箇所なし。
+  // Shared streak refresh plays this only when the successful value increases.
   streak: [
     { frequency: 280, duration: 0.07, gain: 0.05, type: 'triangle', glideTo: 420 },
     { frequency: 520, duration: 0.1, gain: 0.04, delay: 0.045, type: 'sine' },
