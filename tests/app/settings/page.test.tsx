@@ -749,6 +749,51 @@ describe('SettingsPage — listening streak (issue #165)', () => {
   })
 })
 
+describe('SettingsPage — weekly learning goal (ADR-086)', () => {
+  test('loads 3/5/7/10 choices and saves only weekly_goal_episodes', async () => {
+    const updatePreferences = vi.fn().mockResolvedValue({})
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1,
+        digest_enabled: true,
+        digest_article_count: 10,
+        weekly_goal_episodes: 5,
+      }),
+      updatePreferences,
+      getGenerationQuota: vi.fn().mockRejectedValue(new Error('not relevant')),
+      getListeningStreak: vi.fn().mockRejectedValue(new Error('not relevant')),
+      getDifficultySuggestion: vi.fn().mockResolvedValue({ has_suggestion: false }),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSettingsPage()
+
+    const goalGroup = await screen.findByRole('group', { name: '1週間の目標本数' })
+    for (const goal of [3, 5, 7, 10]) {
+      expect(within(goalGroup).getByRole('radio', { name: `${goal} 本` })).toBeInTheDocument()
+    }
+    expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked()
+    expect(screen.getByText('1 日あたり平均 0.7 本')).toBeInTheDocument()
+
+    await userEvent.click(within(goalGroup).getByRole('radio', { name: '7 本' }))
+
+    await waitFor(() => {
+      expect(updatePreferences).toHaveBeenCalledWith({ weekly_goal_episodes: 7 })
+    })
+    expect(screen.getByText('1 日あたり平均 1.0 本')).toBeInTheDocument()
+  })
+
+  test('states the exact non-quota contract in a separate learning-goal section', async () => {
+    renderSettingsPage()
+
+    expect(await screen.findByRole('heading', { name: '学習目標' })).toBeInTheDocument()
+    expect(screen.getByText(
+      'この目標は学習ペースの目安です。生成クォータ（新しいエピソードを生成できる月あたりの上限）とは別のもので、目標を超えても・達成できなくても機能は制限されません。達成できなかった週も履歴は残ります',
+    )).toBeInTheDocument()
+  })
+})
+
 // ==========================================================
 // Settings 画面 — おすすめ難易度バナー（ADR-071 F3 難易度自動適応）
 // ==========================================================
@@ -887,6 +932,7 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
         default_playback_speed: 1.0,
         digest_enabled: true,
         digest_article_count: 10,
+        weekly_goal_episodes: 3,
       }
     })
 

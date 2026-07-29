@@ -2105,6 +2105,208 @@ mark {
   }
 }
 
+.learning-goal-row {
+  gap: 24px;
+}
+
+.goal-segments {
+  display: flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.goal-segment {
+  position: relative;
+  border-right: 1px solid var(--border-mid);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.goal-segment:last-child {
+  border-right: 0;
+}
+
+.goal-segment input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.goal-segment span {
+  display: block;
+  min-width: 52px;
+  padding: 7px 9px;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-segment.selected {
+  color: var(--on-accent);
+  background: var(--amber);
+}
+
+.goal-segment:has(input:focus-visible) {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.settings-note {
+  padding: 12px 20px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.weekly-progress {
+  padding: 18px 20px;
+}
+
+.weekly-progress-copy {
+  margin-bottom: 10px;
+  font-family: var(--font-display), serif;
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekly-history {
+  border-top: 1px solid var(--border);
+}
+
+.engagement-bar-row {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.engagement-bar-row:last-child {
+  border-bottom: 0;
+}
+
+.engagement-bar-copy {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.engagement-meter {
+  height: 4px;
+  overflow: hidden;
+  background: var(--bg-overlay);
+}
+
+.engagement-meter.weekly {
+  height: 6px;
+}
+
+.engagement-meter > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--amber);
+  transform-origin: left center;
+}
+
+.achievement-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.achievement-item {
+  min-width: 0;
+  padding: 16px 20px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.achievement-item:nth-child(even) {
+  border-right: 0;
+}
+
+.achievement-item:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.achievement-item h3 {
+  margin-bottom: 3px;
+  font-size: 13px;
+}
+
+.achievement-item p,
+.achievement-item > span {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.achievement-item > span {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.achievement-item.unlocked {
+  border-left: 3px solid var(--amber);
+}
+
+.achievement-item.unlocked > span {
+  color: var(--accent-text);
+}
+
+.achievement-item.locked {
+  color: var(--text-muted);
+}
+
+.dashboard-section-heading {
+  justify-content: space-between;
+}
+
+.vocabulary-row time {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 700px) {
+  .learning-goal-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .goal-segments {
+    width: 100%;
+  }
+
+  .goal-segment {
+    flex: 1;
+  }
+
+  .achievement-list {
+    grid-template-columns: 1fr;
+  }
+
+  .achievement-item,
+  .achievement-item:nth-child(even),
+  .achievement-item:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .achievement-item:last-child {
+    border-bottom: 0;
+  }
+}
+
 /* ── Star Stamp Animation ──────────────────────────────────────
    インクスタンプ風アニメーション：記事スター確定時に Scale + 回転 */
 @keyframes star-stamp {

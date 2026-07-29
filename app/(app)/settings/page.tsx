@@ -26,6 +26,7 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
   'eiken_2',
   'eiken_p1',
 ]
+const WEEKLY_GOALS = [3, 5, 7, 10] as const
 
 export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
@@ -37,14 +38,17 @@ export default function SettingsPage() {
   // 消去分類を増やさず、この端末の localStorage だけに保存する（ADR-088）。
   const [sfxEnabled, setSfxEnabled] = useLocalStorage<boolean>(KEY_SFX_ENABLED, true)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
+  const [weeklyGoal, setWeeklyGoal] = useState<(typeof WEEKLY_GOALS)[number]>(3)
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
   const [preferencesLoadError, setPreferencesLoadError] = useState(false)
+  const weeklyGoalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load preferences on mount (C群#13)
   const loadPreferences = useCallback(async () => {
     try {
       const prefs = await createApiClient().getPreferences()
       setDefaultDifficulty(prefs.default_difficulty)
+      setWeeklyGoal(prefs.weekly_goal_episodes ?? 3)
       setPreferencesLoadError(false)
     } catch {
       // Fallback to DEFAULT_DIFFICULTY if fetch fails
@@ -167,6 +171,21 @@ export default function SettingsPage() {
     }
   }
 
+  function handleWeeklyGoalChange(goal: (typeof WEEKLY_GOALS)[number]) {
+    const previousGoal = weeklyGoal
+    setWeeklyGoal(goal)
+
+    if (weeklyGoalTimeoutRef.current) clearTimeout(weeklyGoalTimeoutRef.current)
+
+    weeklyGoalTimeoutRef.current = setTimeout(() => {
+      createApiClient().updatePreferences({ weekly_goal_episodes: goal })
+        .catch(() => {
+          setWeeklyGoal(previousGoal)
+          showToast('学習目標の保存に失敗しました', 'error')
+        })
+    }, 400)
+  }
+
   return (
     <>
       <div className="page-header">
@@ -226,6 +245,40 @@ export default function SettingsPage() {
               <span className="preference-toggle-thumb" aria-hidden="true" />
             </button>
           </div>
+        </section>
+
+        <section className="settings-section learning-goal-section">
+          <div className="settings-section-header">
+            <h2 className="settings-section-title">学習目標</h2>
+          </div>
+          <div className="settings-row learning-goal-row">
+            <div>
+              <div className="settings-row-label">1週間に聴くエピソード</div>
+              <div className="settings-row-desc">
+                1 日あたり平均 {(weeklyGoal / 7).toFixed(1)} 本
+              </div>
+            </div>
+            <fieldset className="goal-segments" aria-label="1週間の目標本数">
+              <legend className="sr-only">1週間の目標本数</legend>
+              {WEEKLY_GOALS.map((goal) => (
+                <label
+                  key={goal}
+                  className={weeklyGoal === goal ? 'goal-segment selected' : 'goal-segment'}
+                >
+                  <input
+                    type="radio"
+                    name="weekly-goal"
+                    checked={weeklyGoal === goal}
+                    onChange={() => void handleWeeklyGoalChange(goal)}
+                  />
+                  <span>{goal} 本</span>
+                </label>
+              ))}
+            </fieldset>
+          </div>
+          <p className="settings-note">
+            この目標は学習ペースの目安です。生成クォータ（新しいエピソードを生成できる月あたりの上限）とは別のもので、目標を超えても・達成できなくても機能は制限されません。達成できなかった週も履歴は残ります
+          </p>
         </section>
 
         {/* セクション 2: Podcast 生成 */}
