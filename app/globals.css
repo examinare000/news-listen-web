@@ -2277,6 +2277,149 @@ mark {
   font-variant-numeric: tabular-nums;
 }
 
+.vocabulary-glossary-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.vocabulary-glossary-copy {
+  min-width: 0;
+}
+
+.vocabulary-glossary-item > p {
+  grid-column: 1 / -1;
+}
+
+.vocabulary-save {
+  align-self: center;
+}
+
+.vocabulary-registered {
+  align-self: center;
+  color: var(--text-secondary);
+  font-size: 12px;
+  opacity: .68;
+}
+
+.vocabulary-test-page {
+  width: 100%;
+}
+
+.vocabulary-test-page section,
+.vocabulary-test-status {
+  padding: 28px;
+  border-top: 3px double var(--border-mid);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+
+.vocabulary-test-progress,
+.vocabulary-test-kicker,
+.vocabulary-gesture-hint,
+.vocabulary-keyboard-hint {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.vocabulary-test-progress {
+  margin-bottom: 18px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vocabulary-swipe-card {
+  min-height: 240px;
+  padding: 34px 28px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  touch-action: pan-y;
+  user-select: none;
+}
+
+.vocabulary-swipe-card:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.vocabulary-swipe-card h2,
+.vocabulary-retest h2,
+.vocabulary-result h2 {
+  margin: 8px 0 10px;
+  font-family: var(--font-display), serif;
+  font-size: clamp(28px, 5vw, 42px);
+  line-height: 1.15;
+}
+
+.vocabulary-gesture-hint {
+  margin-top: auto;
+  padding-top: 28px;
+  text-align: center;
+}
+
+.vocabulary-answer-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.vocabulary-answer-actions .btn {
+  min-height: 44px;
+}
+
+.vocabulary-keyboard-hint {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.vocabulary-choice-list {
+  display: grid;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.vocabulary-choice {
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.vocabulary-choice:hover,
+.vocabulary-choice:focus-visible {
+  border-color: var(--amber);
+}
+
+.vocabulary-choice:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.vocabulary-choice:disabled {
+  cursor: default;
+}
+
+.vocabulary-correct-feedback {
+  gap: 5px;
+  margin-top: 14px;
+  font-weight: 600;
+}
+
+.vocabulary-result .btn {
+  margin-top: 22px;
+}
+
 @media (max-width: 700px) {
   .learning-goal-row {
     align-items: flex-start;
@@ -2304,6 +2447,11 @@ mark {
 
   .achievement-item:last-child {
     border-bottom: 0;
+  }
+
+  .vocabulary-test-page section,
+  .vocabulary-test-status {
+    padding: 20px;
   }
 }
 
@@ -2335,4 +2483,36 @@ mark {
     border-color: var(--border);
     box-shadow: none;
   }
+}
+
+/* --- 単語テスト: スワイプ確定の slide-out（reduced-motion では発火しない） --- */
+@keyframes swipe-exit-right {
+  to { transform: translateX(120%) rotate(6deg); opacity: 0; }
+}
+@keyframes swipe-exit-left {
+  to { transform: translateX(-120%) rotate(-6deg); opacity: 0; }
+}
+.vocabulary-swipe-card.swipe-exit-right { animation: swipe-exit-right 0.2s ease-in both; }
+.vocabulary-swipe-card.swipe-exit-left { animation: swipe-exit-left 0.2s ease-in both; }
+.vocabulary-swipe-card { touch-action: pan-y; will-change: transform; }
+
+/* --- 単語テスト: 不正解時の正解提示（罰的な赤・バツは使わない） --- */
+.vocabulary-choice.is-correct-reveal {
+  text-decoration: underline;
+  text-decoration-color: var(--amber);
+  text-decoration-thickness: 2px;
+  background: var(--amber-dim);
+}
+.vocabulary-reveal-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--accent-text);
+}
+
+/* --- 単語テスト: 結果画面の導線 --- */
+.vocabulary-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
 }
