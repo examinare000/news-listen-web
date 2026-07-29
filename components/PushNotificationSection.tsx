@@ -86,7 +86,7 @@ export function PushNotificationSection({ port }: PushNotificationSectionProps) 
         <div
           style={{
             padding: '12px 20px',
-            background: 'rgba(224,92,92,.08)',
+            background: 'var(--red-dim)',
             borderTop: '1px solid var(--border)',
             fontSize: 12,
             color: 'var(--red)',
