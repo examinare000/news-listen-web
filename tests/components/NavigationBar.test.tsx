@@ -2,6 +2,7 @@ import { describe, test, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { NavigationBar } from '@/components/NavigationBar'
 import { useAuth } from '@/contexts/AuthContext'
+import { useStreak } from '@/contexts/StreakContext'
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/feed'),
@@ -32,6 +33,10 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(defaultAuthContext),
 }))
 
+vi.mock('@/contexts/StreakContext', () => ({
+  useStreak: vi.fn(() => ({ streak: null, isPulsing: false, refresh: vi.fn() })),
+}))
+
 // admin ロール系テストで使う上書きヘルパー。既定値とのマージにより各テストの記述量を減らす。
 function mockAuthAs(overrides: Partial<ReturnType<typeof useAuth>>) {
   vi.mocked(useAuth).mockReturnValue({ ...defaultAuthContext(), ...overrides })
@@ -40,6 +45,7 @@ function mockAuthAs(overrides: Partial<ReturnType<typeof useAuth>>) {
 // admin ロール系テストが useAuth の戻り値を上書きするため、後続テストへ漏れないよう毎回既定値へ戻す
 afterEach(() => {
   vi.mocked(useAuth).mockImplementation(defaultAuthContext)
+  vi.mocked(useStreak).mockReturnValue({ streak: null, isPulsing: false, refresh: vi.fn() })
 })
 
 // ==========================================================
@@ -47,6 +53,37 @@ afterEach(() => {
 // 表示文言はデザイン正本（docs/design/app-ui.html）準拠の日本語
 // ==========================================================
 describe('NavigationBar', () => {
+  test('shows a compact vermilion streak only for a positive shared value', () => {
+    vi.mocked(useStreak).mockReturnValue({ isPulsing: false, streak: {
+        current_streak_days: 8,
+        today_listened: false,
+        last_listened_day: '2026-07-28',
+      },
+      refresh: vi.fn(),
+    })
+
+    render(<NavigationBar />)
+
+    expect(screen.getByText('8 日連続').closest('.nav-streak')).toBeInTheDocument()
+  })
+
+  test('does not show a punitive zero or an unavailable streak', () => {
+    vi.mocked(useStreak).mockReturnValue({ isPulsing: false, streak: {
+        current_streak_days: 0,
+        today_listened: false,
+        last_listened_day: '2026-07-01',
+      },
+      refresh: vi.fn(),
+    })
+
+    const { rerender } = render(<NavigationBar />)
+    expect(screen.queryByText(/日連続/)).not.toBeInTheDocument()
+
+    vi.mocked(useStreak).mockReturnValue({ streak: null, isPulsing: false, refresh: vi.fn() })
+    rerender(<NavigationBar />)
+    expect(screen.queryByText(/日連続/)).not.toBeInTheDocument()
+  })
+
   test('renders as a sidebar (complementary landmark)', () => {
     render(<NavigationBar />)
 

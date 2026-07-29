@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
+import { useStreak } from '@/contexts/StreakContext'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
@@ -11,7 +12,7 @@ import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
-import type { DifficultyLevel, GenerationQuota, ListeningStreak, DifficultySuggestion } from '@/types/index'
+import type { DifficultyLevel, GenerationQuota, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
 
@@ -25,9 +26,11 @@ const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
   'eiken_2',
   'eiken_p1',
 ]
+const WEEKLY_GOALS = [3, 5, 7, 10] as const
 
 export default function SettingsPage() {
   const { state, dispatch, setTimeFormat } = useApp()
+  const { streak } = useStreak()
   const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
@@ -35,14 +38,17 @@ export default function SettingsPage() {
   // 消去分類を増やさず、この端末の localStorage だけに保存する（ADR-088）。
   const [sfxEnabled, setSfxEnabled] = useLocalStorage<boolean>(KEY_SFX_ENABLED, true)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
+  const [weeklyGoal, setWeeklyGoal] = useState<(typeof WEEKLY_GOALS)[number]>(3)
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
   const [preferencesLoadError, setPreferencesLoadError] = useState(false)
+  const weeklyGoalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load preferences on mount (C群#13)
   const loadPreferences = useCallback(async () => {
     try {
       const prefs = await createApiClient().getPreferences()
       setDefaultDifficulty(prefs.default_difficulty)
+      setWeeklyGoal(prefs.weekly_goal_episodes ?? 3)
       setPreferencesLoadError(false)
     } catch {
       // Fallback to DEFAULT_DIFFICULTY if fetch fails
@@ -80,32 +86,6 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadQuota()
   }, [loadQuota])
-
-  // issue #165 / ADR-062: 聴取ストリークの可視化。
-  const [streak, setStreak] = useState<ListeningStreak | null>(null)
-  const [streakLoadError, setStreakLoadError] = useState(false)
-
-  const loadStreak = useCallback(async () => {
-    try {
-      const s = await createApiClient().getListeningStreak()
-      setStreak(s)
-      setStreakLoadError(false)
-    } catch (err) {
-      // WHY: quota（:60-75）と同じ設計 — 404（エンドポイント未実装）時は graceful degradation で
-      // セクション全体を非表示。404 以外（500・ネットワーク断等）は一時障害として扱い、
-      // エラーバナー + 再試行導線を出す（一律非表示だとユーザーが再試行手段を失うため）。
-      if (err instanceof ApiError && err.status === 404) {
-        setStreak(null)
-        setStreakLoadError(false)
-      } else {
-        setStreakLoadError(true)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadStreak()
-  }, [loadStreak])
 
   // ADR-071 F3: おすすめ難易度バナー。has_suggestion=false や取得失敗（404含む・旧デプロイ等）は
   // 常にバナー非表示へ倒す（quota/streak と異なり 500 でも再試行導線は出さない。非破壊の推奨に過ぎず、
@@ -191,6 +171,21 @@ export default function SettingsPage() {
     }
   }
 
+  function handleWeeklyGoalChange(goal: (typeof WEEKLY_GOALS)[number]) {
+    const previousGoal = weeklyGoal
+    setWeeklyGoal(goal)
+
+    if (weeklyGoalTimeoutRef.current) clearTimeout(weeklyGoalTimeoutRef.current)
+
+    weeklyGoalTimeoutRef.current = setTimeout(() => {
+      createApiClient().updatePreferences({ weekly_goal_episodes: goal })
+        .catch(() => {
+          setWeeklyGoal(previousGoal)
+          showToast('学習目標の保存に失敗しました', 'error')
+        })
+    }, 400)
+  }
+
   return (
     <>
       <div className="page-header">
@@ -250,6 +245,40 @@ export default function SettingsPage() {
               <span className="preference-toggle-thumb" aria-hidden="true" />
             </button>
           </div>
+        </section>
+
+        <section className="settings-section learning-goal-section">
+          <div className="settings-section-header">
+            <h2 className="settings-section-title">学習目標</h2>
+          </div>
+          <div className="settings-row learning-goal-row">
+            <div>
+              <div className="settings-row-label">1週間に聴くエピソード</div>
+              <div className="settings-row-desc">
+                1 日あたり平均 {(weeklyGoal / 7).toFixed(1)} 本
+              </div>
+            </div>
+            <fieldset className="goal-segments" aria-label="1週間の目標本数">
+              <legend className="sr-only">1週間の目標本数</legend>
+              {WEEKLY_GOALS.map((goal) => (
+                <label
+                  key={goal}
+                  className={weeklyGoal === goal ? 'goal-segment selected' : 'goal-segment'}
+                >
+                  <input
+                    type="radio"
+                    name="weekly-goal"
+                    checked={weeklyGoal === goal}
+                    onChange={() => void handleWeeklyGoalChange(goal)}
+                  />
+                  <span>{goal} 本</span>
+                </label>
+              ))}
+            </fieldset>
+          </div>
+          <p className="settings-note">
+            この目標は学習ペースの目安です。生成クォータ（新しいエピソードを生成できる月あたりの上限）とは別のもので、目標を超えても・達成できなくても機能は制限されません。達成できなかった週も履歴は残ります
+          </p>
         </section>
 
         {/* セクション 2: Podcast 生成 */}
@@ -397,9 +426,8 @@ export default function SettingsPage() {
           </section>
         )}
 
-        {/* セクション 3: 聴取ストリーク（issue #165 / ADR-062）。
-            404（graceful degradation）時は streak も streakLoadError も立たないためセクション自体が非表示になる。 */}
-        {(streak || streakLoadError) && (
+        {/* Shared shell status: transient failures remain silent and retain prior data. */}
+        {streak && (
           <section className="settings-section">
             <div className="settings-section-header">
               <div className="settings-section-icon" style={{ background: 'var(--amber-dim)' }} aria-hidden="true">
@@ -408,34 +436,18 @@ export default function SettingsPage() {
               <h2 className="settings-section-title">聴取ストリーク</h2>
             </div>
 
-            {streakLoadError ? (
-              <div className="settings-row-desc form-error" role="alert" style={{ padding: '0 20px 12px' }}>
-                聴取ストリークの取得に失敗しました。
-                <button
-                  className="btn btn-ghost"
-                  onClick={() => loadStreak()}
-                  aria-label="聴取ストリークを再読み込み"
-                  style={{ marginLeft: 8 }}
-                >
-                  再試行
-                </button>
-              </div>
-            ) : (
-              streak && (
-                <div className="settings-row">
-                  <div>
-                    <div className="settings-row-label">連続聴取日数</div>
-                    <div className="settings-row-desc">
-                      {streak.last_listened_day === null
-                        ? 'まだ聴取記録がありません'
-                        : streak.current_streak_days === 0
-                          ? `連続0日・最終聴取日 ${streak.last_listened_day}`
-                          : `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`}
-                    </div>
-                  </div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">連続聴取日数</div>
+                <div className="settings-row-desc">
+                  {streak.last_listened_day === null
+                    ? 'まだ聴取記録がありません'
+                    : streak.current_streak_days === 0
+                      ? `連続0日・最終聴取日 ${streak.last_listened_day}`
+                      : `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`}
                 </div>
-              )
-            )}
+              </div>
+            </div>
           </section>
         )}
 

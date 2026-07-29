@@ -1565,3 +1565,63 @@ describe('submitQuizAnswers', () => {
     await expect(client.submitQuizAnswers('p1', [0, 1, 2])).rejects.toThrow(ApiError)
   })
 })
+
+// ==========================================================
+// Engagement Phase 2 — vocabulary API contracts (ADR-087)
+// ==========================================================
+describe('vocabulary engagement API', () => {
+  test('registers a glossary term with the authoritative podcast_id + term payload', async () => {
+    mockFetchOk({
+      vocabulary_id: 'p1__accelerate',
+      podcast_id: 'p1',
+      term: 'accelerate',
+      meaning: '加速する',
+      example: 'The rollout will accelerate.',
+      registered_at: '2026-07-29T00:00:00Z',
+    })
+
+    await makeClient().saveVocabulary('p1', 'accelerate')
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/vocabulary',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ podcast_id: 'p1', term: 'accelerate' }),
+      }),
+    )
+  })
+
+  test('loads the vocabulary list and due test session from their GET endpoints', async () => {
+    mockFetchOk({ vocabulary: [], count: 0 })
+    await makeClient().getVocabulary()
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/backend/vocabulary',
+      expect.objectContaining({ method: 'GET' }),
+    )
+
+    mockFetchOk({ items: [] })
+    await makeClient().getVocabularyTestSession()
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/backend/vocabulary/test-session',
+      expect.objectContaining({ method: 'GET' }),
+    )
+  })
+
+  test('submits the complete batch array without wrapping or renaming result fields', async () => {
+    mockFetchOk({ updated: 2 })
+    const results = [
+      { vocabulary_id: 'v1', self_known: true, retest_correct: null },
+      { vocabulary_id: 'v2', self_known: false, retest_correct: true },
+    ]
+
+    await makeClient().submitVocabularyTestResult(results)
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/backend/vocabulary/test-result',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify(results),
+      }),
+    )
+  })
+})

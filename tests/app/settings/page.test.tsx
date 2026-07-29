@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import SettingsPage from '@/app/(app)/settings/page'
 import { AppProvider, useApp } from '@/contexts/AppContext'
+import { StreakProvider } from '@/contexts/StreakContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import type { createApiClient } from '@/lib/api'
@@ -62,9 +63,11 @@ vi.mock('@/contexts/AuthContext', () => ({
 function renderSettingsPage() {
   return render(
     <AppProvider>
-      <ToastProvider>
-        <SettingsPage />
-      </ToastProvider>
+      <StreakProvider>
+        <ToastProvider>
+          <SettingsPage />
+        </ToastProvider>
+      </StreakProvider>
     </AppProvider>
   )
 }
@@ -142,10 +145,12 @@ describe('SettingsPage — save settings', () => {
 
     render(
       <AppProvider>
-        <ToastProvider>
-          <SettingsPage />
-          <TestConsumer />
-        </ToastProvider>
+        <StreakProvider>
+          <ToastProvider>
+            <SettingsPage />
+            <TestConsumer />
+          </ToastProvider>
+        </StreakProvider>
       </AppProvider>
     )
 
@@ -729,30 +734,63 @@ describe('SettingsPage — listening streak (issue #165)', () => {
     expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
   })
 
-  // 404 以外（500・ネットワーク断等）は一時障害として扱い、再試行手段を残す（quota と同じ設計）
-  test('Given getListeningStreak returns 500, shows an inline error with a retry button that refetches', async () => {
+  test('Given shared streak refresh fails, hides the section silently without a page-level duplicate retry', async () => {
     const getListeningStreak = vi
       .fn()
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({
-        current_streak_days: 5,
-        today_listened: true,
-        last_listened_day: '2026-07-07',
-      })
+      .mockRejectedValue(new Error('network error'))
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue(mockClientWithStreak(getListeningStreak))
 
     renderSettingsPage()
 
-    await waitFor(() => screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
-    expect(screen.getByText(/聴取ストリークの取得に失敗/)).toBeInTheDocument()
+    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /聴取ストリークを再読み込み/ })).not.toBeInTheDocument()
+  })
+})
 
-    await userEvent.click(screen.getByRole('button', { name: /聴取ストリークを再読み込み/ }))
+describe('SettingsPage — weekly learning goal (ADR-086)', () => {
+  test('loads 3/5/7/10 choices and saves only weekly_goal_episodes', async () => {
+    const updatePreferences = vi.fn().mockResolvedValue({})
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPreferences: vi.fn().mockResolvedValue({
+        default_difficulty: 'toeic_600',
+        default_playback_speed: 1,
+        digest_enabled: true,
+        digest_article_count: 10,
+        weekly_goal_episodes: 5,
+      }),
+      updatePreferences,
+      getGenerationQuota: vi.fn().mockRejectedValue(new Error('not relevant')),
+      getListeningStreak: vi.fn().mockRejectedValue(new Error('not relevant')),
+      getDifficultySuggestion: vi.fn().mockResolvedValue({ has_suggestion: false }),
+    } as unknown as ReturnType<typeof createApiClient>)
 
-    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(2))
+    renderSettingsPage()
+
+    const goalGroup = await screen.findByRole('group', { name: '1週間の目標本数' })
+    for (const goal of [3, 5, 7, 10]) {
+      expect(within(goalGroup).getByRole('radio', { name: `${goal} 本` })).toBeInTheDocument()
+    }
+    expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked()
+    expect(screen.getByText('1 日あたり平均 0.7 本')).toBeInTheDocument()
+
+    await userEvent.click(within(goalGroup).getByRole('radio', { name: '7 本' }))
+
     await waitFor(() => {
-      expect(screen.getByText('5日連続・本日分は聴取済み')).toBeInTheDocument()
+      expect(updatePreferences).toHaveBeenCalledWith({ weekly_goal_episodes: 7 })
     })
+    expect(screen.getByText('1 日あたり平均 1.0 本')).toBeInTheDocument()
+  })
+
+  test('states the exact non-quota contract in a separate learning-goal section', async () => {
+    renderSettingsPage()
+
+    expect(await screen.findByRole('heading', { name: '学習目標' })).toBeInTheDocument()
+    expect(screen.getByText(
+      'この目標は学習ペースの目安です。生成クォータ（新しいエピソードを生成できる月あたりの上限）とは別のもので、目標を超えても・達成できなくても機能は制限されません。達成できなかった週も履歴は残ります',
+    )).toBeInTheDocument()
   })
 })
 
@@ -894,6 +932,7 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
         default_playback_speed: 1.0,
         digest_enabled: true,
         digest_article_count: 10,
+        weekly_goal_episodes: 3,
       }
     })
 

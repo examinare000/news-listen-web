@@ -36,6 +36,11 @@ import type {
   DifficultySuggestion,
   QuizAnswerResponse,
   LearningDashboard,
+  VocabularyItem,
+  VocabularyListResponse,
+  VocabularyTestSessionResponse,
+  VocabularyTestResultItem,
+  VocabularyTestResultResponse,
 } from '@/types/index'
 import { readCookie } from '@/lib/cookie'
 
@@ -262,10 +267,34 @@ export function createApiClient() {
       return request<DifficultySuggestion>('/api/backend/users/me/difficulty-suggestion', { method: 'GET' })
     },
 
-    /** 学習ダッシュボード（ストリーク・エピソード数・習得語彙数・クイズ成績・月別活動・現在の難易度）。
+    /** 学習ダッシュボード（ストリーク・週次目標・実績・エピソード数・語彙・クイズ成績・月別活動・難易度）。
      *  既存シグナルの read-only 集約。常に200・新規ユーザーは全ゼロ/null/空配列（ADR-072 / F4）。 */
     getLearningDashboard() {
       return request<LearningDashboard>('/api/backend/users/me/learning-dashboard', { method: 'GET' })
+    },
+
+    saveVocabulary(podcastId: string, term: string) {
+      return request<VocabularyItem>('/api/backend/vocabulary', {
+        method: 'POST',
+        body: JSON.stringify({ podcast_id: podcastId, term }),
+      })
+    },
+
+    getVocabulary() {
+      return request<VocabularyListResponse>('/api/backend/vocabulary', { method: 'GET' })
+    },
+
+    getVocabularyTestSession() {
+      return request<VocabularyTestSessionResponse>('/api/backend/vocabulary/test-session', {
+        method: 'GET',
+      })
+    },
+
+    submitVocabularyTestResult(results: VocabularyTestResultItem[]) {
+      return request<VocabularyTestResultResponse>('/api/backend/vocabulary/test-result', {
+        method: 'POST',
+        body: JSON.stringify(results),
+      })
     },
 
     updatePreferences(patch: UserPreferencesPatch) {
