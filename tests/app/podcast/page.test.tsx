@@ -365,3 +365,25 @@ describe('PodcastPage — offline download (issue #167)', () => {
     expect(getPodcasts.mock.calls.length).toBeLessThanOrEqual(2)
   })
 })
+
+  describe('生成完了の視覚演出（修正 4）', () => {
+    test('初回ロードでは just-completed クラスが付かない', async () => {
+      // 初期状態で completed の podcast
+      const INITIAL = [{ ...SAMPLE_PODCASTS[0], id: 'p1', status: 'completed' as const }]
+      const getPodcasts = vi.fn().mockResolvedValue({ podcasts: INITIAL })
+      const { createApiClient } = await import('@/lib/api')
+      vi.mocked(createApiClient).mockReturnValue({
+        getPodcasts,
+        getPodcast: vi.fn(),
+      } as unknown as ReturnType<typeof createApiClient>)
+
+      renderPodcastPage()
+      await waitFor(() => {
+        expect(screen.getByTestId('podcast-card-p1')).toBeInTheDocument()
+      })
+
+      // 初回ロードでは completed でも just-completed クラスは付かない
+      const card = screen.getByTestId('podcast-card-p1')
+      expect(card).not.toHaveClass('just-completed')
+    })
+  })

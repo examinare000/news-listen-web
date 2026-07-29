@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { PodcastCard } from '@/components/PodcastCard'
@@ -54,6 +54,9 @@ export default function PodcastPage() {
   const [loading, setLoading] = useState(true)
   const [pollingEnabled, setPollingEnabled] = useState(true)
 
+  const previousPodcastStatusRef = useRef<Map<string, string>>(new Map())
+  const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set())
+
   const fetchPodcasts = useCallback(async () => {
     try {
       const data = await createApiClient().getPodcasts()
@@ -72,6 +75,37 @@ export default function PodcastPage() {
   useEffect(() => {
     fetchPodcasts()
   }, [fetchPodcasts])
+
+  // #12 生成完了の視覚演出（修正 4）: status が generating → completed に変わったカードを検知
+  // WHY: 初回ロードでは何もしない（previousPodcastStatusRef が空）。ポーリング/再取得での更新のみ
+  useEffect(() => {
+    if (podcasts.length === 0) return
+    const isFirstLoad = previousPodcastStatusRef.current.size === 0
+    const newStatusMap = new Map(podcasts.map((p) => [p.id, p.status]))
+    
+    if (!isFirstLoad) {
+      // 生成中→completed へ遷移した id を検知
+      const justCompleted = new Set<string>()
+      podcasts.forEach((p) => {
+        const prevStatus = previousPodcastStatusRef.current.get(p.id)
+        if (prevStatus !== 'completed' && p.status === 'completed') {
+          justCompleted.add(p.id)
+        }
+      })
+      
+      if (justCompleted.size > 0) {
+        setJustCompletedIds(justCompleted)
+        // 1.5 秒後にクリア（animation 0.8s の後始末）
+        const timeoutId = setTimeout(() => {
+          setJustCompletedIds(new Set())
+        }, 1500)
+        return () => clearTimeout(timeoutId)
+      }
+    }
+    
+    // 次回のために今回の status map を保存
+    previousPodcastStatusRef.current = newStatusMap
+  }, [podcasts])
 
   // オフライン保存（issue #167）。一覧取得のたびに各エピソードのキャッシュ有無を確認する。
   const [cachedIds, setCachedIds] = useState<Set<string>>(() => new Set())
@@ -166,6 +200,7 @@ export default function PodcastPage() {
               // オフライン保存（issue #167）: 状態・ハンドラもページ責務として注入する
               cached={cachedIds.has(podcast.id)}
               onDownload={(p) => void handleDownload(p)}
+              justCompleted={justCompletedIds.has(podcast.id)}
             />
           )
         })}

@@ -19,6 +19,7 @@ interface PodcastCardProps {
   // （未指定なら非表示。Context 非依存の純粋コンポーネント方針は他の連続再生ボタンと同じ）。
   cached?: boolean
   onDownload?: (podcast: Podcast) => void
+  justCompleted?: boolean
 }
 
 export function PodcastCard({
@@ -29,13 +30,14 @@ export function PodcastCard({
   onPlayNext,
   onAddToQueue,
   cached = false,
+  justCompleted = false,
   onDownload,
 }: PodcastCardProps) {
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
   return (
     <div
-      className={playing ? 'podcast-card playing' : 'podcast-card'}
+      className={`podcast-card ${playing ? 'playing' : ''} ${justCompleted ? 'just-completed' : ''}`.trim()}
       data-testid={`podcast-card-${podcast.id}`}
     >
       <div className="podcast-card-top">

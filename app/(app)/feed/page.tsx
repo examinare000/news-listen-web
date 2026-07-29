@@ -6,6 +6,7 @@ import { ArticleCard } from '@/components/ArticleCard'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
+import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { Article, DifficultyLevel } from '@/types/index'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
@@ -217,6 +218,8 @@ export default function FeedPage() {
   }
 
   async function handleStar(id: string, difficulty?: DifficultyLevel) {
+    prepareSfx()
+    playSfx('swipe' as const)
     setBusyIds((prev) => new Set(prev).add(id))
     try {
       // difficulty 未指定時は明示的な undefined を渡さず、従来どおり id のみで呼ぶ

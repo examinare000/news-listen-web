@@ -577,6 +577,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   background: var(--star);
   border-color: var(--star);
   color: var(--on-star);
+  animation: star-stamp 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .action-btn.dismiss:hover {
@@ -628,6 +629,10 @@ html[data-theme="light"] body::before { opacity: .5; }
 @keyframes playing-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .4; }
+}
+
+.podcast-card.just-completed {
+  animation: podcast-complete-glow 0.8s ease-out both;
 }
 
 .podcast-card-top {
@@ -1934,8 +1939,166 @@ button.feed-tab {
   box-shadow: 0 -4px 12px rgba(0,0,0,.14);
 }
 
+.preference-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-mid);
+  border-radius: 11px;
+  background: var(--bg-overlay);
+  cursor: pointer;
+}
+
+.preference-toggle.on {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.preference-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  transform: translateX(0);
+  transition: transform .18s ease-out;
+}
+
+.preference-toggle.on .preference-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.preference-toggle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
 mark {
   color: inherit;
   background: transparent;
   border-bottom: 2px solid var(--amber);
+}
+
+.quiz-correct-feedback {
+  display: inline-flex;
+  align-items: center;
+  color: var(--green);
+}
+
+.quiz-correct-mark path {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: quiz-check-draw .3s ease-out forwards;
+}
+
+@keyframes quiz-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.quiz-score-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-top: 14px;
+  border-top: 3px double var(--border-mid);
+}
+
+.quiz-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display), serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.quiz-score-label {
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.quiz-perfect-stamp {
+  padding: 3px 10px 5px;
+  border: 2px solid var(--amber);
+  color: var(--accent-text);
+  font-family: var(--font-display), serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  transform: rotate(-4deg);
+  animation: perfect-stamp-in .18s ease-out both;
+}
+
+@keyframes perfect-stamp-in {
+  from { opacity: 0; transform: rotate(-4deg) scale(1.25); }
+  to { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+
+/* ADR-088: every existing and new motion effect becomes static when requested.
+ * The skeleton needs an explicit rule because its animation declaration is !important. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+
+  .skeleton {
+    animation: none !important;
+    background: var(--bg-overlay);
+  }
+
+  .quiz-correct-mark path {
+    stroke-dashoffset: 0;
+  }
+
+  /* アニメーションを無効化（stamp-star など） */
+  .action-btn.star.active {
+    animation: none;
+  }
+
+  .podcast-card.just-completed {
+    animation: none;
+  }
+}
+
+/* ── Star Stamp Animation ──────────────────────────────────────
+   インクスタンプ風アニメーション：記事スター確定時に Scale + 回転 */
+@keyframes star-stamp {
+  from {
+    transform: scale(0.8) rotate(-4deg);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1) rotate(-4deg);
+    opacity: 1;
+  }
+}
+
+/* ── Podcast Completion Glow ────────────────────────────────────
+   生成完了時の細罫ハイライト（朱色が一瞬灯る） */
+@keyframes podcast-complete-glow {
+  0% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--amber);
+    box-shadow: 0 0 8px rgba(224, 138, 110, 0.4);
+  }
+  100% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
 }

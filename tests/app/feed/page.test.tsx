@@ -6,6 +6,10 @@ import FeedPage from '@/app/(app)/feed/page'
 import { AppProvider } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
 
+const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx: vi.fn() }))
+
+vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx }))
+
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     getFeed: vi.fn(),
@@ -137,6 +141,9 @@ describe('FeedPage — Star', () => {
     // ArticleCard の Star ボタンは aria-label「スターする」(未スター時)
     await userEvent.click(screen.getAllByRole('button', { name: 'スターする' })[0])
 
+    // WHY: 即時報酬。Sound/Visual 演出は fetch 結果を待たずクリック同期で実行
+    expect(prepareSfx).toHaveBeenCalled()
+    expect(playSfx).toHaveBeenCalledWith('swipe')
     await waitFor(() => {
       expect(screen.getByText(/Star しました/)).toBeInTheDocument()
     })

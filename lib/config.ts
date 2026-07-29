@@ -18,6 +18,9 @@ export const KEY_THEME = 'theme'
 /** Time format preference for article dates ('absolute' | 'relative') */
 export const KEY_TIME_FORMAT = 'time_format'
 
+/** Device-local sound-effects preference (boolean, defaults to true) */
+export const KEY_SFX_ENABLED = 'sfx_enabled'
+
 /** Build a per-podcast position key */
 export function podcastPositionKey(podcastId: string): string {
   return `${KEY_PODCAST_POSITION_PREFIX}:${podcastId}`
