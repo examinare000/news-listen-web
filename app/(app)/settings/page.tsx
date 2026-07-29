@@ -207,7 +207,7 @@ export default function SettingsPage() {
         {/* セクション 1: 表示設定 */}
         <section className="settings-section">
           <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+            <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
               📄
             </div>
             <h2 className="settings-section-title">表示設定</h2>
@@ -353,7 +353,7 @@ export default function SettingsPage() {
         {suggestion && (
           <section className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+              <div className="settings-section-icon" style={{ background: 'var(--amber-dim)' }} aria-hidden="true">
                 ✨
               </div>
               <h2 className="settings-section-title">おすすめ難易度</h2>

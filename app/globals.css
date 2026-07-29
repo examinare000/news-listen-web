@@ -506,8 +506,14 @@ html[data-theme="light"] body::before { opacity: .5; }
 .score-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--amber), #F5C842);
-  transition: width .6s cubic-bezier(.22,1,.36,1);
+  background: var(--amber);
+  transform-origin: left center;
+  animation: score-grow .6s ease-out both;
+}
+
+@keyframes score-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .score-label {
@@ -1877,4 +1883,41 @@ button.feed-tab {
 .signup-card {
   width: 440px;
   max-width: 100%;
+}
+
+/* ── Engagement UX ─────────────────────────────────────────────
+ * Editorial interactions stay tactile but restrained: paper/ink surfaces,
+ * one vermilion accent, and gold reserved for the Star action. */
+.article-card.selecting {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.article-checkbox {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.article-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--star);
+  cursor: pointer;
+}
+
+.bulk-star-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--bg-raised);
+  border-top: 3px double var(--border-mid);
+  box-shadow: 0 -4px 12px rgba(0,0,0,.14);
 }

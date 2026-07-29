@@ -38,7 +38,7 @@ function SkeletonCard() {
     <div
       data-testid="skeleton-card"
       className="skeleton"
-      style={{ height: 150, borderRadius: 'var(--radius-md)' }}
+      style={{ height: 150, borderRadius: 'var(--radius)' }}
     />
   )
 }

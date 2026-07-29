@@ -153,7 +153,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
         <PageHeader showBackLink />
         <div className="content-area content-narrow">
           {/* 読み込み中テキストは維持しつつ .skeleton のシマーで視覚表現する */}
-          <div className="skeleton" style={{ height: 150, borderRadius: 'var(--radius-md)' }}>
+          <div className="skeleton" style={{ height: 150, borderRadius: 'var(--radius)' }}>
             <span className="sr-only">読み込み中...</span>
           </div>
         </div>

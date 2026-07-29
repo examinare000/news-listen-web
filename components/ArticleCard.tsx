@@ -82,8 +82,14 @@ export function ArticleCard({
     ? formatRelativeTime(new Date(article.published_at), new Date())
     : formatDate(article.published_at)
 
+  const cardClassName = [
+    'article-card',
+    starred ? 'starred' : '',
+    selectionMode && !readOnly ? 'selecting' : '',
+  ].filter(Boolean).join(' ')
+
   return (
-    <div className={starred ? 'article-card starred' : 'article-card'}>
+    <div className={cardClassName}>
       {/* WHY: Star タブは閲覧専用（readOnly）。selectionMode がタブ切替のリセット漏れ等で
           true のまま持ち越されても、チェックボックス自体をここでも二重にゲートし、
           一括star操作の起点にならないようにする。 */}
