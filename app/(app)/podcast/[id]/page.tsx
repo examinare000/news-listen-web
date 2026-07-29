@@ -104,6 +104,20 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({})
   const [quizResult, setQuizResult] = useState<QuizAnswerResponse | null>(null)
   const [submittingQuiz, setSubmittingQuiz] = useState(false)
+  const [registeredTerms, setRegisteredTerms] = useState<Set<string>>(() => new Set())
+
+  useEffect(() => {
+    if (!podcast) return
+    const client = createApiClient()
+    client.getVocabulary()
+      .then((vocab) => {
+        setRegisteredTerms(new Set(vocab.vocabulary.map((item) => item.term)))
+      })
+      .catch(() => {
+        // best-effort: 失敗時は現状動作（空のセットのまま）
+      })
+  }, [podcast])
+  const [savingTerms, setSavingTerms] = useState<Set<string>>(() => new Set())
 
   function handleSelectQuizAnswer(questionIndex: number, optionIndex: number) {
     setQuizAnswers((prev) => ({ ...prev, [questionIndex]: optionIndex }))
@@ -126,6 +140,23 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
       showToast('採点に失敗しました', 'error')
     } finally {
       setSubmittingQuiz(false)
+    }
+  }
+
+  async function handleSaveVocabulary(term: string) {
+    if (!podcast) return
+    setSavingTerms((current) => new Set(current).add(term))
+    try {
+      await createApiClient().saveVocabulary(podcast.id, term)
+      setRegisteredTerms((current) => new Set(current).add(term))
+    } catch {
+      showToast('語彙の登録に失敗しました', 'error')
+    } finally {
+      setSavingTerms((current) => {
+        const next = new Set(current)
+        next.delete(term)
+        return next
+      })
     }
   }
 
@@ -214,11 +245,26 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
               語彙
             </h2>
             {podcast.vocabulary.map((entry, index) => (
-              <div key={`${entry.term}-${index}`} style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  {entry.meaning_ja}
+              <div key={`${entry.term}-${index}`} className="vocabulary-glossary-item">
+                <div className="vocabulary-glossary-copy">
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    {entry.meaning_ja}
+                  </div>
                 </div>
+                {registeredTerms.has(entry.term) ? (
+                  <span className="vocabulary-registered">登録済み</span>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-ghost vocabulary-save"
+                    aria-label={`${entry.term} を習得`}
+                    disabled={savingTerms.has(entry.term)}
+                    onClick={() => void handleSaveVocabulary(entry.term)}
+                  >
+                    {savingTerms.has(entry.term) ? '登録中' : '習得'}
+                  </button>
+                )}
                 <p
                   style={{
                     fontSize: 13,
