@@ -9,6 +9,7 @@ import { createApiClient, ApiError } from '@/lib/api'
 import { useStartPodcast } from '@/hooks/useStartPodcast'
 import { isCached, downloadAudio } from '@/lib/audioCache'
 import { highlightTerms } from '@/lib/highlightTerms'
+import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { Podcast, QuizAnswerResponse } from '@/types/index'
 
 interface PodcastDetailPageProps {
@@ -114,11 +115,13 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
   async function handleSubmitQuiz() {
     if (!podcast?.quiz || !quizAllAnswered) return
+    prepareSfx()
     setSubmittingQuiz(true)
     try {
       const answers = podcast.quiz.map((_, index) => quizAnswers[index])
       const result = await createApiClient().submitQuizAnswers(podcast.id, answers)
       setQuizResult(result)
+      playSfx(result.correct_count / result.total >= 0.5 ? 'correct' : 'incorrect')
     } catch {
       showToast('採点に失敗しました', 'error')
     } finally {
@@ -153,7 +156,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
         <PageHeader showBackLink />
         <div className="content-area content-narrow">
           {/* 読み込み中テキストは維持しつつ .skeleton のシマーで視覚表現する */}
-          <div className="skeleton" style={{ height: 150, borderRadius: 'var(--radius-md)' }}>
+          <div className="skeleton" style={{ height: 150, borderRadius: 'var(--radius)' }}>
             <span className="sr-only">読み込み中...</span>
           </div>
         </div>
@@ -277,7 +280,19 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                         />
                         {option}
                         {questionResult && isCorrectOption && (
-                          <span className="badge badge-completed">正解</span>
+                          <span className="quiz-correct-feedback">
+                            <svg
+                              className="quiz-correct-mark"
+                              width="18"
+                              height="18"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              aria-hidden="true"
+                            >
+                              <path d="M4 10.5l3.5 3.5L16 5.5" />
+                            </svg>
+                            <span className="sr-only">正解</span>
+                          </span>
                         )}
                         {isWrongSelection && <span className="badge badge-failed">あなたの回答</span>}
                       </label>
@@ -288,9 +303,15 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
             })}
 
             {quizResult ? (
-              <p style={{ fontSize: 14, fontWeight: 600 }}>
-                スコア: {quizResult.correct_count} / {quizResult.total}
-              </p>
+              <div className="quiz-score-card" aria-live="polite">
+                <p className="quiz-score">
+                  <span className="quiz-score-label">スコア</span>
+                  {quizResult.correct_count} / {quizResult.total}
+                </p>
+                {quizResult.correct_count === quizResult.total && (
+                  <div className="quiz-perfect-stamp">Perfect</div>
+                )}
+              </div>
             ) : (
               <button
                 type="button"

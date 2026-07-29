@@ -1,37 +1,47 @@
 /*
  * docs/design/app-ui.html の <style> ブロック（L17〜1363）+ @keyframes spin（L2001〜2003）の全量移植。
- * デザイン正本からの意図的な差分は以下の 3 点のみ（docs/adr/003-web-pure-css-design-tokens.md）:
+ * デザイン正本からの意図的な差分（docs/adr/003-web-pure-css-design-tokens.md）:
  *   1. font-family リテラル → next/font が注入する CSS 変数（--font-display / --font-body / --font-mono）
  *   2. .app-shell の grid-template-rows: 1fr var(--player-h) → 1fr auto
  *      WHY: プレイヤーバーは currentPodcast が null の間描画されないため、固定高だと空行が残る
  *   3. .player-bar に height: var(--player-h) を追加（2 の変更後も描画時の高さを担保するため）
+ *   4. UX brief（2026-07-29）に従い accent を #A8402E、Star を #C8902E へ調停
+ *   5. ADR-088 に従い全アニメーションへ prefers-reduced-motion の静的表示を追加
  */
 /* ── Reset & Tokens ──────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg-base:     #0B0A0E;
-  --bg-raised:   #141219;
-  --bg-surface:  #1D1B24;
-  --bg-overlay:  #252330;
-  --border:      rgba(255,255,255,.07);
-  --border-mid:  rgba(255,255,255,.12);
+  --bg-base:     #14130F;
+  --bg-raised:   #1E1C17;
+  --bg-surface:  #29231E;
+  --bg-overlay:  #332C25;
+  --border:      rgba(245,242,236,.10);
+  --border-mid:  rgba(245,242,236,.18);
 
-  --text-primary:   #F0EDE8;
-  --text-secondary: #A09CA8;
-  --text-muted:     #5E5A68;
+  --text-primary:   #F5F2EC;
+  --text-secondary: #C8C0B5;
+  --text-muted:     #ABA496;
 
-  --amber:      #F0A030;
-  --amber-glow: rgba(240,160,48,.18);
-  --amber-dim:  rgba(240,160,48,.08);
-  --teal:       #38BEC9;
-  --teal-glow:  rgba(56,190,201,.15);
-  --green:      #56C68A;
-  --red:        #E05C5C;
-  --purple:     #9B7CF8;
+  /* Existing variable names stay stable; their values now express the Editorial accent. */
+  --amber:      #E08A6E;
+  --accent-text:#E08A6E;
+  --amber-glow: rgba(224,138,110,.18);
+  --amber-dim:  rgba(224,138,110,.14);
+  --on-accent:  #14130F;
+  --star:       #E0B65C;
+  --star-dim:   rgba(224,182,92,.14);
+  --on-star:    #14130F;
+  --teal:       #C8C0B5;
+  --teal-glow:  rgba(245,242,236,.08);
+  --green:      #76A37D;
+  --green-dim:  rgba(118,163,125,.14);
+  --red:        #D86C62;
+  --red-dim:    rgba(216,108,98,.14);
+  --purple:     #C8C0B5;
 
-  --bg-glass-header: rgba(11,10,14,.88);
-  --bg-glass-player: rgba(20,18,25,.96);
+  --bg-glass-header: rgba(23,20,17,.92);
+  --bg-glass-player: rgba(32,28,24,.96);
 
   --player-h:  72px;
   --sidebar-w: 220px;
@@ -42,7 +52,7 @@
 /* ── Light Theme ─────────────────────────────────────────────── */
 html[data-theme="light"] {
   --bg-base:     #F5F2EC;
-  --bg-raised:   #FFFFFF;
+  --bg-raised:   #FFFDFA;
   --bg-surface:  #EDE9E2;
   --bg-overlay:  #E2DDD5;
   --border:      rgba(0,0,0,.08);
@@ -52,14 +62,21 @@ html[data-theme="light"] {
   --text-secondary: #5C5750;
   --text-muted:     #A09890;
 
-  --amber:      #C87A10;
-  --amber-glow: rgba(200,122,16,.2);
-  --amber-dim:  rgba(200,122,16,.1);
-  --teal:       #1A96A0;
-  --teal-glow:  rgba(26,150,160,.15);
-  --green:      #2A9055;
-  --red:        #C43030;
-  --purple:     #7045E0;
+  --amber:      #A8402E;
+  --accent-text:#A8402E;
+  --amber-glow: rgba(168,64,46,.16);
+  --amber-dim:  rgba(168,64,46,.10);
+  --on-accent:  #F5F2EC;
+  --star:       #C8902E;
+  --star-dim:   rgba(200,144,46,.12);
+  --on-star:    #1C1914;
+  --teal:       #5C5750;
+  --teal-glow:  rgba(28,25,20,.06);
+  --green:      #2A7250;
+  --green-dim:  rgba(42,114,80,.10);
+  --red:        #B13A32;
+  --red-dim:    rgba(177,58,50,.10);
+  --purple:     #5C5750;
 
   --bg-glass-header: rgba(245,242,236,.92);
   --bg-glass-player: rgba(255,255,255,.96);
@@ -141,7 +158,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   flex-shrink: 0;
 }
 
-.logo-icon svg { color: var(--bg-base); }
+.logo-icon svg { color: var(--on-accent); }
 
 .logo-text {
   font-family: var(--font-display), serif;
@@ -152,7 +169,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 }
 
 .logo-text span {
-  color: var(--amber);
+  color: var(--accent-text);
 }
 
 .nav-section-label {
@@ -189,7 +206,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 
 .nav-item.active {
   background: var(--amber-dim);
-  color: var(--amber);
+  color: var(--accent-text);
 }
 
 .nav-item.active::before {
@@ -213,7 +230,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 .nav-badge {
   margin-left: auto;
   background: var(--amber);
-  color: var(--bg-base);
+  color: var(--on-accent);
   font-size: 10px;
   font-weight: 700;
   padding: 1px 6px;
@@ -269,7 +286,6 @@ html[data-theme="light"] body::before { opacity: .5; }
   width: 7px; height: 7px;
   border-radius: 50%;
   background: var(--green);
-  box-shadow: 0 0 6px var(--green);
   animation: pulse-dot 2s ease infinite;
 }
 
@@ -340,9 +356,9 @@ html[data-theme="light"] body::before { opacity: .5; }
 
 .btn-primary {
   background: var(--amber);
-  color: var(--bg-base);
+  color: var(--on-accent);
 }
-.btn-primary:hover { background: #E8921A; transform: translateY(-1px); box-shadow: 0 4px 16px var(--amber-glow); }
+.btn-primary:hover { background: var(--amber); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.18); }
 
 .btn-ghost {
   background: transparent;
@@ -370,7 +386,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   gap: 4px;
   padding: 0 32px;
   border-bottom: 1px solid var(--border);
-  background: rgba(11,10,14,.88);
+  background: var(--bg-glass-header);
   backdrop-filter: blur(16px);
 }
 
@@ -387,7 +403,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 }
 
 .feed-tab.active {
-  color: var(--amber);
+  color: var(--accent-text);
   border-bottom-color: var(--amber);
 }
 
@@ -439,7 +455,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 
 .article-card:hover::before { background: var(--amber); }
 
-.article-card.starred::before { background: var(--amber); }
+.article-card.starred::before { background: var(--star); }
 
 .article-rank {
   font-family: var(--font-mono), monospace;
@@ -486,7 +502,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   text-decoration: none;
   transition: color .15s;
 }
-.article-title a:hover { color: var(--amber); }
+.article-title a:hover { color: var(--accent-text); }
 
 .score-row {
   display: flex;
@@ -506,8 +522,14 @@ html[data-theme="light"] body::before { opacity: .5; }
 .score-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: linear-gradient(90deg, var(--amber), #F5C842);
-  transition: width .6s cubic-bezier(.22,1,.36,1);
+  background: var(--amber);
+  transform-origin: left center;
+  animation: score-grow .6s ease-out both;
+}
+
+@keyframes score-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }
 
 .score-label {
@@ -546,19 +568,20 @@ html[data-theme="light"] body::before { opacity: .5; }
 .action-btn:hover { transform: scale(1.08); }
 
 .action-btn.star:hover {
-  background: var(--amber-dim);
-  border-color: var(--amber);
-  color: var(--amber);
+  background: var(--star-dim);
+  border-color: var(--star);
+  color: var(--star);
 }
 
 .action-btn.star.active {
-  background: var(--amber);
-  border-color: var(--amber);
-  color: var(--bg-base);
+  background: var(--star);
+  border-color: var(--star);
+  color: var(--on-star);
+  animation: star-stamp 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 
 .action-btn.dismiss:hover {
-  background: rgba(224,92,92,.1);
+  background: var(--red-dim);
   border-color: var(--red);
   color: var(--red);
 }
@@ -585,7 +608,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   background: var(--bg-surface);
   border-color: var(--border-mid);
   transform: translateY(-2px);
-  box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  box-shadow: 0 4px 12px rgba(0,0,0,.2);
 }
 
 .podcast-card.playing {
@@ -606,6 +629,10 @@ html[data-theme="light"] body::before { opacity: .5; }
 @keyframes playing-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: .4; }
+}
+
+.podcast-card.just-completed {
+  animation: podcast-complete-glow 0.8s ease-out both;
 }
 
 .podcast-card-top {
@@ -633,13 +660,13 @@ html[data-theme="light"] body::before { opacity: .5; }
   text-transform: uppercase;
 }
 
-.badge-processing { background: rgba(56,190,201,.12); color: var(--teal); border: 1px solid rgba(56,190,201,.2); }
-.badge-completed  { background: rgba(86,198,138,.12); color: var(--green); border: 1px solid rgba(86,198,138,.2); }
-.badge-failed     { background: rgba(224,92,92,.12); color: var(--red); border: 1px solid rgba(224,92,92,.2); }
+.badge-processing { background: var(--teal-glow); color: var(--teal); border: 1px solid var(--border-mid); }
+.badge-completed  { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+.badge-failed     { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
 
-.badge-easy   { background: rgba(86,198,138,.1); color: var(--green); }
-.badge-medium { background: rgba(240,160,48,.1); color: var(--amber); }
-.badge-hard   { background: rgba(155,124,248,.1); color: var(--purple); }
+.badge-easy   { background: var(--green-dim); color: var(--green); }
+.badge-medium { background: var(--amber-dim); color: var(--accent-text); }
+.badge-hard   { background: var(--teal-glow); color: var(--purple); }
 
 .podcast-play-btn {
   width: 40px; height: 40px;
@@ -656,8 +683,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 .podcast-play-btn:hover, .podcast-card.playing .podcast-play-btn {
   background: var(--amber);
   border-color: var(--amber);
-  color: var(--bg-base);
-  box-shadow: 0 0 20px var(--amber-glow);
+  color: var(--on-accent);
 }
 
 .podcast-intro {
@@ -807,7 +833,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 }
 
 .sub-delete:hover {
-  background: rgba(224,92,92,.1);
+  background: var(--red-dim);
   border-color: var(--red);
   color: var(--red);
 }
@@ -957,7 +983,6 @@ html[data-theme="light"] body::before { opacity: .5; }
   border-radius: 50%;
   background: var(--amber);
   cursor: pointer;
-  box-shadow: 0 0 8px var(--amber-glow);
   transition: transform .1s;
 }
 
@@ -966,7 +991,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 .speed-value {
   font-family: var(--font-mono), monospace;
   font-size: 12px;
-  color: var(--amber);
+  color: var(--accent-text);
   min-width: 30px;
 }
 
@@ -992,7 +1017,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   position: absolute;
   top: 0; left: 0; right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--amber) 30%, #F5C842 70%, transparent);
+  background: var(--amber);
   opacity: .6;
 }
 
@@ -1092,7 +1117,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   width: 40px; height: 40px;
   border-radius: 50%;
   background: var(--amber);
-  color: var(--bg-base);
+  color: var(--on-accent);
   border: none;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -1101,7 +1126,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 
 .ctrl-btn-main:hover {
   transform: scale(1.08);
-  box-shadow: 0 0 24px var(--amber-glow);
+  box-shadow: 0 2px 6px rgba(0,0,0,.18);
 }
 
 .player-progress {
@@ -1131,7 +1156,7 @@ html[data-theme="light"] body::before { opacity: .5; }
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--amber), #F5C842);
+  background: var(--amber);
   border-radius: 2px;
   width: 38%;
   position: relative;
@@ -1144,7 +1169,6 @@ html[data-theme="light"] body::before { opacity: .5; }
   width: 10px; height: 10px;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 8px var(--amber-glow);
 }
 
 /* Player Extra */
@@ -1162,7 +1186,7 @@ html[data-theme="light"] body::before { opacity: .5; }
   border: 1px solid var(--border);
   font-family: var(--font-mono), monospace;
   font-size: 11px;
-  color: var(--amber);
+  color: var(--accent-text);
   cursor: pointer;
   transition: all .15s;
   user-select: none;
@@ -1210,8 +1234,8 @@ html[data-theme="light"] body::before { opacity: .5; }
   flex-shrink: 0;
 }
 
-.toast-success .toast-icon { background: rgba(86,198,138,.2); color: var(--green); }
-.toast-info    .toast-icon { background: var(--amber-dim); color: var(--amber); }
+.toast-success .toast-icon { background: var(--green-dim); color: var(--green); }
+.toast-info    .toast-icon { background: var(--amber-dim); color: var(--accent-text); }
 
 /* ── Empty States ────────────────────────────────────────────── */
 .empty-state {
@@ -1423,7 +1447,7 @@ html[data-theme="light"] .theme-name-light { display: inline; }
 /* ── Toast error 配色 ─────────────────────────────────────────
    デザイン正本は success/info のみ定義（L1186-1187）。error は同じ作法
    （色 20% の背景 + 本色の文字）で --red を割り当てる */
-.toast-error .toast-icon { background: rgba(224,92,92,.2); color: var(--red); }
+.toast-error .toast-icon { background: var(--red-dim); color: var(--red); }
 
 /* ── range 入力（シークバー・音量） ──────────────────────────
    .progress-track は div 前提の装飾のため、input[type=range] に使う場合の
@@ -1472,7 +1496,6 @@ input[type="range"].volume-slider::-webkit-slider-thumb {
   border: none;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 8px var(--amber-glow);
 }
 
 input[type="range"].progress-track::-moz-range-track,
@@ -1498,7 +1521,6 @@ input[type="range"].volume-slider::-moz-range-thumb {
   border: none;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 8px var(--amber-glow);
 }
 
 /* ── button 要素で使う .feed-tab ──────────────────────────────
@@ -1754,7 +1776,7 @@ button.feed-tab {
   position: relative;
   aspect-ratio: 4 / 5;
   border-radius: 20px;
-  background: linear-gradient(160deg, var(--amber-dim), var(--bg-surface) 60%);
+  background: var(--bg-surface);
   border: 1px solid var(--border-mid);
   display: flex;
   align-items: center;
@@ -1766,7 +1788,8 @@ button.feed-tab {
   content: '';
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 30% 20%, var(--amber-glow), transparent 60%);
+  background: var(--amber-dim);
+  opacity: .35;
 }
 
 .lp-hero-waveform {
@@ -1819,7 +1842,7 @@ button.feed-tab {
   display: block;
   font-family: var(--font-mono), monospace;
   font-size: 12px;
-  color: var(--amber);
+  color: var(--accent-text);
   margin-bottom: 16px;
 }
 
@@ -1877,4 +1900,205 @@ button.feed-tab {
 .signup-card {
   width: 440px;
   max-width: 100%;
+}
+
+/* ── Engagement UX ─────────────────────────────────────────────
+ * Editorial interactions stay tactile but restrained: paper/ink surfaces,
+ * one vermilion accent, and gold reserved for the Star action. */
+.article-card.selecting {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.article-checkbox {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.article-checkbox input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--star);
+  cursor: pointer;
+}
+
+.bulk-star-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--bg-raised);
+  border-top: 3px double var(--border-mid);
+  box-shadow: 0 -4px 12px rgba(0,0,0,.14);
+}
+
+.preference-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--border-mid);
+  border-radius: 11px;
+  background: var(--bg-overlay);
+  cursor: pointer;
+}
+
+.preference-toggle.on {
+  background: var(--amber);
+  border-color: var(--amber);
+}
+
+.preference-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  transform: translateX(0);
+  transition: transform .18s ease-out;
+}
+
+.preference-toggle.on .preference-toggle-thumb {
+  transform: translateX(18px);
+}
+
+.preference-toggle:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+mark {
+  color: inherit;
+  background: transparent;
+  border-bottom: 2px solid var(--amber);
+}
+
+.quiz-correct-feedback {
+  display: inline-flex;
+  align-items: center;
+  color: var(--green);
+}
+
+.quiz-correct-mark path {
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 24;
+  stroke-dashoffset: 24;
+  animation: quiz-check-draw .3s ease-out forwards;
+}
+
+@keyframes quiz-check-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+.quiz-score-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-top: 14px;
+  border-top: 3px double var(--border-mid);
+}
+
+.quiz-score {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-display), serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.quiz-score-label {
+  font-family: var(--font-body), sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.quiz-perfect-stamp {
+  padding: 3px 10px 5px;
+  border: 2px solid var(--amber);
+  color: var(--accent-text);
+  font-family: var(--font-display), serif;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  transform: rotate(-4deg);
+  animation: perfect-stamp-in .18s ease-out both;
+}
+
+@keyframes perfect-stamp-in {
+  from { opacity: 0; transform: rotate(-4deg) scale(1.25); }
+  to { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+
+/* ADR-088: every existing and new motion effect becomes static when requested.
+ * The skeleton needs an explicit rule because its animation declaration is !important. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+
+  .skeleton {
+    animation: none !important;
+    background: var(--bg-overlay);
+  }
+
+  .quiz-correct-mark path {
+    stroke-dashoffset: 0;
+  }
+
+  /* アニメーションを無効化（stamp-star など） */
+  .action-btn.star.active {
+    animation: none;
+  }
+
+  .podcast-card.just-completed {
+    animation: none;
+  }
+}
+
+/* ── Star Stamp Animation ──────────────────────────────────────
+   インクスタンプ風アニメーション：記事スター確定時に Scale + 回転 */
+@keyframes star-stamp {
+  from {
+    transform: scale(0.8) rotate(-4deg);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1) rotate(-4deg);
+    opacity: 1;
+  }
+}
+
+/* ── Podcast Completion Glow ────────────────────────────────────
+   生成完了時の細罫ハイライト（朱色が一瞬灯る） */
+@keyframes podcast-complete-glow {
+  0% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--amber);
+    box-shadow: 0 0 8px rgba(224, 138, 110, 0.4);
+  }
+  100% {
+    border-color: var(--border);
+    box-shadow: none;
+  }
 }

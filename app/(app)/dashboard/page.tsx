@@ -49,9 +49,8 @@ export default function DashboardPage() {
     return (
       <section className="settings-section">
         <div className="settings-section-header">
-          {/* WHY rgba直書き: globals.css に --purple はあるが --purple-dim の定義はないため、
-              既存の badge-hard（.1 alpha の同系色）に倣い、存在しない変数を参照せず直値で揃える */}
-          <div className="settings-section-icon" style={{ background: 'rgba(155,124,248,.12)' }} aria-hidden="true">
+          {/* WHY teal-glow トークン: Editorial 整合のため青グレー背景を統一 */}
+          <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
             📝
           </div>
           <h2 className="settings-section-title">クイズ成績の推移</h2>

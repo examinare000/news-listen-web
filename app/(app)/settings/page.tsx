@@ -6,7 +6,7 @@ import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
 import { createApiClient, ApiError } from '@/lib/api'
-import { KEY_DEFAULT_PLAYBACK_SPEED } from '@/lib/config'
+import { KEY_DEFAULT_PLAYBACK_SPEED, KEY_SFX_ENABLED } from '@/lib/config'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
@@ -31,6 +31,9 @@ export default function SettingsPage() {
   const { showToast } = useToast()
 
   const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
+  // WHY: 効果音は端末の利用環境に依存する好みなので、サーバーのユーザー設定や
+  // 消去分類を増やさず、この端末の localStorage だけに保存する（ADR-088）。
+  const [sfxEnabled, setSfxEnabled] = useLocalStorage<boolean>(KEY_SFX_ENABLED, true)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
   const [preferencesLoadError, setPreferencesLoadError] = useState(false)
@@ -207,7 +210,7 @@ export default function SettingsPage() {
         {/* セクション 1: 表示設定 */}
         <section className="settings-section">
           <div className="settings-section-header">
-            <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+            <div className="settings-section-icon" style={{ background: 'var(--teal-glow)' }} aria-hidden="true">
               📄
             </div>
             <h2 className="settings-section-title">表示設定</h2>
@@ -229,6 +232,23 @@ export default function SettingsPage() {
               <option value="absolute">絶対表記（M/D HH:MM）</option>
               <option value="relative">相対表記（3時間前）</option>
             </select>
+          </div>
+
+          <div className="settings-row">
+            <div>
+              <div className="settings-row-label">効果音</div>
+              <div className="settings-row-desc">クイズの採点や Star 確定時の控えめな操作音</div>
+            </div>
+            <button
+              type="button"
+              className={sfxEnabled ? 'preference-toggle on' : 'preference-toggle'}
+              role="switch"
+              aria-label="効果音"
+              aria-checked={sfxEnabled}
+              onClick={() => setSfxEnabled((enabled) => !enabled)}
+            >
+              <span className="preference-toggle-thumb" aria-hidden="true" />
+            </button>
           </div>
         </section>
 
@@ -353,7 +373,7 @@ export default function SettingsPage() {
         {suggestion && (
           <section className="settings-section">
             <div className="settings-section-header">
-              <div className="settings-section-icon" style={{ background: 'var(--blue-dim)' }} aria-hidden="true">
+              <div className="settings-section-icon" style={{ background: 'var(--amber-dim)' }} aria-hidden="true">
                 ✨
               </div>
               <h2 className="settings-section-title">おすすめ難易度</h2>

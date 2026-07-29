@@ -109,6 +109,18 @@ describe('SettingsPage — display', () => {
 // Settings 画面 — 設定保存
 // ==========================================================
 describe('SettingsPage — save settings', () => {
+  test('Sound effects default on and can be disabled for this device', async () => {
+    renderSettingsPage()
+
+    const soundToggle = screen.getByRole('switch', { name: '効果音' })
+    expect(soundToggle).toHaveAttribute('aria-checked', 'true')
+
+    await userEvent.click(soundToggle)
+
+    expect(soundToggle).toHaveAttribute('aria-checked', 'false')
+    expect(localStorage.getItem('sfx_enabled')).toBe('false')
+  })
+
   test('Given speed changed, updates localStorage', async () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
@@ -1158,4 +1170,3 @@ describe('SettingsPage — generation quota with missing monthly (issue #82 / AD
     expect(screen.getByText(/50 \/ 100 回/)).toBeInTheDocument()
   })
 })
-

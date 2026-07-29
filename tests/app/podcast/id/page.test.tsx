@@ -9,6 +9,10 @@ import { ToastProvider } from '@/components/ui/Toast'
 import type { MockAudio } from '../../../helpers/mockAudio'
 import { setupMockAudio } from '../../../helpers/mockAudio'
 
+const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx: vi.fn() }))
+
+vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx }))
+
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     getPodcast: vi.fn(),
@@ -493,6 +497,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'In small startups only' })) // question 1 → index 0
     await userEvent.click(screen.getByRole('button', { name: '採点する' }))
 
+    expect(prepareSfx).toHaveBeenCalled()
     await waitFor(() => {
       expect(submitQuizAnswers).toHaveBeenCalledWith('p1', [1, 0])
     })
@@ -522,6 +527,40 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
     expect(screen.getAllByText('正解').length).toBeGreaterThan(0)
     // 不正解だった設問では、選択したものにマークが付く
     expect(screen.getByText('あなたの回答')).toBeInTheDocument()
+    // WHY: 修正 5。正答率 50% (1/2) >= 0.5 のため 'correct' 音を再生
+    expect(playSfx).toHaveBeenCalledWith('correct')
+  })
+
+  test('Given every answer is correct, shows a restrained Perfect stamp and correct feedback', async () => {
+    const perfectResult = {
+      correct_count: 2,
+      total: 2,
+      correct_rate: 1,
+      results: [
+        { question_index: 0, selected_index: 1, correct_index: 1, is_correct: true },
+        { question_index: 1, selected_index: 1, correct_index: 1, is_correct: true },
+      ],
+    }
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
+      submitQuizAnswers: vi.fn().mockResolvedValue(perfectResult),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    const { container } = renderDetailPage()
+    await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
+
+    await userEvent.click(
+      screen.getByRole('radio', { name: 'It has revolutionized application deployment' })
+    )
+    await userEvent.click(screen.getByRole('radio', { name: 'In the cloud industry' }))
+    await userEvent.click(screen.getByRole('button', { name: '採点する' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Perfect')).toBeInTheDocument()
+    })
+    expect(container.querySelectorAll('.quiz-correct-mark')).toHaveLength(2)
+    expect(playSfx).toHaveBeenCalledWith('correct')
   })
 
   test('Given the submission fails, shows an error message and keeps the quiz retryable', async () => {
