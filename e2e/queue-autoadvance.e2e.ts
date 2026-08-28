@@ -63,7 +63,7 @@ test('再生完了→キューの次エピソードが自動再生される', as
   })
 
   await page.route('**/api/backend/settings/featured-sources', (route) => {
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sites: [] }) })
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ sites: [{ id: 'featured-1', name: 'Example Tech Site', url: 'https://example-tech.com', order: 0, category: 'tech' }] }) })
   })
 
   await page.route('**/api/backend/notifications/vapid-public-key', (route) => {

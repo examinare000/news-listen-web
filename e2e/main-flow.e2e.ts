@@ -82,7 +82,7 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ sites: [] }),
+      body: JSON.stringify({ sites: [{ id: 'featured-1', name: 'Example Tech Site', url: 'https://example-tech.com', order: 0, category: 'tech' }] }),
     })
   })
 
