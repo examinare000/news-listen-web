@@ -74,6 +74,13 @@ export interface QuizAnswerResponse {
   results: QuizAnswerResult[]
 }
 
+export interface PodcastSourceArticle {
+  article_id: string
+  title: string
+  url: string
+  source: string
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -90,6 +97,9 @@ export interface Podcast {
   vocabulary?: VocabularyEntry[] | null
   /** 理解度チェッククイズ（正解キーなしの射影型）。旧エピソードや劣化生成では null/欠落するため optional（ADR-070）。 */
   quiz?: QuizQuestion[] | null
+  /** 出典記事（サイト名・タイトル・原文URL）。CC BY/BY-SA の帰属表示に使う（ADR-090）。
+   *  出典スナップショット導入前のエピソードや記事が消えた場合は null/欠落するため optional。 */
+  source_articles?: PodcastSourceArticle[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus
