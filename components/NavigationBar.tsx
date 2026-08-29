@@ -205,6 +205,11 @@ export function NavigationBar() {
         ) : null}
         <SidebarAccount />
         <ThemeToggle />
+        <div className="sidebar-divider"></div>
+        <div className="sidebar-legal-links">
+          <Link href="/terms" className="legal-link">利用規約</Link>
+          <Link href="/privacy" className="legal-link">プライバシーポリシー</Link>
+        </div>
       </div>
     </aside>
   )

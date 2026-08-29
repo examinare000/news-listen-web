@@ -321,4 +321,12 @@ describe('NavigationBar', () => {
     const featuredSitesLink = screen.getByRole('link', { name: 'おすすめサイト管理' })
     expect(featuredSitesLink.nextElementSibling).toBe(screen.getByRole('link', { name: '招待管理' }))
   })
+
+  test('renders legal links (terms and privacy) in the sidebar footer', () => {
+    render(<NavigationBar />)
+    const termsLink = screen.getByRole('link', { name: '利用規約' })
+    const privacyLink = screen.getByRole('link', { name: 'プライバシーポリシー' })
+    expect(termsLink).toHaveAttribute('href', '/terms')
+    expect(privacyLink).toHaveAttribute('href', '/privacy')
+  })
 })
