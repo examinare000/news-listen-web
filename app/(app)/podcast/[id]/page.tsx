@@ -390,24 +390,42 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           <span>{formatDate(podcast.created_at)}</span>
         </div>
 
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 6,
-            marginBottom: 20,
-            fontSize: 12,
-            color: 'var(--text-muted)',
-          }}
-        >
-          <strong>記事ID:</strong>
-          {podcast.article_ids.map((id) => (
-            <span key={id} style={{ fontFamily: 'var(--font-mono), monospace' }}>
-              {id}
-            </span>
-          ))}
-        </div>
+        {/* 出典とライセンス表記（ADR-090）。CC BY/BY-SA のソースを翻案しているため、
+            聴取面に出典を示し、生成物が CC BY-SA 4.0 で提供されることを明示する。
+            出典を持たない旧エピソードでは表示しない（劣化契約）。 */}
+        {podcast.source_articles && podcast.source_articles.length > 0 && (
+          <div
+            style={{
+              marginBottom: 20,
+              fontSize: 12,
+              color: 'var(--text-muted)',
+            }}
+          >
+            <strong>出典</strong>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
+              {podcast.source_articles.map((s) => (
+                <li key={s.article_id} style={{ marginBottom: 4 }}>
+                  <span className="article-source">{s.source}</span>
+                  <span className="article-dot">·</span>
+                  <a href={s.url} target="_blank" rel="noopener noreferrer">
+                    {s.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+            <p style={{ margin: '8px 0 0' }}>
+              この音声コンテンツは{' '}
+              <a
+                href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                CC BY-SA 4.0
+              </a>{' '}
+              で提供されます。
+            </p>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
