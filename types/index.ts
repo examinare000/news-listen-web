@@ -118,6 +118,7 @@ export interface FeaturedSource {
   thumbnail_url?: string | null
   description?: string | null
   order: number
+  category?: string | null
 }
 
 export interface FeaturedSourcesResponse {

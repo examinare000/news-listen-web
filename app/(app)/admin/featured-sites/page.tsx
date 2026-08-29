@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, normalizeFeaturedCategory } from '@/lib/featuredCategories'
 import type { FeaturedSource } from '@/types/index'
 
 // 管理者用おすすめサイト管理画面。一覧・作成・編集・削除を行う。
@@ -21,6 +22,7 @@ export default function AdminFeaturedSitesPage() {
   const [newUrl, setNewUrl] = useState('')
   const [newThumbnail, setNewThumbnail] = useState('')
   const [newDescription, setNewDescription] = useState('')
+  const [newCategory, setNewCategory] = useState<string>('tech')
   const [formError, setFormError] = useState('')
 
   // 編集モード
@@ -29,6 +31,7 @@ export default function AdminFeaturedSitesPage() {
   const [editUrl, setEditUrl] = useState('')
   const [editThumbnail, setEditThumbnail] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState<string>('tech')
   const [editError, setEditError] = useState('')
 
   // 削除確認
@@ -80,12 +83,14 @@ export default function AdminFeaturedSitesPage() {
         url: newUrl,
         thumbnail_url: newThumbnail || undefined,
         description: newDescription || undefined,
+        category: newCategory,
         order: nextOrder,
       })
       setNewName('')
       setNewUrl('')
       setNewThumbnail('')
       setNewDescription('')
+      setNewCategory('tech')
       await reload()
     } catch {
       setFormError('サイト作成に失敗しました')
@@ -99,6 +104,7 @@ export default function AdminFeaturedSitesPage() {
     setEditUrl(site.url)
     setEditThumbnail(site.thumbnail_url ?? '')
     setEditDescription(site.description ?? '')
+    setEditCategory(normalizeFeaturedCategory(site.category))
   }
 
   function handleEditCancel() {
@@ -107,6 +113,7 @@ export default function AdminFeaturedSitesPage() {
     setEditUrl('')
     setEditThumbnail('')
     setEditDescription('')
+    setEditCategory('tech')
     setEditError('')
   }
 
@@ -126,6 +133,7 @@ export default function AdminFeaturedSitesPage() {
         url: editUrl,
         thumbnail_url: editThumbnail || undefined,
         description: editDescription || undefined,
+        category: editCategory,
         order: currentOrder,
       })
       handleEditCancel()
@@ -159,6 +167,7 @@ export default function AdminFeaturedSitesPage() {
             url: site.url,
             thumbnail_url: site.thumbnail_url || undefined,
             description: site.description || undefined,
+            category: normalizeFeaturedCategory(site.category),
             order: i,
           })
         }
@@ -257,6 +266,18 @@ export default function AdminFeaturedSitesPage() {
               aria-label="説明"
               style={{ minHeight: '80px' }}
             />
+            <select
+              className="form-input"
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value)}
+              aria-label="カテゴリ"
+            >
+              {FEATURED_CATEGORIES.map((cat) => (
+                <option key={cat} value={cat}>
+                  {FEATURED_CATEGORY_LABELS[cat]}
+                </option>
+              ))}
+            </select>
             {formError && <p className="form-error">{formError}</p>}
             <button className="btn btn-primary" type="submit" disabled={controlsDisabled} style={{ alignSelf: 'flex-end' }}>
               追加
@@ -305,6 +326,18 @@ export default function AdminFeaturedSitesPage() {
                         aria-label={`${site.name} の説明`}
                         style={{ minHeight: '80px' }}
                       />
+                      <select
+                        className="form-input"
+                        value={editCategory}
+                        onChange={(e) => setEditCategory(e.target.value)}
+                        aria-label={`${site.name} のカテゴリ`}
+                      >
+                        {FEATURED_CATEGORIES.map((cat) => (
+                          <option key={cat} value={cat}>
+                            {FEATURED_CATEGORY_LABELS[cat]}
+                          </option>
+                        ))}
+                      </select>
                       {editError && <p className="form-error">{editError}</p>}
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                         <button className="btn btn-ghost" onClick={handleEditCancel} aria-label="キャンセル">
@@ -325,7 +358,24 @@ export default function AdminFeaturedSitesPage() {
                   // 通常表示
                   <div className="settings-row">
                     <div>
-                      <div className="settings-row-label">{site.name}</div>
+                      <div className="settings-row-label">
+                        {site.name}
+                        {/* category 欠落の旧データも tech として常時表示（編集・並び替え時の正規化と揃える） */}
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            marginLeft: 8,
+                            padding: '2px 8px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {FEATURED_CATEGORY_LABELS[normalizeFeaturedCategory(site.category)]}
+                        </span>
+                      </div>
                       <div className="settings-row-desc">
                         {site.url}
                         {site.description && (

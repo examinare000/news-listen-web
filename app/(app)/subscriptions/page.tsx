@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
+import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, groupByCategoryInOrder } from '@/lib/featuredCategories'
 import type { Source, FeaturedSource } from '@/types/index'
 
 function TrashIcon() {
@@ -162,6 +163,8 @@ export default function SubscriptionsPage() {
       }
     }
   }
+
+  const grouped = groupByCategoryInOrder(recommended)
 
   return (
     <>
@@ -332,73 +335,83 @@ export default function SubscriptionsPage() {
                       borderTop: '1px solid var(--border)',
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                        marginBottom: 8,
-                        fontWeight: 600,
-                      }}
-                    >
-                      おすすめのサイト
-                    </div>
-                    {/* ワンクリックで即購読する（D23 から挙動変更）。URL 直接入力は左フォームで従来どおり可能 */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {recommended.map((site) => (
-                        <div
-                          key={site.id}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            gap: 8,
-                            padding: '8px 12px',
-                            background: 'var(--bg-base)',
-                            borderRadius: 6,
-                            border: '1px solid var(--border)',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                            {site.thumbnail_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element -- 任意ホストのサムネイルのため next/image の最適化対象外
-                              <img
-                                src={site.thumbnail_url}
-                                alt=""
-                                width={20}
-                                height={20}
-                                style={{ borderRadius: 4, flexShrink: 0, objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <span aria-hidden="true" style={{ flexShrink: 0 }}>📡</span>
-                            )}
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontSize: 12, fontWeight: 600 }}>{site.name}</div>
-                              {site.description && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {FEATURED_CATEGORIES.map((category) => {
+                        const sites = grouped[category]
+                        if (sites.length === 0) return null
+
+                        return (
+                          <div key={category}>
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: 'var(--text-muted)',
+                                marginBottom: 6,
+                                fontWeight: 600,
+                              }}
+                            >
+                              {FEATURED_CATEGORY_LABELS[category]}
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {sites.map((site) => (
                                 <div
+                                  key={site.id}
                                   style={{
-                                    fontSize: 11,
-                                    color: 'var(--text-muted)',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    whiteSpace: 'nowrap',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    gap: 8,
+                                    padding: '8px 12px',
+                                    background: 'var(--bg-base)',
+                                    borderRadius: 6,
+                                    border: '1px solid var(--border)',
                                   }}
                                 >
-                                  {site.description}
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                    {site.thumbnail_url ? (
+                                      // eslint-disable-next-line @next/next/no-img-element -- 任意ホストのサムネイルのため next/image の最適化対象外
+                                      <img
+                                        src={site.thumbnail_url}
+                                        alt=""
+                                        width={20}
+                                        height={20}
+                                        style={{ borderRadius: 4, flexShrink: 0, objectFit: 'cover' }}
+                                      />
+                                    ) : (
+                                      <span aria-hidden="true" style={{ flexShrink: 0 }}>📡</span>
+                                    )}
+                                    <div style={{ minWidth: 0 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 600 }}>{site.name}</div>
+                                      {site.description && (
+                                        <div
+                                          style={{
+                                            fontSize: 11,
+                                            color: 'var(--text-muted)',
+                                            overflow: 'hidden',
+                                            textOverflow: 'ellipsis',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {site.description}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <button
+                                    className="btn btn-ghost"
+                                    style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}
+                                    onClick={() => handleSubscribeFeatured(site)}
+                                    disabled={subscribingId === site.id}
+                                    aria-label={`${site.name} を購読`}
+                                  >
+                                    {subscribingId === site.id ? '購読中…' : '購読'}
+                                  </button>
                                 </div>
-                              )}
+                              ))}
                             </div>
                           </div>
-                          <button
-                            className="btn btn-ghost"
-                            style={{ padding: '4px 10px', fontSize: 11, flexShrink: 0 }}
-                            onClick={() => handleSubscribeFeatured(site)}
-                            disabled={subscribingId === site.id}
-                            aria-label={`${site.name} を購読`}
-                          >
-                            {subscribingId === site.id ? '購読中…' : '購読'}
-                          </button>
-                        </div>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 )}
