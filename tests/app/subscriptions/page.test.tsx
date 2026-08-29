@@ -597,6 +597,16 @@ describe('SubscriptionsPage — featured sources by category', () => {
       expect(screen.getByText('テクノロジー')).toBeInTheDocument()
       expect(screen.getByText('ビジネス')).toBeInTheDocument()
     })
+    // 見出しは固定順（テクノロジー→ビジネス）で並ぶ
+    const techHeading = screen.getByText('テクノロジー')
+    const bizHeading = screen.getByText('ビジネス')
+    expect(
+      techHeading.compareDocumentPosition(bizHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // 各ソースは対応するカテゴリセクション内に描画される
+    expect(techHeading.parentElement).toContainElement(screen.getByText('Tech News'))
+    expect(techHeading.parentElement).not.toContainElement(screen.getByText('Business News'))
+    expect(bizHeading.parentElement).toContainElement(screen.getByText('Business News'))
   })
 
   test('hides category section headers when category has 0 items', async () => {
@@ -642,5 +652,9 @@ describe('SubscriptionsPage — featured sources by category', () => {
       expect(screen.getByText('Tech News')).toBeInTheDocument()
       expect(screen.getByText('テクノロジー')).toBeInTheDocument()
     })
+    // category 欠落の旧データはテクノロジーセクション内に入る
+    expect(screen.getByText('テクノロジー').parentElement).toContainElement(
+      screen.getByText('Legacy Site'),
+    )
   })
 })

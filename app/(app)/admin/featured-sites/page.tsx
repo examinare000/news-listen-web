@@ -360,22 +360,21 @@ export default function AdminFeaturedSitesPage() {
                     <div>
                       <div className="settings-row-label">
                         {site.name}
-                        {site.category && (
-                          <span
-                            style={{
-                              display: 'inline-block',
-                              marginLeft: 8,
-                              padding: '2px 8px',
-                              backgroundColor: 'var(--bg-secondary)',
-                              borderRadius: 4,
-                              fontSize: 11,
-                              fontWeight: 600,
-                              color: 'var(--text-secondary)',
-                            }}
-                          >
-                            {FEATURED_CATEGORY_LABELS[normalizeFeaturedCategory(site.category)]}
-                          </span>
-                        )}
+                        {/* category 欠落の旧データも tech として常時表示（編集・並び替え時の正規化と揃える） */}
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            marginLeft: 8,
+                            padding: '2px 8px',
+                            backgroundColor: 'var(--bg-secondary)',
+                            borderRadius: 4,
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: 'var(--text-secondary)',
+                          }}
+                        >
+                          {FEATURED_CATEGORY_LABELS[normalizeFeaturedCategory(site.category)]}
+                        </span>
                       </div>
                       <div className="settings-row-desc">
                         {site.url}
