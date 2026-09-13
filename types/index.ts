@@ -103,6 +103,9 @@ export interface Podcast {
   /** 出典記事（サイト名・タイトル・原文URL）。CC BY/BY-SA の帰属表示に使う（ADR-090）。
    *  出典スナップショット導入前のエピソードや記事が消えた場合は null/欠落するため optional。 */
   source_articles?: PodcastSourceArticle[] | null
+  /** ソース区分（featured=運営者提示／user=利用者追加RSS／unknown=判定不能）。
+   *  `'featured'` のときのみ CC BY-SA 4.0 表示対象（fail-closed）。旧データは null/欠落（ADR-095）。 */
+  source_kind?: 'featured' | 'user' | 'unknown' | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus

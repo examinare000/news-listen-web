@@ -739,7 +739,9 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
 })
 
 // ==========================================================
-// 出典表示とライセンス表記（法務P0: CC BY/BY-SA 帰属義務、ADR-090）
+// 出典表示とライセンス表記（法務P0: CC BY/BY-SA 帰属義務、ADR-090）。
+// ライセンス段落は featured 由来（source_kind === 'featured'）のときだけ表示する
+// fail-closed 条件分岐（ADR-095, issue #240）。出典表示は source_kind に関わらず維持する。
 // ==========================================================
 describe('PodcastDetailPage — attribution', () => {
   const withSources = {
@@ -783,8 +785,8 @@ describe('PodcastDetailPage — attribution', () => {
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
-  test('Shows CC BY-SA 4.0 license notice when sources exist', async () => {
-    await mockPodcast(withSources)
+  test('Shows CC BY-SA 4.0 license notice when source_kind is featured', async () => {
+    await mockPodcast({ ...withSources, source_kind: 'featured' })
 
     renderDetailPage()
 
@@ -795,6 +797,27 @@ describe('PodcastDetailPage — attribution', () => {
       'https://creativecommons.org/licenses/by-sa/4.0/deed.ja'
     )
   })
+
+  test.each([
+    ['user', 'user'],
+    ['unknown', 'unknown'],
+    ['null', null],
+    ['missing', undefined],
+  ])(
+    'Does not show CC BY-SA 4.0 license notice when source_kind is %s (fail-closed, ADR-095)',
+    async (_label, sourceKind) => {
+      const podcast =
+        sourceKind === undefined ? withSources : { ...withSources, source_kind: sourceKind }
+      await mockPodcast(podcast)
+
+      renderDetailPage()
+
+      // 出典を先に待ってから否定アサーションに移る。非同期描画完了前に判定すると
+      // ライセンス段落が未描画なだけの偽陽性になる（trial-log feed-exclusion-web.md L66）。
+      await waitFor(() => screen.getByText('EFF Deeplinks'))
+      expect(screen.queryByText(/CC BY-SA 4\.0/)).not.toBeInTheDocument()
+    }
+  )
 
   test('Does not render raw article IDs', async () => {
     await mockPodcast(withSources)
