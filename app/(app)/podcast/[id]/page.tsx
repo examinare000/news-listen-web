@@ -390,9 +390,10 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           <span>{formatDate(podcast.created_at)}</span>
         </div>
 
-        {/* 出典とライセンス表記（ADR-090）。CC BY/BY-SA のソースを翻案しているため、
-            聴取面に出典を示し、生成物が CC BY-SA 4.0 で提供されることを明示する。
-            出典を持たない旧エピソードでは表示しない（劣化契約）。 */}
+        {/* 出典とライセンス表記（ADR-095）。出典表示は source_kind に関わらず維持する一方、
+            CC BY-SA 4.0 の表示は運営者提示ソース（source_kind === 'featured'）由来に限定する。
+            利用者追加RSS由来（'user'）・判定不能（'unknown'）・旧データ（null/欠落）は
+            fail-closed でライセンス表示しない。出典を持たない旧エピソードでは出典ブロック自体を表示しない。 */}
         {podcast.source_articles && podcast.source_articles.length > 0 && (
           <div
             style={{
@@ -413,17 +414,19 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                 </li>
               ))}
             </ul>
-            <p style={{ margin: '8px 0 0' }}>
-              この音声コンテンツは{' '}
-              <a
-                href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                CC BY-SA 4.0
-              </a>{' '}
-              で提供されます。
-            </p>
+            {podcast.source_kind === 'featured' && (
+              <p style={{ margin: '8px 0 0' }}>
+                この音声コンテンツは{' '}
+                <a
+                  href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  CC BY-SA 4.0
+                </a>{' '}
+                で提供されます。
+              </p>
+            )}
           </div>
         )}
 

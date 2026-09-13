@@ -61,11 +61,14 @@ export default function TermsPage() {
         <section>
           <h2>生成コンテンツのライセンス</h2>
           <p>
-            本サービスが提供するポッドキャスト（台本・音声）は、
+            運営者が提示する適合ライセンスのソース（おすすめソース、featured）に基づいて生成されたポッドキャスト（台本・音声）は、
             <a href="https://creativecommons.org/licenses/by-sa/4.0/deed.ja" target="_blank" rel="noopener noreferrer">
               Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0)
             </a>
             の下で提供されます。
+          </p>
+          <p>
+            利用者が任意に追加したRSSフィードに基づいて生成されたポッドキャストは、利用者本人のみに提供され、ライセンス表示の対象外です（再配布はできません）。
           </p>
         </section>
 

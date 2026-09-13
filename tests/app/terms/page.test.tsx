@@ -23,6 +23,25 @@ describe('TermsPage', () => {
     expect(screen.getByText(/CC BY-SA 4\.0/)).toBeInTheDocument()
   })
 
+  test('limits the CC BY-SA 4.0 license to featured-sourced podcasts (ADR-095)', () => {
+    render(<TermsPage />)
+    expect(
+      screen.getByText(/運営者が提示する適合ライセンスのソース.*featured.*ポッドキャスト/)
+    ).toBeInTheDocument()
+  })
+
+  test('states user-added RSS podcasts are not covered by the license (ADR-095)', () => {
+    render(<TermsPage />)
+    expect(
+      screen.getByText(/利用者が任意に追加したRSSフィード.*本人のみ.*対象外.*再配布はできません/)
+    ).toBeInTheDocument()
+  })
+
+  test('does not contain the old blanket license statement (ADR-095)', () => {
+    render(<TermsPage />)
+    expect(screen.queryByText(/本サービスが提供するポッドキャスト/)).not.toBeInTheDocument()
+  })
+
   test('contains takedown notice email link (examinare000@gmail.com)', () => {
     render(<TermsPage />)
     const emailLink = screen.getByRole('link', { name: /examinare000@gmail\.com/ })
