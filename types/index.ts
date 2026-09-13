@@ -41,6 +41,9 @@ export interface StarredArticlesResponse {
 export interface TranscriptSegment {
   speaker: string
   text: string
+  // WHY(ADR-094 第一段階・issue #237): backend は role キーを常に返す（未設定時 null）。
+  // 省略可フィールドとして持たせ、旧レスポンス（role 無し）とのデコード互換を保つ。
+  role?: 'fact' | 'commentary' | null
 }
 
 /** 語彙グロッサリの1エントリ（用語・日本語訳・例文）。GET /podcasts/:id の vocabulary 要素。 */
