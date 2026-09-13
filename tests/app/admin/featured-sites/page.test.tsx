@@ -273,4 +273,68 @@ describe('AdminFeaturedSitesPage', () => {
     renderPage()
     expect(listFeaturedSites).not.toHaveBeenCalled()
   })
+
+  test('create form includes category select', async () => {
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Hacker News')).toBeInTheDocument())
+    expect(screen.getByLabelText('カテゴリ')).toBeInTheDocument()
+  })
+
+  test('create form sends category field when creating', async () => {
+    createFeaturedSite.mockResolvedValue({ id: 'new', name: 'New Site', url: 'https://newsite.com', category: 'business' })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Hacker News')).toBeInTheDocument())
+
+    await userEvent.type(screen.getByLabelText('サイト名'), 'New Site')
+    await userEvent.type(screen.getByLabelText('URL'), 'https://newsite.com')
+    await userEvent.selectOptions(screen.getByLabelText('カテゴリ'), 'business')
+    await userEvent.click(screen.getByRole('button', { name: '追加' }))
+
+    await waitFor(() =>
+      expect(createFeaturedSite).toHaveBeenCalledWith(
+        expect.objectContaining({ name: 'New Site', url: 'https://newsite.com', category: 'business' })
+      )
+    )
+  })
+
+  test('edit form includes category select', async () => {
+    listFeaturedSites.mockResolvedValue({
+      sites: [{ id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com', order: 0, category: 'tech' }],
+    })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Hacker News')).toBeInTheDocument())
+
+    const editButtons = screen.getAllByRole('button', { name: /編集/ })
+    await userEvent.click(editButtons[0])
+
+    await waitFor(() => {
+      expect(screen.getAllByLabelText('カテゴリ').length).toBeGreaterThan(0)
+    })
+  })
+
+  test('reorder (move down) includes category field in PUT payload', async () => {
+    listFeaturedSites.mockResolvedValue({
+      sites: [
+        { id: 'hn', name: 'Hacker News', url: 'https://news.ycombinator.com', order: 0, category: 'tech' },
+        { id: 'rss', name: 'RSS Feed', url: 'https://example.com/rss', order: 1, category: 'business' },
+      ],
+    })
+    updateFeaturedSite.mockResolvedValue({})
+    renderPage()
+    await waitFor(() => expect(screen.getByText('RSS Feed')).toBeInTheDocument())
+
+    const downButtons = screen.getAllByRole('button', { name: /を下へ移動/ })
+    await userEvent.click(downButtons[0])
+
+    await waitFor(() => {
+      expect(updateFeaturedSite).toHaveBeenCalledWith(
+        'hn',
+        expect.objectContaining({ category: 'tech' })
+      )
+      expect(updateFeaturedSite).toHaveBeenCalledWith(
+        'rss',
+        expect.objectContaining({ category: 'business' })
+      )
+    })
+  })
 })

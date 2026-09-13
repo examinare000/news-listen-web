@@ -101,7 +101,13 @@ export function LandingPage({ onLoginClick }: LandingPageProps) {
         </ul>
       </section>
 
-      <footer className="lp-footer">© 2026 news-listen</footer>
+      <footer className="lp-footer">
+        <span>© 2026 news-listen</span>
+        <div className="lp-footer-links">
+          <Link href="/terms">利用規約</Link>
+          <Link href="/privacy">プライバシーポリシー</Link>
+        </div>
+      </footer>
     </div>
   )
 }

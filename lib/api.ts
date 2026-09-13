@@ -428,7 +428,7 @@ export function createApiClient() {
       return request<FeaturedSourcesResponse>('/api/backend/admin/featured-sites', { method: 'GET' })
     },
 
-    createFeaturedSite(input: { name: string; url: string; thumbnail_url?: string; description?: string; order: number }) {
+    createFeaturedSite(input: { name: string; url: string; thumbnail_url?: string; description?: string; category?: string; order: number }) {
       return request<FeaturedSource>('/api/backend/admin/featured-sites', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -437,7 +437,7 @@ export function createApiClient() {
 
     updateFeaturedSite(
       id: string,
-      input: { name: string; url: string; thumbnail_url?: string; description?: string; order: number },
+      input: { name: string; url: string; thumbnail_url?: string; description?: string; category?: string; order: number },
     ) {
       return request<FeaturedSource>(`/api/backend/admin/featured-sites/${encodeURIComponent(id)}`, {
         method: 'PUT',

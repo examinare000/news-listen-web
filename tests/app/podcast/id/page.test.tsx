@@ -124,7 +124,7 @@ describe('PodcastDetailPage — normal', () => {
     })
   })
 
-  test('Displays article IDs', async () => {
+  test('Does not expose raw article IDs to the reader', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
@@ -133,9 +133,8 @@ describe('PodcastDetailPage — normal', () => {
 
     renderDetailPage()
 
-    await waitFor(() => {
-      expect(screen.getByText(/a1/)).toBeInTheDocument()
-    })
+    await waitFor(() => screen.getByText(/これは日本語のイントロ全文です/))
+    expect(screen.queryByText(/^a1$/)).not.toBeInTheDocument()
   })
 
   test('Has a back link to the podcast list (/podcast)', async () => {
@@ -736,5 +735,83 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
     })
     // 失敗時は保存済みにならず、再試行できる
     expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// 出典表示とライセンス表記（法務P0: CC BY/BY-SA 帰属義務、ADR-090）
+// ==========================================================
+describe('PodcastDetailPage — attribution', () => {
+  const withSources = {
+    ...SAMPLE_PODCAST,
+    source_articles: [
+      {
+        article_id: 'a1',
+        title: 'Understanding Rust Ownership',
+        url: 'https://example.com/rust',
+        source: 'EFF Deeplinks',
+      },
+      {
+        article_id: 'a2',
+        title: 'NASA Discovers Water',
+        url: 'https://example.com/nasa',
+        source: 'NASA News',
+      },
+    ],
+  }
+
+  function mockPodcast(podcast: unknown) {
+    return import('@/lib/api').then(({ createApiClient }) => {
+      vi.mocked(createApiClient).mockReturnValue({
+        getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
+        getPodcast: vi.fn().mockResolvedValue(podcast),
+      } as unknown as ReturnType<typeof createApiClient>)
+    })
+  }
+
+  test('Shows source name and original article link for each source', async () => {
+    await mockPodcast(withSources)
+
+    renderDetailPage()
+
+    await waitFor(() => screen.getByText('EFF Deeplinks'))
+    expect(screen.getByText('NASA News')).toBeInTheDocument()
+
+    const link = screen.getByRole('link', { name: 'Understanding Rust Ownership' })
+    expect(link).toHaveAttribute('href', 'https://example.com/rust')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
+  })
+
+  test('Shows CC BY-SA 4.0 license notice when sources exist', async () => {
+    await mockPodcast(withSources)
+
+    renderDetailPage()
+
+    await waitFor(() => screen.getByText(/CC BY-SA 4\.0/))
+    const licenseLink = screen.getByRole('link', { name: /CC BY-SA 4\.0/ })
+    expect(licenseLink).toHaveAttribute(
+      'href',
+      'https://creativecommons.org/licenses/by-sa/4.0/deed.ja'
+    )
+  })
+
+  test('Does not render raw article IDs', async () => {
+    await mockPodcast(withSources)
+
+    renderDetailPage()
+
+    await waitFor(() => screen.getByText('EFF Deeplinks'))
+    expect(screen.queryByText('記事ID:')).not.toBeInTheDocument()
+  })
+
+  test('Omits the attribution block when the podcast has no sources', async () => {
+    await mockPodcast({ ...SAMPLE_PODCAST, source_articles: null })
+
+    renderDetailPage()
+
+    await waitFor(() => screen.getByText(/これは日本語のイントロ全文です/))
+    expect(screen.queryByText('出典')).not.toBeInTheDocument()
+    expect(screen.queryByText(/CC BY-SA 4\.0/)).not.toBeInTheDocument()
   })
 })

@@ -54,4 +54,12 @@ describe('LandingPage', () => {
     render(<LandingPage onLoginClick={vi.fn()} />)
     expect(screen.getByText('© 2026 news-listen')).toBeInTheDocument()
   })
+
+  test('renders footer legal links to terms and privacy', () => {
+    render(<LandingPage onLoginClick={vi.fn()} />)
+    const termsLink = screen.getByRole('link', { name: '利用規約' })
+    const privacyLink = screen.getByRole('link', { name: 'プライバシーポリシー' })
+    expect(termsLink).toHaveAttribute('href', '/terms')
+    expect(privacyLink).toHaveAttribute('href', '/privacy')
+  })
 })
