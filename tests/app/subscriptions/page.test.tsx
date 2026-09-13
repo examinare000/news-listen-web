@@ -572,3 +572,89 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
     expect(getSources).toHaveBeenCalledTimes(1)
   })
 })
+
+// ==========================================================
+// おすすめサイト — カテゴリ別セクション
+// ==========================================================
+describe('SubscriptionsPage — featured sources by category', () => {
+  test('displays recommended sources grouped by category with fixed order', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
+      getFeaturedSources: vi.fn().mockResolvedValue({
+        sites: [
+          { id: 'f1', name: 'Tech News', url: 'https://technews.com', order: 0, category: 'tech' },
+          { id: 'f2', name: 'Business News', url: 'https://biz.com', order: 1, category: 'business' },
+        ],
+      }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('テクノロジー')).toBeInTheDocument()
+      expect(screen.getByText('ビジネス')).toBeInTheDocument()
+    })
+    // 見出しは固定順（テクノロジー→ビジネス）で並ぶ
+    const techHeading = screen.getByText('テクノロジー')
+    const bizHeading = screen.getByText('ビジネス')
+    expect(
+      techHeading.compareDocumentPosition(bizHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    // 各ソースは対応するカテゴリセクション内に描画される
+    expect(techHeading.parentElement).toContainElement(screen.getByText('Tech News'))
+    expect(techHeading.parentElement).not.toContainElement(screen.getByText('Business News'))
+    expect(bizHeading.parentElement).toContainElement(screen.getByText('Business News'))
+  })
+
+  test('hides category section headers when category has 0 items', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
+      getFeaturedSources: vi.fn().mockResolvedValue({
+        sites: [
+          { id: 'f1', name: 'Tech News', url: 'https://technews.com', order: 0, category: 'tech' },
+        ],
+      }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('テクノロジー')).toBeInTheDocument()
+      expect(screen.queryByText('ビジネス')).not.toBeInTheDocument()
+      expect(screen.queryByText('スポーツ')).not.toBeInTheDocument()
+    })
+  })
+
+  test('normalizes missing category to tech', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
+      getFeaturedSources: vi.fn().mockResolvedValue({
+        sites: [
+          { id: 'f1', name: 'Legacy Site', url: 'https://legacy.com', order: 0 },
+          { id: 'f2', name: 'Tech News', url: 'https://technews.com', order: 1, category: 'tech' },
+        ],
+      }),
+      addSource: vi.fn(),
+      deleteSource: vi.fn(),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    renderSubscriptionsPage()
+
+    await waitFor(() => {
+      expect(screen.getByText('Legacy Site')).toBeInTheDocument()
+      expect(screen.getByText('Tech News')).toBeInTheDocument()
+      expect(screen.getByText('テクノロジー')).toBeInTheDocument()
+    })
+    // category 欠落の旧データはテクノロジーセクション内に入る
+    expect(screen.getByText('テクノロジー').parentElement).toContainElement(
+      screen.getByText('Legacy Site'),
+    )
+  })
+})

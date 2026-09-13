@@ -41,6 +41,9 @@ export interface StarredArticlesResponse {
 export interface TranscriptSegment {
   speaker: string
   text: string
+  // WHY(ADR-094 第一段階・issue #237): backend は role キーを常に返す（未設定時 null）。
+  // 省略可フィールドとして持たせ、旧レスポンス（role 無し）とのデコード互換を保つ。
+  role?: 'fact' | 'commentary' | null
 }
 
 /** 語彙グロッサリの1エントリ（用語・日本語訳・例文）。GET /podcasts/:id の vocabulary 要素。 */
@@ -74,6 +77,13 @@ export interface QuizAnswerResponse {
   results: QuizAnswerResult[]
 }
 
+export interface PodcastSourceArticle {
+  article_id: string
+  title: string
+  url: string
+  source: string
+}
+
 export interface Podcast {
   id: string
   type: string
@@ -90,6 +100,9 @@ export interface Podcast {
   vocabulary?: VocabularyEntry[] | null
   /** 理解度チェッククイズ（正解キーなしの射影型）。旧エピソードや劣化生成では null/欠落するため optional（ADR-070）。 */
   quiz?: QuizQuestion[] | null
+  /** 出典記事（サイト名・タイトル・原文URL）。CC BY/BY-SA の帰属表示に使う（ADR-090）。
+   *  出典スナップショット導入前のエピソードや記事が消えた場合は null/欠落するため optional。 */
+  source_articles?: PodcastSourceArticle[] | null
   duration_seconds: number
   created_at: string
   status: PodcastStatus
@@ -118,6 +131,7 @@ export interface FeaturedSource {
   thumbnail_url?: string | null
   description?: string | null
   order: number
+  category?: string | null
 }
 
 export interface FeaturedSourcesResponse {

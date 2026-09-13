@@ -226,6 +226,10 @@ function SignupForm() {
 
           {fieldError && <p className="form-error">{fieldError}</p>}
 
+          <p className="form-consent">
+            登録することで、<Link href="/terms">利用規約</Link>および<Link href="/privacy">プライバシーポリシー</Link>に同意したものとみなします。
+          </p>
+
           <div className="modal-actions">
             <button className="btn btn-primary" type="submit" disabled={submitting}>
               {submitting ? '登録中…' : '登録する'}
