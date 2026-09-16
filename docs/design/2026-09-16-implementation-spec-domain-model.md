@@ -6,6 +6,13 @@
 
 > 設計原則（本書の判断順）: actor の目的 → use case → その判断に必要な概念・不変条件 → 契約 → カプセル（公開操作と隠す技術）→ 依存方向 → 移行。pattern 名・class 数は成果にしない。1 実装しかない箇所に factory / Strategy を作らない（Boundary RO1〜RO6 を踏襲）。
 
+
+> **追記（2026-09-16・共有仕様 §6.7 の確定による上書き）**: 親 docs `shared-playback-spec.md` §6.7 の Selection Gate が user 判断で確定し、本書の次の記述を上書きする（本書は改訂せず、この追記と各 slice の order `docs/plan/2026-09-16-design-review-refactor/` を優先する）。
+> - SG-X1: 完聴時にサーバーへ送る位置は **`duration`**（§3.1 Coordinator `onEnded` の「位置 0 保存」、CI-T8 の「完聴の 0 は最終」を置換。順序は onCompleted → `duration` → advance）。
+> - SG-X2: resume は **末尾 2 秒窓**（共有仕様 §4.3 RS-01〜07）。CI-T3 の「duration 以上なら 0」を置換。
+> - SG-X4: 位置同期の周期送信は再生中のみ（web は現行どおり）。
+> - パスワード（SG7）: **12〜20 文字**（ADR-101。本書の「8〜20」を置換）。
+
 ## 0. Decision frame と function_plan
 
 ```yaml
