@@ -8,12 +8,12 @@
 |---|---|---|---|---|---|
 | 1 | [S0-constraint.md](S0-constraint.md) | BFF fail-closed・失効時 cleanup・admin gate | なし | なし | 小ステップ |
 | 2 | [S1-gateway.md](S1-gateway.md) | `ApiGateway`（`Result` / `ApiFailure`・deadline）と最小注入点（再生系 4 箇所） | S0 | なし | 旧 `ApiError` 互換 adapter（TP1）を暫定保持 |
-| 3 | [S2-playback.md](S2-playback.md) | `lib/playback/*`・`PlaybackProvider`・`currentPodcast` 削除・速度 2 概念・状態 union・失敗時停止・`moveUpNext` rename | S1 | **SG-X1 / SG-X2**（完聴時の送信値・resume 2 秒窓）が pending の間は該当契約を現行値で pin し、gate 確定後に差分 PR | **一括切替**（特性テスト 12 ファイル＋e2e 3 本 green が入口条件） |
+| 3 | [S2-playback.md](S2-playback.md) | `lib/playback/*`・`PlaybackProvider`・`currentPodcast` 削除・速度 2 概念・状態 union・失敗時停止・`moveUpNext` rename | S1 | SG-X1 / SG-X2 は確定済み（完聴時は `duration` を明示送信・末尾 2 秒窓を web も実装）。order に反映済み | **一括切替**（特性テスト 12 ファイル＋e2e 3 本 green が入口条件） |
 | 4 | [S3-gates.md](S3-gates.md) | CI に `typecheck:ts7`・独立 build・依存方向 eslint | S2 | なし | — |
 | 5 | [S4-catalog-prefs.md](S4-catalog-prefs.md) | `Episode` の UI 展開・`PreferencesRegistry`・`rate_limited.scope`・`PasswordPolicy`（12〜20）・`error_message` 4 値の文言写像・`lib/api` の context 別分割 | S2、**backend S0b / S0c の merge**（契約値） | なし | inline theme script の key 複製を pin テストで暫定保持（TP3） |
 | 保留 | （S5 learning） | `lib/learning/` の 3 ルール・StreakContext の副作用移動 | 学習機能サイクル | — | order 未作成 |
 
-- Selection Gate の正本は親 docs `design/shared-playback-spec.md` §6.7（SG-X1〜X5、owner: user）。pending を選択済みとして扱わない。
+- 共有仕様 §6.7 の Selection Gate SG-X1〜X5 は 2026-09-16 に全て確定済み（確定値は §6.4〜§6.6 本文）。web に効くのは SG-X1（完聴時に `duration` を送る）・SG-X2（末尾 2 秒窓の resume）・SG-X4（一時停止中は送らない。web は現行どおり）。
 - 他モジュールとの契約: backend の新規パスワード規則（12〜20、ADR-101）と `error_message` 識別子 4 値（ADR-102）は backend 側 slice（S0b / S0c）の merge 後に web S4 で写像する。それまで web は現行値のまま。
 - 共有仕様 1.1（§2.11・§4.3〜§4.4・§6.4〜§6.6）は news-listen-docs #133 で main 済み。S2 の準拠テストは行 ID（PS-* / SL-* / RS-*）をテスト名に含める。
 

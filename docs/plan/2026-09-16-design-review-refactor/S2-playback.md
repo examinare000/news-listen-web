@@ -8,10 +8,10 @@
 ## 前提・着手条件
 - 依存 slice: S1（`ApiGateway`・`ApiClientProvider`・再生系 4 箇所の注入）が main に merge 済みであること。
 - **SG8（一括切替、user 2026-09-16 承認）**: S2 は小ステップではなく一括切替。入口条件 = 下記「特性テスト（baseline）」の 12 ファイル＋e2e 3 本（`offline-playback` / `queue-autoadvance` / `main-flow`）が**すべて追加・green** になってから切替に入る。それ以前は revert 以外の回復手段がない（Spec §6 rollback）。
-- **Selection Gate（pending の間は現行挙動を pin）**:
-  - SG-X1（完聴時にサーバーへ送る位置。web 現行 = 0）が pending の間、CI-T3 は「完聴後は 0 を送る」を web の現行値として pin する。gate が satisfied になったら差分 PR で追随する。
-  - SG-X2（末尾 2 秒窓の resume。web 現行 = duration 以上なら 0 のみ、2 秒窓は未追随）が pending の間、CI-T3 は現行の resume 規則（duration 以上なら 0）を pin し、共有仕様 §4.3 RS-03・RS-04（末尾 2 秒窓）は web では実装しない。gate が satisfied になったら差分 PR で追随する。
-  - 両 gate とも「pending を選択済みとして扱わない」（共有仕様 §6.7）。着手を止めるのは該当契約（CI-T3 の一部）のみで、S2 全体は止めない。
+- **Selection Gate は確定済み（共有仕様 §6.7、2026-09-16 user 判断）。本 slice で実装する**:
+  - SG-X1: 完聴時は位置 0 ではなく **`duration` を明示的に 1 回送る**（順序: 完聴イベント → `duration` → advance。共有仕様 §6.4・PS-06）。現行 `useAudioPlayer` の `handleEnded` が行う `onPositionSave(id, 0)` は `duration` へ改める（local の 0 保存は resume 規則が先頭に写すため不要になるが、`localStorage` の互換は S4 の Preferences 移行まで現状維持でよい）。
+  - SG-X2: `resolveResumePosition` に duration を渡し、**末尾 2 秒窓**（共有仕様 §4.3 RS-01〜RS-07 の全行）を実装する。現行は server 位置をそのまま使い窓判定がない。
+  - SG-X4: web は現行どおり再生中のみ周期送信（変更なし。PS-05b で pin）。
 - **SG9（RF16/18/19/20 の作業化、user 2026-09-16 採用）**: レビュー §8.3 で「記録のみ・変更しない」とされた RF16（完聴重複・位置順序）、RF18（Queue 不変条件 gate）、RF19（依存方向）、RF20（SW prefix pin テスト）を、本 slice の一部として作業化する（CP9 / `Queue.create` / 依存禁止 eslint / T-T18 は S2 の構造変更に付随するため）。RF4・RF14・RF22 は本 slice で扱わない。RF17 は UV3 の観測のみ。
 - 棄却済み案（再提案しない、Spec §5 rejected_overdesign）: 旧 `AudioPlayerProvider` と新 `PlaybackProvider` の併存移行（SG3 の正本一意と二重 owner が両立しないため不採用）、`QueueState` の branded type 化（iOS/Android 共有型の乖離になるため不採用）、`Clock` port（学習サイクルで再判定）。
 - `docs/trial-log/` を最初に読み、棄却済み案（Provider 併存移行等）を再試行しない。
@@ -38,12 +38,12 @@
 |---|---|---|
 | CI-T1 | 状態は 13 遷移の union のみ | T-T1: `AudioElement` port の double でイベント駆動し `state()` を観測 |
 | CI-T2 | `play()` reject → `errored(autoplay_blocked\|media)`。重複 `play()` は 1 状態に収束 | T-T2 |
-| CI-T3 | `start` 後の位置は resume（duration 以上なら 0）。`loadedmetadata` 後に再適用。**SG-X2 pending の間は現行規則（末尾 2 秒窓なし）を pin** | T-T3（unit）＋ UV3（e2e 実ブラウザ） |
+| CI-T3 | `start` 後の位置は `resolveResumePosition(server, duration)`（末尾 2 秒窓: RS-01〜RS-07）。`loadedmetadata` 後に再適用 | T-T3（unit・RS-01〜07 の行 ID を含む）＋ UV3（e2e 実ブラウザ） |
 | CI-T4 | セッション速度は `start` で既定速度に初期化、以後保持、`load` 後に再適用（`playbackRate` と `defaultPlaybackRate` の両方を設定） | T-T4 |
 | CI-T5 | `unavailable` → network 取得なし、`errored(source_unavailable)` | T-T5: gateway double が呼ばれない＋状態 |
 | CI-T6 | advance 失敗後: `Queue.current` = 失敗エピソード、`errored(fetch_failed)`、`retry()` が `startEpisode` を再実行 | T-T6 |
 | CI-T7 | INV-P1（`session.episode.id === Queue.current.id`）。唯一の読出口は `nowPlaying()`。`AppContext.currentPodcast` と DTO 直読みは存在しない | T-T7a（unit、全操作後に検査）／T-T7b（eslint、S3 で CI 実行） |
-| CI-T8 | `ListenCompleted` は 1 セッション内 1 回。server 位置書込は単調非減少（完聴の 0 は最終）。順序 = onCompleted → local 0 → server 0。**SG-X1 pending の間は完聴時送信値 0 を pin** | T-T8: gateway double の呼出列を観測 |
+| CI-T8 | `ListenCompleted` は 1 セッション内 1 回。server 位置書込は単調非減少。順序 = onCompleted → server に `duration` を 1 回 → advance（共有仕様 PS-06） | T-T8: gateway double の呼出列と値を観測（PS-06 の行 ID を含む） |
 | CI-T9 | 公開操作は §2 どおり正規化し throw しない。戻り値は不変条件 1〜3 を満たす | 既存 conformance 32 件（不変）＋ T-T9: 公開操作の戻り値に対する property test |
 | CI-T10 | `save` は ok 応答のみ、完了前 `has()` false、重複収束。`get` は Playable か null。handle は release で revoke | T-T10: deferred-put `CacheStore` double で途中状態を `has()` から観測 |
 | CI-T11 | DTO → 判別共用体。矛盾 DTO は `FailedEpisode` に fail-closed | T-T11（表駆動 status 4 × audio_url 2 × error_message 2 = 16） |
@@ -73,10 +73,9 @@
 - `AppContext.currentPodcast` が存在しない（grep 0）。`components/`・`hooks/`・`app/` から `Podcast` DTO を「再生中」の意味で読む箇所がない。
 - `contexts/` → `components/` の import が存在しない（eslint `no-restricted-imports` で 0 件）。
 - `reorderUpNext` → `moveUpNext` rename が独立コミットになっている。
-- SG-X1 / SG-X2 pending の間、CI-T3 / CI-T8 が現行値（0 送信・末尾 2 秒窓なし）を pin していることをテストで確認できる。
+- 完聴時に `duration` が送られ（PS-06）、resume が RS-01〜RS-07 のとおりに解決される（T-T3）。
 
 ## 禁止事項 / scope 外
-- SG-X1（完聴時送信値の (a)/(b) 選択）・SG-X2（末尾 2 秒窓の追随）は gate 確定まで実装しない。pending の間は現行値を pin するテストのみ。
 - 旧 `AudioPlayerProvider` と新 `PlaybackProvider` の併存移行はしない（棄却済み）。
 - `QueueState` の branded type 化はしない（棄却済み）。
 - `lib/api` の context 別分割・page 側 15 ファイルの注入点移行（S4）は行わない。
