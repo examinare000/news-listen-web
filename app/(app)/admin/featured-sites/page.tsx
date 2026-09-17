@@ -2,16 +2,24 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
+import { AdminGate } from '@/components/AdminGate'
 import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, normalizeFeaturedCategory } from '@/lib/featuredCategories'
 import type { FeaturedSource } from '@/types/index'
 
 // 管理者用おすすめサイト管理画面。一覧・作成・編集・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
+// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（CI-T16）。
 export default function AdminFeaturedSitesPage() {
-  const { user, status } = useAuth()
+  return (
+    <AdminGate title="おすすめサイト管理">
+      <AdminFeaturedSitesPanel />
+    </AdminGate>
+  )
+}
+
+function AdminFeaturedSitesPanel() {
   const client = createApiClient()
 
   const [sites, setSites] = useState<FeaturedSource[]>([])
@@ -47,8 +55,6 @@ export default function AdminFeaturedSitesPage() {
   // 一覧ロード中・並べ替え処理中は、stale な sites を元にした操作（作成・編集保存・削除・並べ替え）を防ぐ
   const controlsDisabled = listLoading || reordering
 
-  const isAdmin = user?.role === 'admin'
-
   const reload = useCallback(async () => {
     setListLoading(true)
     try {
@@ -62,11 +68,10 @@ export default function AdminFeaturedSitesPage() {
     }
   }, [])
 
+  // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
-    if (status === 'authenticated' && isAdmin) {
-      reload()
-    }
-  }, [status, isAdmin, reload])
+    void reload()
+  }, [reload])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -202,20 +207,6 @@ export default function AdminFeaturedSitesPage() {
     } catch {
       setLoadError('サイトの削除に失敗しました')
     }
-  }
-
-  if (status === 'authenticated' && !isAdmin) {
-    return (
-      <div className="content-area content-narrow">
-        <div className="page-header">
-          <h1 className="page-title">おすすめサイト管理</h1>
-        </div>
-        <p className="form-error">この画面は管理者のみ利用できます。</p>
-        <Link className="btn btn-ghost" href="/settings">
-          設定へ戻る
-        </Link>
-      </div>
-    )
   }
 
   return (
