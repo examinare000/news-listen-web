@@ -5,6 +5,11 @@
 
 分けた理由（2026-09-23 点検）: 旧 W-S4 は Catalog / Preferences / Account / Platform 注入の 4 context を 1 PR に抱え、page 側 15 ファイル・37 箇所と `vi.mock('@/lib/api')` 25 テストファイルの移行を含むため 1 PR で読める規模を超える。context ごとに切れば各 slice は独立に revert できる。W-S4a〜d の順序は README「投入順」。
 
+## 規模（見込み。根拠 = 2026-09-24 実測: `components/PodcastCard.tsx` 173 行、`app/(app)/podcast/page.tsx` 235 行、`app/(app)/podcast/[id]/page.tsx` 455 行、`app/(app)/feed/page.tsx` 615 行）
+- production ≈ 140 行: `PodcastCard.tsx` の props 分岐 ≈ 40、podcast 2 page の `decodeEpisode` 化 ≈ 40、`feed/page.tsx:17` の置換 ≈ 10、`lib/catalog/failureMessage.ts` ≈ 25、`lib/catalog/rateLimitScope.ts` ≈ 25。
+- test ≈ 140 行: `PodcastCard.test.tsx`（188 行）＋ podcast 2 page テストの種別 4 行 ≈ 80、`failureMessage.test.ts` ≈ 30、`rateLimitScope.test.ts` ≈ 30。
+- 合計 ≈ 280 行。
+
 ## 前提・着手条件
 - 依存 slice: **W-S2c** の web PR が main に merge 済み（`lib/playback/coordinator.ts` の `decodeEpisode` / `isPlayable`・`nowPlaying()`・`PlaybackProvider` が存在し、旧再生実装が無い）、**かつ親リポ `news-listen` の submodule ポインタが進んでいる**（親で `git submodule status` の `web` 行に `+` が無い）こと。
 - **backend 契約が main にあること**（PR 番号ではなく契約で判定）: backend B-S0b が merge 済みで、`GET /podcasts/{id}` の `error_message` が `generation_failed` / `partial_failed` / `quota_exhausted` / `null` の 4 値しか返さない（backend `api/schemas.py` の `PodcastResponse.from_podcast` と `tests/test_api_podcasts.py::test_get_podcast_returns_failure_kind_not_internal_text` を親 main の backend submodule で確認）。**未 merge なら着手しない**。
@@ -29,11 +34,11 @@
 - T-T11（UI 側）が `verifies: CI-T11` と `PS-07` をテスト名またはコメントに持つ。
 - **▶の付く条件が 1 箇所**（量化する集合 = `components/` `app/` の `.tsx` 全ファイル）: `status === 'completed'`・`audio_url` の空判定・`error_message` の null 判定を再生可否の意味で行う箇所が `lib/playback/coordinator.ts`（`isPlayable`）以外に 0 件（`grep -rn "status === 'completed'\|audio_url\b" app components --include='*.tsx'` の全出現を PR 説明に列挙し、残る出現が「表示用の badge・文言」であって再生可否の判定ではないことを示す）。
 - 4 値それぞれに対応する日本語文言があり、識別子以外の値でも例外にならず `generation_failed` の文言になる。
-- `/monthly/i`・`86400` の出現が `lib/catalog/` の 1 ファイルだけ（`grep -rn "monthly/i\|86400" app components hooks contexts lib` で、`lib/format.ts:33` の日数換算は対象外として除外を明記）。
+- `/monthly/i`・`86400` の出現が `lib/catalog/` の 1 ファイルだけ（`grep -rn "monthly/i\|86400" app components hooks contexts lib | grep -v '^lib/format\.ts:33:'` が `lib/catalog/` の 1 ファイルの行だけ。除外は `lib/format.ts:33` の日数換算 1 行のみ）。
 - 既存の page tests（`tests/app/podcast/`・`tests/app/feed/`）が、`Episode` 種別に応じた props 変更以外は変更なしで green。
 
 ## 禁止事項 / scope 外
-- `PreferencesRegistry`・`AppContext` の解体（W-S4b）、`PasswordPolicy`・`AuthSession`（W-S4c）、`lib/api` の context 別取り込みと page 側注入点の移行・TP1 削除（W-S4d）は行わない。`createApiClient()` の呼出箇所を変えない。
+- `PreferencesRegistry`・`AppContext` の解体（W-S4b）、`PasswordPolicy`・`AuthSession`（W-S4c）、`lib/api` の context 別取り込みと page 側注入点の移行（W-S4d1）・TP1 削除（W-S4d3）は行わない。`createApiClient()` の呼出箇所を変えない。`tests/app/podcast/*`・`tests/app/feed/` の `vi.mock('@/lib/api')` は本 slice では残す（W-S4d2a が gateway double へ移す）。
 - backend の `error_message` の型・値域を変えない。表示文言を backend に求めない（FK-a）。
 - 生成状態の遷移検知（`detectCompleted`）とポーリング停止条件の単一所有（Spec §3.2 UC-S1）は本 slice の対象外（学習サイクルの別 order）。
 - 仕様にない業務条件を足さない。

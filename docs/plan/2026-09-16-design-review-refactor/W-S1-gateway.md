@@ -5,6 +5,11 @@
 
 着手順 2（S0（完了）の PR が main に merge 済みであること。W-S1b はこの W-S1 に依存し、W-S2a 以降はその後ろに並ぶ）。
 
+## 規模（見込み。根拠 = 2026-09-24 実測: `lib/api.ts` 554 行、`tests/lib/api.*.test.ts` 6 ファイル 2,329 行・`it()` 146 件、`contexts/AudioPlayerContext.tsx` 218 行）
+- production ≈ 330 行: `lib/api/gateway.ts` 新設 ≈ 180（`lib/api.ts:124` 付近の `request` を土台に `Result` 化・deadline）、`ApiClientProvider` ≈ 40、`lib/api.ts` の `request` を TP1 adapter（`Result` → `ApiError` throw）に置換 ≈ 60、`AudioPlayerContext.tsx` の 4 箇所 ≈ 30、`lib/audioCache.ts:20` の引数注入 ≈ 15。
+- test ≈ 800 行: T-T12 の移植（6 ファイルのうち `rejects.toThrow` / `ApiError` の assertion を `Result` の `kind` へ 1:1 で置換。2,329 行の ≈ 30%）≈ 700、T-T13 ≈ 40、`AudioPlayerContext.*.test.tsx` 3 本に gateway double を渡す変更 ≈ 60。
+- 合計 ≈ 1,130 行。1,000 行を超えるが、超過分は T-T12 の 1:1 機械置換であり、gateway とその契約テスト（CI-T12）を別 PR にすると gateway が未検証のまま main に入るため分割しない。order 本文の「378 件」は `it()` ではなく assertion 数で、`it()` は 146 件（2026-09-24 実測）。
+
 ## 前提・着手条件
 - 依存 slice: S0（完了。BFF fail-closed・失効時 cleanup・admin gate）が main に merge 済みであること。
 - Selection Gate 依存なし。
@@ -42,7 +47,7 @@
 3. T-T13 → RED → deadline 30 秒の timeout 実装 → GREEN。
 4. `ApiClientProvider` を実装し、`contexts/AudioPlayerContext.tsx` の 4 呼出を Provider 経由の gateway 呼出へ置換。
 5. `lib/audioCache.ts:20` の import を解消し、gateway 関数を引数注入に変更。呼出元（`AudioPlayerContext`）から渡す。
-6. **TP1（temporary path）を導入する**: 既存 `createApiClient()` の関数群（page 側 15 ファイル・37 箇所が呼ぶ）が `throw ApiError` の契約のままで動けるよう、`ApiFailure` から `ApiError` 相当の例外を生成して throw する薄い互換 adapter を残す。owner: user。導入: W-S1。削除条件: `app/`・`components/`・`hooks/` が `ApiError` を import しなくなった時（grep 0）。
+6. **TP1（temporary path）を導入する**: 既存 `createApiClient()` の関数群（page 側 15 ファイル・37 箇所が呼ぶ）が `throw ApiError` の契約のままで動けるよう、`ApiFailure` から `ApiError` 相当の例外を生成して throw する薄い互換 adapter を残す。owner: user。導入: W-S1。削除条件: `app/`・`components/`・`hooks/` が `ApiError` を import しなくなった時（grep 0。W-S4d1 で満たし、本体削除は W-S4d3）。
 7. 1 slice = 1 PR。
 
 ## 完了条件
