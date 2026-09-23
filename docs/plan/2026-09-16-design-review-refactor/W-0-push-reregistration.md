@@ -14,6 +14,11 @@
 | SG-W0-1（未決: 既存購読の取得方法） | `ready` 待ち／timeout 付き `ready`／`getRegistration()` のいずれか | **SG-C5** | `getRegistration()`（引数なし＝現在のスコープ）。`undefined` なら **即座に `null`（未購読扱い）** |
 | SG-W0-2（未決: logout の pin テストの置き場と port の差し替え方法） | `AuthProvider` に port を渡す prop を足すか、module mock で差し替えるか | **SG-C6** | 新規 `tests/contexts/AuthContext.push.test.tsx`。`vi.mock('@/lib/pushBrowserPort')` で `createRealPushBrowserPort` を fake に差し替える。**`AuthProvider` に props は足さない** |
 
+## 規模（見込み。根拠 = 2026-09-24 実測の対象ファイル行数）
+- production ≈ 240 行: `lib/pushBrowserPort.ts`（136 行）の 1 メソッド ≈ 15、`lib/push/pushRegistration.ts` 新設 ≈ 120、`hooks/useWebPushSubscription.ts`（113 行）の委譲化 ≈ 60、`components/PushReregistration.tsx` ≈ 20、`app/(app)/layout.tsx` 2、`contexts/AuthContext.tsx` の `logout` ≈ 20。
+- test ≈ 510 行（すべて新設）: `pushBrowserPort.real.test.ts` ≈ 60、`push/pushRegistration.test.ts` ≈ 200、`PushReregistration.test.tsx` ≈ 100、`AuthContext.push.test.tsx` ≈ 150。
+- 合計 ≈ 750 行。
+
 ## 前提・着手条件
 - wave 1。依存 slice は無い。着手時に親リポ `news-listen` で `git submodule status` を実行し、`web` 行に `+` が無い（親のポインタと submodule main が一致している）こと。
 - `docs/trial-log/` と親 `docs/trial-log/order-acceptance-inspection-finds-design-defects.md` を最初に読み、棄却済み案を再試行しない。
@@ -104,7 +109,7 @@
 5. `detachFromSubject()` が reject し得る **2 経路**（`port.getExistingSubscription()` / `client.unsubscribePush()`）のどちらが reject しても、また既存購読が無くても、`logout` は完了し `status` が `'unauthenticated'` になる。logout に待ち時間上限（timeout）は**無い**（`tests/contexts/AuthContext.push.test.tsx` で pin）。
 6. layout 側の再送 `reregister()` が reject し得る経路は **2 つ**（`port.getExistingSubscription()` / `client.subscribePush()`）で、どちらが reject しても例外が外へ漏れず、再試行のための状態（回数・タイマー）を持たない。`getVapidPublicKey` / `requestPermission` / `registerServiceWorker` は再送経路では**呼ばれない**（既存購読を再送するだけ）。
 7. `PushSubscriptionState` の **6 値**（`unsupported` / `denied` / `unsubscribed` / `subscribing` / `subscribed` / `error`）が変わっていない。値の追加・削除・改名をしない。
-8. 既存テスト **2 ファイル**（`tests/hooks/useWebPushSubscription.test.ts`・`tests/components/PushNotificationSection.test.tsx`）が **1 行も変更せずに** green である。変更が必要になった場合は設計（決定 22）の適用が誤っているので、テストではなく実装側を直す。
+8. 既存テスト **2 ファイル**（`tests/hooks/useWebPushSubscription.test.ts`・`tests/components/PushNotificationSection.test.tsx`）が **1 行も変更せずに** green である。変更が必要になった場合は設計（決定 22）の適用が誤っているので、テストではなく実装側を直す（本 slice 完了時点の条件。後続 W-S4d2b が gateway double へ移す際に更新する（許可））。
 9. `npm run lint`・`npx tsc --noEmit`・`npm test` が green で、テスト件数が「着手前の件数＋新規追加分」である。
 10. 設定画面の購読ボタンの見え方が変わっていない（ボタンが出るのは `unsubscribed` / `subscribed` / `subscribing` のときだけ、という現行の条件を変えない）。
 11. `lib/pushBrowserPort.ts` の実 port `getExistingSubscription()` が `navigator.serviceWorker.ready` を参照せず、`navigator.serviceWorker.getRegistration()` が `undefined` を返すと**待たずに `null`** を返す（`tests/lib/pushBrowserPort.real.test.ts` で pin）。`grep -n "serviceWorker.ready" lib/pushBrowserPort.ts` の出現は `subscribe` / `unsubscribe` の **2 箇所だけ**（着手前は 3 箇所）。`PushBrowserPort` のメソッド集合（`isSupported` / `getPermission` / `requestPermission` / `registerServiceWorker` / `getExistingSubscription` / `subscribe` / `unsubscribe` の 7 つ）は不変。

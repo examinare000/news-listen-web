@@ -17,10 +17,15 @@
 
 起動時回収は **起動（`AuthProvider` の mount）につき、最初に到達した契機で 1 回だけ** 走る。契機 1 / 2 で確定済みの後の login / register / passkey 成功は起動時回収を再度走らせない（そのとき走るのは遷移④の `subjectCleanup(A)` だけで、直前の主体 A が無ければ何もしない）。通信断・5xx・decode 失敗は未確定であり、契機 3〜5 のいずれかが来るまで回収は走らない。
 
+## 規模（見込み。根拠 = 2026-09-24 実測: `types/index.ts` 456 行、`tests/contexts/AuthContext.*.test.tsx` 504 行、e2e 4 本 757 行）
+- production ≈ 300 行: `types/index.ts` ≈ 15、`lib/account/subjectCleanup.ts` ≈ 80、`lib/playback/offlineLibrary.ts`（Cache 名導出・回収・開始時固定）≈ 60、`coordinator.ts` の `stopForSubjectLeave` ≈ 30、`PlaybackProvider.tsx` ≈ 20、認証 Provider の回収・cleanup 配線 ≈ 80、`settings/page.tsx` ≈ 10。
+- test ≈ 370 行: `subjectCleanup.test.ts` ≈ 120、`coordinator.test.ts` ≈ 40、`offlineLibrary.test.ts` ≈ 80、認証 Provider テストの場面 (i)〜(iv) と遷移④ ≈ 120、e2e stub の `user_id` ≈ 10。
+- 合計 ≈ 670 行。
+
 ## 前提・着手条件
 - **backend 契約が main にあること**（PR 番号ではなく契約で判定）: backend B-S5 の PR が merge 済みで親リポの `backend` ポインタが進んでおり、`GET /auth/me`・`PATCH /auth/me`・`POST /auth/login`・`POST /auth/register`・`POST /auth/passkey/login/verify` の 5 経路の応答 JSON に `user_id`（`^[A-Za-z0-9_-]+$`）がある（backend `api/schemas.py` の `AuthenticatedUserResponse` と `tests/test_api_auth_user_id.py` を親 main の backend submodule で確認。B-S5 order 完了条件 5）。`GET /admin/users` には無い（決定 15）。**未 merge なら着手しない。** フィールド名は `user_id`（ADR-104 決定 6・15、親 docs backend-design §14.2）で、これ以外の名前・形式を推測で決めない。応答の型は着手時に backend の schema から写す。
 - **依存 slice: W-S2c の web PR が main に merge 済み、かつ親リポ `news-listen` の submodule ポインタが進んでいる**（親で `git submodule status` の `web` 行に `+` が無い）こと（`lib/playback/{session,coordinator,offlineLibrary}.ts`・`contexts/PlaybackProvider.tsx` が存在し旧再生実装が無いこと。SL-01 / SL-07 の「再生停止・Queue 空・`nowPlaying` なし」を本 slice が担うため。user 判断 2026-09-23）。
-- W-S4b（`PreferencesRegistry`）・W-S4c（`AuthSession` / `AuthProvider.tsx`）・W-S4d（gateway 化）との順序は不定。着手時点の状態で対象ファイルが変わる（下表）。両方の状態を order に書いてあり、どちらでも完了条件は同じ。音声キャッシュ実装は `lib/playback/offlineLibrary.ts`（W-S2c 後で確定）。W-S3 とは対象ファイルが重ならず並行可。
+- W-S4b（`PreferencesRegistry`）・W-S4c（`AuthSession` / `AuthProvider.tsx`）・W-S4d1 / W-S4d2b / W-S4d3（gateway 化・テスト移植・失効配線）との順序は不定だが、いずれも `contexts/AuthContext|AuthProvider.tsx`・`app/(app)/settings/page.tsx`・`contexts/PlaybackProvider.tsx`・`tests/contexts/AuthContext|AuthProvider.*.test.tsx` のいずれかが重なるため**並行投入しない**（後から merge する側が rebase）。着手時点の状態で対象ファイルが変わる（下表）。両方の状態を order に書いてあり、どちらでも完了条件は同じ。音声キャッシュ実装は `lib/playback/offlineLibrary.ts`（W-S2c 後で確定）。W-S3 とは対象ファイルが重ならず並行可。
   | 条件 | 認証 Provider | 主体依存 key の宣言元 | 既定速度のメモリ上の置き場 |
   |---|---|---|---|
   | W-S4c 前 / 後 | `contexts/AuthContext.tsx`（`AuthStatus` 3 値。`refreshMe` 内で 401 とそれ以外を分ける）/ `contexts/AuthProvider.tsx`（`AuthSession` 4 状態。`unavailable` が「未確定」） | — | — |
@@ -55,7 +60,7 @@
 - `user_id` のフィールド名・形式を web で決めない（形式検査は決定 6 の `[A-Za-z0-9_-]+` に限る）。`username` を Cache 名のキーに使わない。
 - logout に明示ヘッダを足さない（SG-A2）。cleanup 完了を await してから未認証へ遷移しない（SG-X3）。
 - 主体未確定（通信断・5xx・decode 失敗）で回収・cleanup を走らせない（SL-03・Q10=A）。起動時回収を起動につき 2 回以上走らせない。確定の契機を冒頭の 5 つ以外に足さない（SG-C13）。
-- `AuthSession` union（W-S4c）・任意 API の 401 検知点の一般化（W-S4d）・`PreferencesRegistry`（W-S4b）は本 slice で作らない（本 slice は既存の検知点 `refreshMe` だけを使う）。
+- `AuthSession` union（W-S4c）・任意 API の 401 検知点の一般化（W-S4d3）・`PreferencesRegistry`（W-S4b）は本 slice で作らない（本 slice は既存の検知点 `refreshMe` だけを使う）。
 - backend・ios・android のコードを変更しない。仕様にない業務条件を足さない。
 
 ## 特性テスト（baseline）
