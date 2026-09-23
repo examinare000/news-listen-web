@@ -5,6 +5,8 @@
  * - Reads backend URL and API key from server-only environment variables (BACKEND_BASE_URL, BACKEND_API_KEY)
  * - Validates BACKEND_BASE_URL scheme (http/https only) to prevent SSRF
  * - Injects the API key from env (not from request headers)
+ * - Fail-closed: any config problem (missing BASE_URL, missing API_KEY, non-root BASE_URL path/query/hash,
+ *   invalid scheme) returns a generic 500 with no env names or URL values in the body (CI-T14)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -18,26 +20,31 @@ type Context = { params: Promise<{ path: string[] }> }
 
 interface BackendConfig {
   baseUrl: string
-  path: string
+  apiKey: string
 }
 
-function getBackendUrl(pathSegments: string[]): BackendConfig | null {
+// fail-closed: 欠落・不正のいずれも同じ null（= 呼び出し側で generic 500）に潰し、
+// どの経路で設定不正になったかを応答本文から推測できないようにする（CI-T14）。
+function resolveBackendConfig(): BackendConfig | null {
   const baseUrl = process.env.BACKEND_BASE_URL
-  if (!baseUrl) return null
+  const apiKey = process.env.BACKEND_API_KEY
+  if (!baseUrl || !apiKey) return null
 
-  // SSRF mitigation: only allow http and https schemes
+  // SSRF mitigation: only allow http/https schemes, and only a root BASE_URL
+  // (path/query/hash would let env config silently redirect all requests).
   try {
     const parsed = new URL(baseUrl)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null
+    }
+    if (parsed.pathname !== '/' || parsed.search !== '' || parsed.hash !== '') {
       return null
     }
   } catch {
     return null
   }
 
-  // Reconstruct the target URL preserving query string (get it from request inside forward())
-  const joinedPath = pathSegments.join('/')
-  return { baseUrl, path: joinedPath }
+  return { baseUrl, apiKey }
 }
 
 // AbortSignal.timeout() が期限切れ時に投げる例外は DOMException('TimeoutError')。
@@ -48,27 +55,23 @@ function isTimeoutError(err: unknown): boolean {
 }
 
 async function forward(req: NextRequest, pathSegments: string[]): Promise<NextResponse> {
-  const backendConfig = getBackendUrl(pathSegments)
+  const backendConfig = resolveBackendConfig()
 
   if (!backendConfig) {
-    return NextResponse.json(
-      { detail: 'Server misconfiguration: BACKEND_BASE_URL is not set' },
-      { status: 500 },
-    )
+    // 本文は経路によらず固定（env 名・URL 値を含めない）。fail-closed（CI-T14）。
+    return NextResponse.json({ detail: 'Server misconfiguration' }, { status: 500 })
   }
 
   // Construct target URL with query string from request
   const requestUrl = new URL(req.url)
   const search = requestUrl.search // includes leading '?'
-  const targetUrl = `${backendConfig.baseUrl.replace(/\/$/, '')}/${backendConfig.path}${search}`
+  const joinedPath = pathSegments.join('/')
+  const targetUrl = `${backendConfig.baseUrl.replace(/\/$/, '')}/${joinedPath}${search}`
 
   // Build forwarded headers (inject X-API-Key from env; strip Next.js-internal headers)
-  const apiKey = process.env.BACKEND_API_KEY
   const forwardedHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
-  }
-  if (apiKey) {
-    forwardedHeaders['X-API-Key'] = apiKey
+    'X-API-Key': backendConfig.apiKey,
   }
   // セッション Cookie（nl_session 等）をバックエンドへ転送する。ログイン認証は
   // サーバーサイドセッション方式で、トークンは httpOnly Cookie で往復する。
