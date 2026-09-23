@@ -4,6 +4,18 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      # react と react-dom は「完全に同一バージョン」でなければ起動時に
+      # "Incompatible React versions" で落ちる（react-dom が実行時に検査する）。
+      # 個別 PR に分かれると片方だけが上がり、CI のテストが全滅する
+      # （2026-09-18 PR #125: react 19.3.0 / react-dom 19.2.8 で 85 ファイル全てが収集失敗）。
+      # 型定義も本体に追随させる必要があるため同じ group に入れる。
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
