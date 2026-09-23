@@ -1,19 +1,19 @@
-## web リファクタ S3: CI ゲート追加（typecheck:ts7・独立 build・依存方向 eslint）
+## web リファクタ W-S3: CI ゲート追加（typecheck:ts7・独立 build・依存方向 eslint）
 
 ## 概要
 CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマンドを組み込み、依存方向違反（`contexts/` → `components/`、`currentPodcast` 直接参照）を機械検査できるようにする。正本は user 承認済みの Implementation Spec `docs/design/2026-09-16-implementation-spec-domain-model.md`（§4 CI-T7b・§6 S3 行・§7 R8）。本タスクは**承認済み指示書に従う実装**であり、analyze_order は検証モード（新規設計をしない）。generate_spec の spec.md は Spec の該当契約（CI-T7b）の抜粋で足りる。
 
-着手順 4（S2 に依存。S2 で導入した eslint ルール自体を CI で実行する）。
+着手順（W-S2c に依存。W-S2c で導入した eslint ルール自体を CI で実行する）。
 
 ## 前提・着手条件
-- 依存 slice: S2（`PlaybackProvider`・依存方向 eslint ルールの導入）が main に merge 済みであること。
+- 依存 slice: W-S2c（旧再生実装の削除・依存方向 eslint ルールの導入。`PlaybackProvider` 自体は W-S2b）が main に merge 済みであること。
 - Selection Gate 依存なし。
 - レビュー §8.3 Q8 の決定: `npm audit` は Dependabot と二重のため**入れない**。
 - `docs/trial-log/` を最初に読み、棄却済み案を再試行しない。
 
 ## 対象（web サブモジュールのみ）
 1. **`.github/workflows/ci.yml`**: `lint-test` ジョブに `npm run typecheck:ts7` と、既存 `npm run build`（Next.js ビルド）とは別の**独立 build ステップ**を追加する（`docs/research-reports/2026-09-16-code-design-review/verification-run.md` §6 の現行ジョブ構成: `npm ci` → `npm run lint` → `npm run typecheck` → `npm run test` に追加）。`npm audit` は追加しない（Q8）。
-2. **T-T7b の eslint（S2 で導入したルールの CI 実行確認）**: `no-restricted-properties` で `currentPodcast` 参照、`no-restricted-imports` で `contexts/` → `components/` の import を禁止するルールが `npm run lint` の一部として CI で実行されることを確認する。ルール自体の追加は S2 の作業範囲（本 slice は CI での実行確認と、ルールが `lint-test` ジョブでエラーとして扱われることの担保）。
+2. **T-T7b の eslint（W-S2c で導入したルールの CI 実行確認）**: `no-restricted-properties` で `currentPodcast` 参照、`no-restricted-imports` で `contexts/` → `components/` の import を禁止するルールが `npm run lint` の一部として CI で実行されることを確認する。ルール自体の追加は W-S2c の作業範囲（本 slice は CI での実行確認と、ルールが `lint-test` ジョブでエラーとして扱われることの担保）。
 
 ## 契約（RED テストの対応）
 | CI | 内容 | RED テスト |
@@ -28,7 +28,7 @@ CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマ�
 2. `ci.yml` の `lint-test` ジョブに `npm run typecheck:ts7` ステップを追加。
 3. `ci.yml` の `lint-test` ジョブに独立 `npm run build` ステップを追加（既存の `npm run test` の前後いずれでもよいが、既存ステップの削除・順序変更は最小限にする）。
 4. `npm audit` は追加しない。
-5. S2 で導入した eslint ルール（`no-restricted-properties`/`no-restricted-imports`）が `npm run lint` の対象に含まれ、違反時に非ゼロ終了することを確認する。
+5. W-S2c で導入した eslint ルール（`no-restricted-properties`/`no-restricted-imports`）が `npm run lint` の対象に含まれ、違反時に非ゼロ終了することを確認する。
 6. 1 slice = 1 PR。
 
 ## 完了条件
@@ -39,7 +39,7 @@ CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマ�
 
 ## 禁止事項 / scope 外
 - `npm audit` の追加はしない（Q8）。
-- eslint ルール本体の新規設計・追加はしない（S2 の作業範囲。本 slice は CI 実行の担保のみ）。
+- eslint ルール本体の新規設計・追加はしない（W-S2c の作業範囲。本 slice は CI 実行の担保のみ）。
 - `e2e` ジョブ・`secret-scan` ジョブの変更はしない。
 - 仕様にない業務条件を足さない。
 
