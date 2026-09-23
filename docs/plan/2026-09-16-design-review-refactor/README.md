@@ -7,7 +7,7 @@
 | 順 | order | 内容 | 依存 | 検証する行 ID（web-design §12.5） | 切替方式 |
 |---|---|---|---|---|---|
 | 完了 | [S0-constraint.md](S0-constraint.md)（W-S0） | BFF fail-closed・失効時 cleanup・admin gate | なし | SL-03・SL-05（骨格）。SL-01 / 02 / 04 は骨格のみ | 小ステップ |
-| wave 1 | [W-0-push-reregistration.md](W-0-push-reregistration.md) | Web Push の再登録と logout 時の購読解除（ADR-104 決定 18〜24）。**backend B-S5 の着手条件** | なし（他の web slice と対象ファイルが重ならない）。ただし W-S2b は W-0 の merge を待つ（同じ `AuthContext.logout` を編集） | — | 特性テスト → RED → 実装 |
+| wave 1 | [W-0-push-reregistration.md](W-0-push-reregistration.md) | Web Push の再登録と logout 時の購読解除（ADR-104 決定 18〜24）。`lib/pushBrowserPort.ts` の `getExistingSubscription` を `getRegistration()` 系へ（SG-C5）。**backend B-S5 の着手条件**。2026-09-23 の受入検査 blocked（C1 / SG-W0-1 / SG-W0-2）は SG-C5・C6 で解除済み → 再投入 | なし（他の web slice と対象ファイルが重ならない）。ただし W-S2b は W-0 の merge を待つ（同じ `AuthContext.logout` を編集） | — | 特性テスト → RED → 実装 |
 | wave 1 | [W-S1-gateway.md](W-S1-gateway.md) | `ApiGateway`（`Result` / `ApiFailure`・deadline）と最小注入点（再生系 4 箇所） | S0 | CI-T12 / T13 | 旧 `ApiError` 互換 adapter（TP1）を暫定保持（削除は W-S4d） |
 | 2 | [W-S1b-api-split.md](W-S1b-api-split.md) | `lib/api.ts` を backend リソース単位の 10 ファイルへ分割（横断関数 0 件・呼出側不変） | W-S1 | —（特性テストのみ） | 挙動不変（型・関数名不変） |
 | 2' | [W-S2a-playback-domain.md](W-S2a-playback-domain.md) | `lib/playback/*` ドメイン層の新設（Session・Queue gate・ResumeRule・OfflineLibrary・Coordinator・PositionReporter）。既存コードから呼ばない | W-S1（W-S1b とは対象ファイルが重ならず並行可） | RS-01〜RS-07（純関数・表駆動）。Q-01〜Q-32 を新モジュールでも。CI-T1〜T11 | ① 新規コードのみ |
@@ -18,7 +18,7 @@
 | 5（学習サイクル） | [W-S4b-prefs.md](W-S4b-prefs.md) | Preferences: `PreferencesRegistry`（主体依存の宣言 SG-A6）・`AppContext` 解体の完了・TP3 | W-S2c | CI-T17 | inline theme script の key 複製を pin テストで暫定保持（TP3） |
 | 5（学習サイクル） | [W-S4c-account.md](W-S4c-account.md) | Account: `PasswordPolicy` 12〜20 の単一化・`AuthSession` 判別共用体・`AuthProvider.tsx` | W-S2c ＋ backend S0c（完了）の契約 | CI-T15（全体）・CI-T16。SL-03 | 特性テスト → RED → 実装 |
 | 6（学習サイクル） | [W-S4d-api-injection.md](W-S4d-api-injection.md) | `lib/api` の context 別取り込み・page 側 15 ファイルの注入点移行・失効検知の一般化・TP1 削除 | W-S1b ＋ W-S4a ＋ W-S4b ＋ W-S4c | CI-T12（呼出側）・CI-T15（検知点）。SL-05 | 機械的移行（context ごとにコミット分割） |
-| B-S5 後 | [W-S5-subject-cache.md](W-S5-subject-cache.md) | 主体別音声キャッシュ `audio-v1-{user_id}`・起動時の回収・旧 `audio-v1` の初回全削除・主体依存 3 key の削除・主体離脱時の再生停止 `stopForSubjectLeave`（ADR-104 決定 27・SG-A1 / A2 / A6・SG-B3 / B6） | **backend B-S5 の契約が main にあること**（5 経路の応答に `user_id`）＋ **W-S2c**。W-S4b / c / d とは順序不定（order 内に両方の状態を記載）。**着手前に決める項目 U-W5-1 が 1 件**（下記 unresolved） | SL-01・SL-02・SL-04・SL-06・SL-07（再生停止・音声キャッシュ・端末設定の全事後条件） | 不可逆点（Cache 名前空間の変更） |
+| B-S5 後 | [W-S5-subject-cache.md](W-S5-subject-cache.md) | 主体別音声キャッシュ `audio-v1-{user_id}`・起動時の回収・旧 `audio-v1` の初回全削除・主体依存 3 key の削除・主体離脱時の再生停止 `stopForSubjectLeave`（ADR-104 決定 27・SG-A1 / A2 / A6・SG-B3 / B6） | **backend B-S5 の契約が main にあること**（5 経路の応答に `user_id`）＋ **W-S2c**。W-S4b / c / d とは順序不定（order 内に両方の状態を記載）。旧 U-W5-1 は SG-C13 で確定済み（主体確定の契機 5 つ） | SL-01・SL-02・SL-04・SL-06・SL-07（再生停止・音声キャッシュ・端末設定の全事後条件） | 不可逆点（Cache 名前空間の変更） |
 | 保留 | （learning） | `lib/learning/` の 3 ルール・StreakContext の副作用移動 | 学習機能サイクル | — | order 未作成 |
 
 依存の直列: **W-S1 → {W-S1b ∥ W-S2a} → W-S2b → W-S2c → {W-S3 ∥ W-S4a ∥ W-S4b ∥ W-S4c ∥ W-S5} → W-S4d**。W-0 は独立（W-S2b の前に merge）。W-S5 はさらに B-S5 の後（B-S5 は W-0 の後）。
@@ -44,18 +44,14 @@ release の単位は「依存先の submodule PR ＋ 親リポのポインタ PR
 | 4（学習サイクル） | W-S4a | W-S2c の PR ＋ 親ポインタ、かつ backend B-S0b の PR ＋ 親ポインタ | W-S3 / W-S4b / W-S4c / W-S5 |
 | 4（学習サイクル） | W-S4b | W-S2c の PR ＋ 親ポインタ | W-S3 / W-S4a / W-S4c / W-S5 |
 | 4（学習サイクル） | W-S4c | W-S2c の PR ＋ 親ポインタ | W-S3 / W-S4a / W-S4b / W-S5 |
-| 4 | W-S5 | W-S2c の PR ＋ 親ポインタ、かつ backend B-S5 の PR ＋ 親ポインタ、かつ U-W5-1 の決定 | W-S3 / W-S4a〜c |
+| 4 | W-S5 | W-S2c の PR ＋ 親ポインタ、かつ backend B-S5 の PR ＋ 親ポインタ | W-S3 / W-S4a〜c |
 | 5（学習サイクル） | W-S4d | W-S1b・W-S4a・W-S4b・W-S4c の全 PR ＋ 親ポインタ（W-S5 は順序不定） | W-S5 |
 
 同じ web module 内で並行投入した slice は、後から merge する側が rebase する（並行を許した組は対象ファイルが重ならないことを order で確認済み）。
 
-## unresolved（投入前に user が決める）
+## unresolved
 
-| # | order | 内容 |
-|---|---|---|
-| U-W5-1 | W-S5 | 起動時の認証解決が未確定に終わった後の login / register / passkey 成功を「主体の確定」に含めて回収を 1 回走らせるか（推奨 (A) 含める。詳細は W-S5 冒頭の表） |
-
-W-S1b / W-S2a / W-S2b / W-S2c / W-S3 / W-S4a〜d には未決の選択は無い（2026-09-23 夜の受入検査）。
+**無し。** 2026-09-23 夜の user 決定で、W-0 の受入検査 blocked 3 件（C1 / SG-W0-1 / SG-W0-2 → SG-C5・SG-C6）と W-S5 の U-W5-1（→ SG-C13 = (A) 含める。主体確定の契機は `getMe` 成功・`getMe` 401・未確定後の login / register / passkey 成功の 5 つ）を閉じた。W-0 / W-S1b / W-S2a / W-S2b / W-S2c / W-S3 / W-S4a〜d / W-S5 に未決の選択は無い。親 plan `docs/plan/2026-09-16-design-review-refactor.md` W-0 行の「blocked → 再投入」表記は router が更新する。
 
 ## takt への投入手順（親リポ `news-listen` の作業ツリーで）
 
