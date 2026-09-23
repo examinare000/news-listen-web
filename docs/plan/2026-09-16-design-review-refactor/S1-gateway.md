@@ -17,7 +17,15 @@
 2. **`ApiClientProvider`（新規）**: 1 つの gateway インスタンスを保持し context/hook から取得させる React Provider。SG5「最小注入点」であり、context 別の 6 分割（Playback / Catalog / Account / …）はこの slice では作らない（rejected_overdesign）。
 3. **Provider 経由に切り替えるのは再生系 4 箇所のみ**: `contexts/AudioPlayerContext.tsx` 内の `createApiClient()` 呼出 4 箇所（`docs/research-reports/2026-09-16-code-design-review/verification-run.md` の erratum 記載どおり `contexts/AudioPlayerContext.tsx: 4`）を `ApiClientProvider` から取得した gateway 呼出へ置換する。
 4. **`lib/audioCache.ts:20` の import 解消**: `lib/playback ↛ lib/api` の依存禁止（Spec §2 prohibited_structures）に備え、`lib/audioCache.ts` が `lib/api` を直接 import している箇所を解消し、gateway 関数を呼出側から引数で受け取る形にする。
-5. **既存 `createApiClient()` の関数群はそのまま維持**する（内部で新 `gateway` を使うよう書き換えて良いが、公開シグネチャ・呼出箇所 15 ファイル・37 箇所は変更しない）。context 別分割・page 側移行は S4 以降。
+5. **既存 `createApiClient()` の関数群はそのまま維持**する（内部で新 `gateway` を使うよう書き換えて良いが、公開シグネチャと、**`contexts/AudioPlayerContext.tsx` 以外のすべての呼出箇所**は変更しない）。リソース別分割は **W-S1b**、page 側移行は W-S4。
+
+   **呼出箇所の数え方**（指示書に固定値を書かない。2026-09-23 時点の実測は参考値であり、着手時に数え直す）:
+   ```
+   grep -rn 'createApiClient()' app components hooks contexts lib | wc -l   # 2026-09-23 実測: 38
+   grep -rln 'createApiClient()' app components hooks contexts lib | wc -l  # 2026-09-23 実測: 20 ファイル
+   grep -c 'createApiClient()' contexts/AudioPlayerContext.tsx              # 2026-09-23 実測: 4（本 slice の置換対象）
+   ```
+   着手前にこの 3 つを実行して記録し、完了時に「`AudioPlayerContext.tsx` が 0、他は着手前と同数」であることを示す。
 
 ## 契約（RED テストの対応）
 | CI | 内容 | RED テスト |
@@ -42,12 +50,12 @@
 - T-T12 / T-T13 が `verifies: CI-T12/T13` をテスト名またはコメントに持つ。
 - `contexts/AudioPlayerContext.tsx` の 4 呼出が `ApiClientProvider` 経由の gateway 呼出に置き換わっている。
 - `lib/audioCache.ts` が `lib/api`（旧関数群）を直接 import していない（gateway は引数で受ける）。
-- page 側 15 ファイル・37 箇所の `createApiClient()` 呼出は変更されておらず、既存テストが green のまま。
+- `contexts/AudioPlayerContext.tsx` 以外の `createApiClient()` 呼出数が着手前と同数であり、既存テストが green のまま（数え方は対象 5 のコマンド）。
 - TP1 adapter の owner・導入日・削除条件がコード内コメントまたは PR 説明に明記されている。
 
 ## 禁止事項 / scope 外
-- `lib/api` の context 別 6 分割（Playback / Catalog / Account 等）はこの slice で行わない（S4 以降）。
-- page 側 15 ファイルの注入点移行（S4）は行わない。
+- `lib/api` のリソース別分割はこの slice で行わない（**W-S1b**。[投入計画](../../../../docs/plan/2026-09-16-design-review-refactor.md)）。
+- page 側の注入点移行（W-S4）は行わない。
 - `PlaybackProvider` / `lib/playback/*`（S2）、`Queue.create` gate、状態 union は作らない。
 - 仕様にない業務条件を足さない。
 
