@@ -1,15 +1,15 @@
-## web リファクタ S1: ApiGateway と最小注入点（SG5）
+## web リファクタ W-S1: ApiGateway と最小注入点（SG5）
 
 ## 概要
 再生系の失敗表現を `throw ApiError` から `Result<T, ApiFailure>` へ切り替えるための port を導入する。ただし SG5「最小注入点」に厳密に従い、既存 `createApiClient()` の関数群・context 別分割・page 側 15 ファイルの移行は**行わない**。正本は user 承認済みの Implementation Spec `docs/design/2026-09-16-implementation-spec-domain-model.md`（§2 port 一覧・§4 CI-T12/T13・§6 S1 行）。本タスクは**承認済み指示書に従う実装**であり、analyze_order は検証モード（新規設計をしない）。generate_spec の spec.md は Spec の該当契約（CI-T12 / T13）の抜粋で足り、契約 ID は Spec のものを再利用する。
 
-着手順 2（S0 の PR が main に merge 済みであること。S2 はこの S1 に依存）。
+着手順 2（S0（完了）の PR が main に merge 済みであること。W-S1b はこの W-S1 に依存し、W-S2a 以降はその後ろに並ぶ）。
 
 ## 前提・着手条件
-- 依存 slice: S0（BFF fail-closed・失効時 cleanup・admin gate）が main に merge 済みであること。
+- 依存 slice: S0（完了。BFF fail-closed・失効時 cleanup・admin gate）が main に merge 済みであること。
 - Selection Gate 依存なし。
 - SG5 の決定（レビュー §8.2）: 「Provider が 1 つの API client を保持し context/hook から取る最小注入点。まず再生系 4 箇所（AudioPlayerContext）を移行、page 15 ファイルは順次」。この決定を超えて分割・移行を広げない。
-- 棄却済み案（再提案しない、Spec §5 rejected_overdesign）: `createApiClient` factory の階層化（RO1）、`lib/api` の context 別 6 分割を S1 で行うこと（SG5 超過。S4 以降へ送る）。
+- 棄却済み案（再提案しない、Spec §5 rejected_overdesign）: `createApiClient` factory の階層化（RO1）、`lib/api` の context 別 6 分割を W-S1 で行うこと（SG5 超過。リソース単位の分割は W-S1b、context 別の取り込みは W-S4 へ送る）。
 - `docs/trial-log/` を最初に読み、棄却済み案を再試行しない。
 
 ## 対象（web サブモジュールのみ）
@@ -42,7 +42,7 @@
 3. T-T13 → RED → deadline 30 秒の timeout 実装 → GREEN。
 4. `ApiClientProvider` を実装し、`contexts/AudioPlayerContext.tsx` の 4 呼出を Provider 経由の gateway 呼出へ置換。
 5. `lib/audioCache.ts:20` の import を解消し、gateway 関数を引数注入に変更。呼出元（`AudioPlayerContext`）から渡す。
-6. **TP1（temporary path）を導入する**: 既存 `createApiClient()` の関数群（page 側 15 ファイル・37 箇所が呼ぶ）が `throw ApiError` の契約のままで動けるよう、`ApiFailure` から `ApiError` 相当の例外を生成して throw する薄い互換 adapter を残す。owner: user。導入: S1。削除条件: `app/`・`components/`・`hooks/` が `ApiError` を import しなくなった時（grep 0）。
+6. **TP1（temporary path）を導入する**: 既存 `createApiClient()` の関数群（page 側 15 ファイル・37 箇所が呼ぶ）が `throw ApiError` の契約のままで動けるよう、`ApiFailure` から `ApiError` 相当の例外を生成して throw する薄い互換 adapter を残す。owner: user。導入: W-S1。削除条件: `app/`・`components/`・`hooks/` が `ApiError` を import しなくなった時（grep 0）。
 7. 1 slice = 1 PR。
 
 ## 完了条件
@@ -56,7 +56,7 @@
 ## 禁止事項 / scope 外
 - `lib/api` のリソース別分割はこの slice で行わない（**W-S1b**。[投入計画](../../../../docs/plan/2026-09-16-design-review-refactor.md)）。
 - page 側の注入点移行（W-S4）は行わない。
-- `PlaybackProvider` / `lib/playback/*`（S2）、`Queue.create` gate、状態 union は作らない。
+- `PlaybackProvider` / `lib/playback/*`（W-S2a）、`Queue.create` gate、状態 union は作らない。
 - 仕様にない業務条件を足さない。
 
 ## 参照
