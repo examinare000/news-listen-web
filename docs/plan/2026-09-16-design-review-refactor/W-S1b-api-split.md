@@ -3,18 +3,18 @@
 ## 概要
 `lib/api.ts`（554 行。`ApiError`・`request`・`createApiClient()` が返す 58 メソッド。2026-09-23 実測）を backend リソース単位の 10 ファイルへ分割する。分割軸は「同じ backend リソースの契約が同じ理由で変わる」こと（親 docs `design/web-design.md` §12.3 W-S1b 行）。型・関数名・シグネチャ・呼出箇所は不変で、変わるのは定義の置き場（module 構成）だけ。正本は Implementation Spec `docs/design/2026-09-16-implementation-spec-domain-model.md` §2（`lib/api/` の置き場・prohibited_structures）と親 docs web-design §12.1・§12.3。**検証モード: 再設計しない**。新しい契約 ID は作らない（本 slice に RED テストは無い。既存 `tests/lib/api.*.test.ts` 6 ファイルが特性テスト）。
 
-W-S1（失敗の表し方＝`Result` / `ApiFailure`）を先に決めてから 10 箇所へ配る、という順序で W-S1 に依存する（親 plan）。context 別（`lib/<context>`）への取り込みは W-S4 で行う 2 段階の 1 段目。
+W-S1（失敗の表し方＝`Result` / `ApiFailure`）を先に決めてから 10 箇所へ配る、という順序で W-S1 に依存する（親 plan）。context 別（`lib/<context>`）への取り込みは W-S4d で行う 2 段階の 1 段目。W-S2a（`lib/playback/*` の新設）とは対象ファイルが重ならないため並行投入できる（README「投入順」）。
 
 ## 前提・着手条件
-- 依存 slice: W-S1（`lib/api/gateway.ts`・`ApiClientProvider`・TP1 `ApiError` 互換 adapter）が main に merge 済み。
+- 依存 slice: W-S1（`lib/api/gateway.ts`・`ApiClientProvider`・TP1 `ApiError` 互換 adapter）の **web PR が main に merge 済み、かつ親リポ `news-listen` の submodule ポインタが進んでいる**（親で `git submodule status` を実行し `web` 行に `+` が無い）こと。takt の worktree は親 main から clone し submodule が親の記録と一致することを検査するため、ポインタ PR 前に投入すると `tree_incomplete` で失敗する。
 - baseline green: `npm test` / `npm run lint` / `npm run typecheck` / `npm run typecheck:ts7` / `npm run build`。着手前に次を記録する（2026-09-23 実測値は参考。着手時に数え直す）:
   ```
-  grep -cE "^    (async )?[a-zA-Z_]+\(" lib/api.ts                          # メソッド数（実測 58）
+  grep -cE "^    (async )?[a-zA-Z_]+\(" lib/api.ts                          # メソッド数＋1（実測 59。うち 1 行は ApiError の `super(detail)` でメソッドではない → 58）
   grep -rn "from '@/lib/api'" app components hooks contexts lib | wc -l     # 呼出側 import 行（実測 21 ファイル）
   grep -rln "vi.mock('@/lib/api'" tests | wc -l                             # mock 箇所（実測 25 ファイル）
   ```
 - Selection Gate 依存なし。
-- 棄却済み案（再提案しない）: `createApiClient` factory の階層化（Spec §5 RO1）、context 別 6 分割をこの slice で行うこと（Spec §5 rejected_overdesign。W-S4）、`lib/api.ts` の削除（呼出側 21 ファイルの import 変更は W-S4 の page 側移行と同じ作業になり W-S1「呼出箇所は変更しない」に反する）。
+- 棄却済み案（再提案しない）: `createApiClient` factory の階層化（Spec §5 RO1）、context 別 6 分割をこの slice で行うこと（Spec §5 rejected_overdesign。W-S4d）、`lib/api.ts` の削除（呼出側 21 ファイルの import 変更は W-S4d の page 側移行と同じ作業になり W-S1「呼出箇所は変更しない」に反する）。
 - `docs/trial-log/` を最初に読む。
 
 ## 対象（web サブモジュールのみ）
@@ -46,7 +46,7 @@ W-S1（失敗の表し方＝`Result` / `ApiFailure`）を先に決めてから 1
 
 ## 禁止事項 / scope 外
 - メソッド名・引数・戻り型・URL・HTTP method・エラー写像（TP1 の throw 契約）を変えない。
-- 呼出側の import 経路を `@/lib/api/<resource>` へ変えない（W-S4）。`lib/<context>/` を作らない（W-S4）。
+- 呼出側の import 経路を `@/lib/api/<resource>` へ変えない（W-S4d）。`lib/<context>/` を作らない（W-S4d）。
 - `lib/api/gateway.ts`（W-S1）の契約を変えない。
 - 仕様にない業務条件を足さない。
 

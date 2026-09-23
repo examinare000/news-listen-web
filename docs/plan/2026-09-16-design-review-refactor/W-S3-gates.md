@@ -6,7 +6,7 @@ CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマ�
 着手順（W-S2c に依存。W-S2c で導入した eslint ルール自体を CI で実行する）。
 
 ## 前提・着手条件
-- 依存 slice: W-S2c（旧再生実装の削除・依存方向 eslint ルールの導入。`PlaybackProvider` 自体は W-S2b）が main に merge 済みであること。
+- 依存 slice: W-S2c（旧再生実装の削除・依存方向 eslint ルールの導入。`PlaybackProvider` 自体は W-S2b）の web PR が main に merge 済み、**かつ親リポ `news-listen` の submodule ポインタが進んでいる**（親で `git submodule status` の `web` 行に `+` が無い）こと。W-S4a〜d・W-S5 とは対象ファイル（`.github/workflows/ci.yml` のみ）が重ならないため並行投入できる。
 - Selection Gate 依存なし。
 - レビュー §8.3 Q8 の決定: `npm audit` は Dependabot と二重のため**入れない**。
 - `docs/trial-log/` を最初に読み、棄却済み案を再試行しない。
