@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { AuthUser, RegisterInput } from '@/types/index'
-import { createApiClient } from '@/lib/api'
+import { ApiError, createApiClient } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
@@ -15,6 +15,11 @@ import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
 // - 'authenticated' / 'unauthenticated': 解決済み
 export type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 
+// CI-T15（SG-S0-1 候補 (b) で確定）: refreshMe が失効（401）を検知したときの
+// SW 管理キャッシュ（shell-*/api-*）消去結果。'skipped' は 401 以外（成功・network error 等）で
+// cleanup 自体を行っていないことを表す。
+export type RefreshMeResult = { cleanup: 'done' | 'incomplete' | 'skipped' }
+
 interface AuthContextValue {
   status: AuthStatus
   user: AuthUser | null
@@ -23,8 +28,8 @@ interface AuthContextValue {
   logout: () => Promise<void>
   /** 招待コードによる新規登録。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
   register: (input: RegisterInput) => Promise<void>
-  /** GET /auth/me で状態を再解決する。 */
-  refreshMe: () => Promise<void>
+  /** GET /auth/me で状態を再解決する。401 失効時の cleanup 結果を返す。 */
+  refreshMe: () => Promise<RefreshMeResult>
   /**
    * Passkey ログイン。port は WebAuthnBrowserPort を受け取る（テストでは fake を注入）。
    * 失敗時はエラーを throw する（UI 層でキャッチして文言表示）。
@@ -51,15 +56,29 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     [],
   )
 
-  const refreshMe = useCallback(async () => {
+  const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
     try {
       const me = await client().getMe()
       setUser(me)
       setStatus('authenticated')
-    } catch {
+      return { cleanup: 'skipped' }
+    } catch (err) {
       // 401 などはすべて未認証として扱う（理由は伏せる）。
       setUser(null)
       setStatus('unauthenticated')
+      // SG-S0-1 (b): 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
+      // network error（ApiError(0) 等）や 401 以外では shell-*/api-* を残す
+      // （直前 status は問わない — 初回 mount の自動解決でも同じ判定）。
+      if (err instanceof ApiError && err.status === 401) {
+        try {
+          await clearManagedServiceWorkerCaches()
+          return { cleanup: 'done' }
+        } catch {
+          // キャッシュ消去の失敗は状態遷移を妨げない（observable な incomplete を返すのみ）。
+          return { cleanup: 'incomplete' }
+        }
+      }
+      return { cleanup: 'skipped' }
     }
   }, [client])
 

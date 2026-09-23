@@ -4,12 +4,22 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { createApiClient } from '@/lib/api'
+import { AdminGate } from '@/components/AdminGate'
 import type { AuthUser, UserRole } from '@/types/index'
 
 // 管理者用ユーザー管理画面。一覧・作成・ロール変更・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
+// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（CI-T16）。
 export default function AdminUsersPage() {
-  const { user, status } = useAuth()
+  return (
+    <AdminGate title="ユーザー管理">
+      <AdminUsersPanel />
+    </AdminGate>
+  )
+}
+
+function AdminUsersPanel() {
+  const { user } = useAuth()
   const client = createApiClient()
 
   const [users, setUsers] = useState<AuthUser[]>([])
@@ -22,8 +32,6 @@ export default function AdminUsersPage() {
   const [newRole, setNewRole] = useState<UserRole>('user')
   const [formError, setFormError] = useState('')
 
-  const isAdmin = user?.role === 'admin'
-
   const reload = useCallback(async () => {
     setLoadError('')
     try {
@@ -34,11 +42,10 @@ export default function AdminUsersPage() {
     }
   }, [])
 
+  // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
-    if (status === 'authenticated' && isAdmin) {
-      reload()
-    }
-  }, [status, isAdmin, reload])
+    void reload()
+  }, [reload])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -81,20 +88,6 @@ export default function AdminUsersPage() {
     } catch {
       setLoadError(`${target.username} のロール変更に失敗しました`)
     }
-  }
-
-  if (status === 'authenticated' && !isAdmin) {
-    return (
-      <div className="content-area content-narrow">
-        <div className="page-header">
-          <h1 className="page-title">ユーザー管理</h1>
-        </div>
-        <p className="form-error">この画面は管理者のみ利用できます。</p>
-        <Link className="btn btn-ghost" href="/settings">
-          設定へ戻る
-        </Link>
-      </div>
-    )
   }
 
   return (
