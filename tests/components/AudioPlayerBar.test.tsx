@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { AppProvider } from '@/contexts/AppContext'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AudioPlayerProvider, useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { Podcast } from '@/types/index'
@@ -38,9 +39,11 @@ function renderWithContext(currentPodcast: Podcast | null = null) {
   return render(
     <AppProvider initialState={{ currentPodcast }}>
       <ToastProvider>
-        <AudioPlayerProvider>
-          <AudioPlayerBar />
-        </AudioPlayerProvider>
+        <ApiClientProvider>
+          <AudioPlayerProvider>
+            <AudioPlayerBar />
+          </AudioPlayerProvider>
+        </ApiClientProvider>
       </ToastProvider>
     </AppProvider>
   )
@@ -371,7 +374,7 @@ describe('AudioPlayerBar title display (podcastTitle fallback)', () => {
       japanese_intro_text: 'これはキューに入ったポッドキャストのイントロテキストです。四十字を超えているためタイトルがない場合は切り詰められます。',
     }
 
-    // addToQueue → playById → createApiClient().getPodcast() が fetch を呼ぶが
+    // addToQueue → playById → gateway の既定の fetch が呼ばれるが
     // テスト環境にサーバはないため失敗させる。
     // setQueueState は fetch より先に同期実行されるため upNext は fetch 失敗後も残る。
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
@@ -388,10 +391,12 @@ describe('AudioPlayerBar title display (podcastTitle fallback)', () => {
     render(
       <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
         <ToastProvider>
-          <AudioPlayerProvider>
+          <ApiClientProvider>
+            <AudioPlayerProvider>
             <QueuePrimer />
             <AudioPlayerBar />
-          </AudioPlayerProvider>
+            </AudioPlayerProvider>
+          </ApiClientProvider>
         </ToastProvider>
       </AppProvider>
     )
@@ -422,9 +427,11 @@ describe('Speed selector', () => {
     render(
       <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST, playbackSpeed: 1.5 }}>
         <ToastProvider>
-          <AudioPlayerProvider>
+          <ApiClientProvider>
+            <AudioPlayerProvider>
             <AudioPlayerBar />
-          </AudioPlayerProvider>
+            </AudioPlayerProvider>
+          </ApiClientProvider>
         </ToastProvider>
       </AppProvider>
     )
@@ -462,10 +469,12 @@ describe('Queue reordering buttons (spec issue #138, onMove semantics)', () => {
     render(
       <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
         <ToastProvider>
-          <AudioPlayerProvider>
+          <ApiClientProvider>
+            <AudioPlayerProvider>
             <QueueSetup />
             <AudioPlayerBar />
-          </AudioPlayerProvider>
+            </AudioPlayerProvider>
+          </ApiClientProvider>
         </ToastProvider>
       </AppProvider>
     )
@@ -517,10 +526,12 @@ describe('Queue reordering buttons (spec issue #138, onMove semantics)', () => {
     render(
       <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
         <ToastProvider>
-          <AudioPlayerProvider>
+          <ApiClientProvider>
+            <AudioPlayerProvider>
             <QueueSetup />
             <AudioPlayerBar />
-          </AudioPlayerProvider>
+            </AudioPlayerProvider>
+          </ApiClientProvider>
         </ToastProvider>
       </AppProvider>
     )

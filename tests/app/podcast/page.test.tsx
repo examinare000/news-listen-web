@@ -4,9 +4,12 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import PodcastPage from '@/app/(app)/podcast/page'
 import { AppProvider } from '@/contexts/AppContext'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { setupMockAudio } from '../../helpers/mockAudio'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
@@ -68,6 +71,7 @@ const TWO_PODCASTS = [
 ]
 
 let mockAudio: ReturnType<typeof setupMockAudio>
+let gateway: GatewayDouble
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -77,6 +81,7 @@ beforeEach(() => {
   downloadAudio.mockResolvedValue(undefined)
   localStorage.clear()
   mockAudio = setupMockAudio()
+  gateway = createGatewayDouble()
 })
 
 function renderPodcastPage(extraState = {}) {
@@ -85,9 +90,11 @@ function renderPodcastPage(extraState = {}) {
       ...extraState,
     }}>
       <ToastProvider>
-        <AudioPlayerProvider>
-          <PodcastPage />
-        </AudioPlayerProvider>
+        <ApiClientProvider gateway={gateway}>
+          <AudioPlayerProvider>
+            <PodcastPage />
+          </AudioPlayerProvider>
+        </ApiClientProvider>
       </ToastProvider>
     </AppProvider>
   )
@@ -143,22 +150,27 @@ describe('PodcastPage — listing', () => {
 // Podcast 一覧 — 再生（D7: 再生前に getPodcast で URL 再取得）
 // ==========================================================
 describe('PodcastPage — play with fresh URL', () => {
-  test('Given play button clicked, calls getPodcast(id) to get fresh URL before playing', async () => {
+  test('Given play button clicked, calls gateway GET podcasts/{id} to get fresh URL before playing', async () => {
     const freshPodcast = { ...SAMPLE_PODCASTS[0], audio_url: 'https://storage.example.com/fresh.mp3' }
-    const getPodcast = vi.fn().mockResolvedValue(freshPodcast)
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
-      getPodcast,
+      getPodcast: vi.fn(),
     } as unknown as ReturnType<typeof createApiClient>)
+    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCASTS[0].id}`, { ok: true, value: freshPodcast })
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
     await userEvent.click(screen.getByRole('button', { name: '再生' }))
 
-    // 一覧取得時の audio_url を使わず、getPodcast を呼び直すこと
-    expect(getPodcast).toHaveBeenCalledWith(SAMPLE_PODCASTS[0].id)
+    // 一覧取得時の audio_url を使わず、AudioPlayerContext が gateway 経由で取り直すこと
+    await waitFor(() => expect(mockAudio.src).toBe(freshPodcast.audio_url))
+    expect(gateway.calls).toContainEqual({
+      method: 'GET',
+      path: `/api/backend/podcasts/${SAMPLE_PODCASTS[0].id}`,
+      body: undefined,
+    })
   })
 
   test('Given play with saved position, restores position from localStorage', async () => {
@@ -167,8 +179,9 @@ describe('PodcastPage — play with fresh URL', () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
-      getPodcast: vi.fn().mockResolvedValue(freshPodcast),
+      getPodcast: vi.fn(),
     } as unknown as ReturnType<typeof createApiClient>)
+    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCASTS[0].id}`, { ok: true, value: freshPodcast })
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))

@@ -4,6 +4,7 @@ import React from 'react'
 import AppGroupLayout from '@/app/(app)/layout'
 import { AppProvider } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 
 // NavigationBar は useAuth を参照する。AuthProvider 経由だと実 /auth/me fetch が走るため、
@@ -22,9 +23,11 @@ function renderGroupLayout(children: React.ReactNode = <p>page-content</p>) {
   return render(
     <AppProvider>
       <ToastProvider>
-        <AudioPlayerProvider>
-          <AppGroupLayout>{children}</AppGroupLayout>
-        </AudioPlayerProvider>
+        <ApiClientProvider>
+          <AudioPlayerProvider>
+            <AppGroupLayout>{children}</AppGroupLayout>
+          </AudioPlayerProvider>
+        </ApiClientProvider>
       </ToastProvider>
     </AppProvider>
   )

@@ -5,7 +5,7 @@ import { useAudioPlayer } from '@/hooks/useAudioPlayer'
 import { getSavedPosition } from '@/hooks/useAudioPlayer'
 import { useToast } from '@/components/ui/Toast'
 import { useApp } from '@/contexts/AppContext'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
 import { resolveResumePosition } from '@/lib/playbackPosition'
 import { resolvePlaybackSource } from '@/lib/resolvePlayback'
 import { getCachedAudioUrl, getCachedPodcast } from '@/lib/audioCache'
@@ -44,6 +44,7 @@ const AudioPlayerContext = createContext<AudioPlayerContextValue | null>(null)
 export function AudioPlayerProvider({ children }: { children: React.ReactNode }) {
   const { showToast } = useToast()
   const { dispatch } = useApp()
+  const gw = useApiClient()
 
   // キュー状態。onEnded（イベントリスナ）から最新値を読むため ref も併用する。
   const [queue, setQueue] = useState<Q.QueueState>(Q.emptyQueue)
@@ -53,22 +54,25 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     setQueue(next)
   }, [])
 
-  const onPositionSave = useCallback((podcastId: string, seconds: number) => {
-    createApiClient()
-      .updatePosition(podcastId, Math.max(0, seconds))
-      .catch(() => {
-        // Silent catch: network failures should not interrupt playback
+  // gateway は throw・reject しない（CI-T12-1）ので、fire-and-forget に catch は要らない。
+  // 3 呼出パスは W-S1b（リソース別分割）で lib/api 側の呼出関数へ集約する予定（今は直呼び）。
+  const onPositionSave = useCallback(
+    (podcastId: string, seconds: number) => {
+      void gw.request(`/api/backend/podcasts/${podcastId}/position`, {
+        method: 'PATCH',
+        body: { position_seconds: Math.max(0, seconds) },
       })
-  }, [])
+    },
+    [gw],
+  )
 
   // ADR-075 決定3: 完聴イベント発火。fire-and-forget（失敗は再生体験に影響させない・リトライ不要）。
-  const onCompleted = useCallback((podcastId: string) => {
-    createApiClient()
-      .markCompleted(podcastId)
-      .catch(() => {
-        // Silent catch: network failures should not interrupt playback
-      })
-  }, [])
+  const onCompleted = useCallback(
+    (podcastId: string) => {
+      void gw.request(`/api/backend/podcasts/${podcastId}/completed`, { method: 'POST' })
+    },
+    [gw],
+  )
 
   // player を作る前に onEnded から呼ぶ関数を ref で前方参照する（初期化順の循環を避ける）。
   const advanceRef = useRef<() => void>(() => {})
@@ -92,9 +96,9 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     [player, dispatch],
   )
 
-  // オフライン保存済みならキャッシュ済み Blob URL + メタデータで再生し、getPodcast() の
-  // 再取得（署名付き URL は期限切れうる上、そもそもオフラインでは失敗する）をスキップする。
-  // 未キャッシュなら null を返し、呼び出し側が従来どおり getPodcast() で取得する。
+  // オフライン保存済みならキャッシュ済み Blob URL + メタデータを返し、ネットワークからの
+  // 再取得（署名付き URL は期限切れうる上、オフラインでは失敗する）をスキップさせる。
+  // 未キャッシュなら null を返し、resolvePodcast が gateway 経由で取り直す。
   const resolveCachedPodcast = useCallback(async (podcastId: string): Promise<Podcast | null> => {
     const cachedUrl = await getCachedAudioUrl(podcastId)
     const source = resolvePlaybackSource({
@@ -108,18 +112,33 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     return { ...cachedPodcast, audio_url: cachedUrl }
   }, [])
 
+  // キャッシュ済みならそれを使い、無ければ gateway 経由で取り直す（キャッシュ経路では通信しない）。
+  // 取得失敗は null を返し、呼び出し側が toast を出す。
+  const resolvePodcast = useCallback(
+    async (podcastId: string): Promise<Podcast | null> => {
+      const cached = await resolveCachedPodcast(podcastId)
+      if (cached) return cached
+      const result = await gw.request<Podcast>(`/api/backend/podcasts/${podcastId}`)
+      return result.ok ? result.value : null
+    },
+    [resolveCachedPodcast, gw],
+  )
+
   // 署名付き URL を取り直して再生する（キューは変更しない）。自動次再生・スキップで使う。
   const fetchAndPlay = useCallback(
     async (podcastId: string) => {
       try {
-        const cached = await resolveCachedPodcast(podcastId)
-        const fresh = cached ?? (await createApiClient().getPodcast(podcastId))
+        const fresh = await resolvePodcast(podcastId)
+        if (!fresh) {
+          showToast('再生できませんでした', 'error')
+          return
+        }
         await loadAndPlay(fresh)
-      } catch (err) {
-        showToast(err instanceof ApiError ? `再生できませんでした (${err.status})` : '再生できませんでした', 'error')
+      } catch {
+        showToast('再生できませんでした', 'error')
       }
     },
-    [loadAndPlay, showToast, resolveCachedPodcast],
+    [loadAndPlay, showToast, resolvePodcast],
   )
 
   // 再生終了 → キューの次へ自動遷移（無ければ停止）。issue #81。
@@ -143,8 +162,11 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   const playById = useCallback(
     async (podcastId: string) => {
       try {
-        const cached = await resolveCachedPodcast(podcastId)
-        const fresh = cached ?? (await createApiClient().getPodcast(podcastId))
+        const fresh = await resolvePodcast(podcastId)
+        if (!fresh) {
+          showToast('再生できませんでした', 'error')
+          return
+        }
         const existing = Q.jump(queueRef.current, podcastId)
         if (existing.found) {
           setQueueState(existing.queue)
@@ -153,11 +175,11 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
           setQueueState(Q.jump(inserted, podcastId).queue)
         }
         await loadAndPlay(fresh)
-      } catch (err) {
-        showToast(err instanceof ApiError ? `再生できませんでした (${err.status})` : '再生できませんでした', 'error')
+      } catch {
+        showToast('再生できませんでした', 'error')
       }
     },
-    [loadAndPlay, showToast, setQueueState, resolveCachedPodcast],
+    [loadAndPlay, showToast, setQueueState, resolvePodcast],
   )
 
   const addToQueue = useCallback(

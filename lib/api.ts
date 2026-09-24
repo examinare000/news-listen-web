@@ -42,8 +42,12 @@ import type {
   VocabularyTestResultItem,
   VocabularyTestResultResponse,
 } from '@/types/index'
-import { readCookie } from '@/lib/cookie'
+import { createGateway } from '@/lib/api/gateway'
+import type { ApiFailure, GatewayJsonRequest } from '@/lib/api/gateway'
 
+// owner: user・導入: W-S1（2026-09-24）。
+// 削除条件: app/・components/・hooks/ が既存の API クライアント関数の呼出（ApiError の import）を
+// しなくなった時（grep 0。W-S4d1 で満たし、本体削除は W-S4d3）。
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -56,69 +60,89 @@ export class ApiError extends Error {
   }
 }
 
-/** Shared fetch wrapper that normalizes errors to ApiError */
+// TP1（互換 adapter）が読む gateway 失敗オブジェクトの raw。symbol キーは import せず、
+// gateway.ts と同じ Symbol.for(...) 文字列で own プロパティを直接読む（factory 形式の
+// mock でも壊れない）。読み手はこのファイルだけ。
+const GATEWAY_RAW_KEY = Symbol.for('news-listen.web.gateway.raw')
+
+type LegacyRaw =
+  | { type: 'network' }
+  | { type: 'timeout' }
+  | { type: 'error'; status: number; detail: string; retryAfterSeconds: number | undefined }
+  | { type: 'no_content'; status: number }
+  | { type: 'malformed'; status: number; error: unknown }
+
+function isLegacyRaw(value: unknown): value is LegacyRaw {
+  if (typeof value !== 'object' || value === null || !('type' in value)) return false
+  return (
+    value.type === 'network' ||
+    value.type === 'timeout' ||
+    value.type === 'error' ||
+    value.type === 'no_content' ||
+    value.type === 'malformed'
+  )
+}
+
+function rawOf(failure: ApiFailure): LegacyRaw | undefined {
+  const value = Object.getOwnPropertyDescriptor(failure, GATEWAY_RAW_KEY)?.value
+  return isLegacyRaw(value) ? value : undefined
+}
+
+type LegacyInit = { method?: GatewayJsonRequest['method']; body?: string }
+
+/** Shared fetch wrapper that normalizes errors to ApiError（内部は gateway 経由で fetch する） */
 async function request<T>(
   path: string,
-  init: RequestInit = {},
+  init: LegacyInit = {},
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(init.headers as Record<string, string>),
-  }
+  const method = init.method ?? 'GET'
+  const body = init.body === undefined ? undefined : JSON.parse(init.body)
+  const r = await createGateway().request<T>(path, { method, body })
+  if (r.ok) return r.value
 
-  // CSRF token injection: add X-CSRF-Token header for state-changing methods
-  // if csrf_token cookie is present and not already explicitly set in init.headers
-  const method = (init.method ?? 'GET').toUpperCase()
-  const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS'])
-  if (!safeMethods.has(method) && typeof document !== 'undefined') {
-    const token = readCookie('csrf_token', document.cookie)
-    if (token && !headers['X-CSRF-Token']) {
-      headers['X-CSRF-Token'] = token
+  const raw = rawOf(r.failure)
+  if (raw) {
+    if (raw.type === 'network' || raw.type === 'timeout') {
+      throw new ApiError(0, 'Network error')
     }
-  }
-
-  let response: Response
-  try {
-    // credentials: 'include' で同一オリジンの BFF 経由のセッション Cookie を送受信する。
-    response = await fetch(path, { ...init, headers, credentials: 'include' })
-  } catch {
-    throw new ApiError(0, 'Network error')
-  }
-
-  if (!response.ok) {
-    let detail = 'Unknown error'
-    try {
-      const body = await response.json() as {
-        detail?: string | Array<{ msg?: unknown }>
-      }
-      if (typeof body.detail === 'string') {
-        detail = body.detail
-      } else if (Array.isArray(body.detail)) {
-        const firstMessage = body.detail[0]?.msg
-        if (typeof firstMessage === 'string') {
-          const valueErrorPrefix = 'Value error, '
-          detail = firstMessage.startsWith(valueErrorPrefix)
-            ? firstMessage.slice(valueErrorPrefix.length)
-            : firstMessage
-        }
-      }
-    } catch {
-      // Non-JSON body — keep 'Unknown error'
+    if (raw.type === 'error') {
+      throw new ApiError(raw.status, raw.detail, raw.retryAfterSeconds)
     }
-    // Retry-After（秒）があれば ApiError に載せる（429 上限の「次回可能時刻」表示用・issue #82）。
-    // 一部のテスト用 fetch モックは headers を持たないため optional chaining で安全に読む。
-    const retryRaw = response.headers?.get?.('Retry-After') ?? null
-    const retryAfterSeconds = retryRaw !== null && /^\d+$/.test(retryRaw) ? Number(retryRaw) : undefined
-    throw new ApiError(response.status, detail, retryAfterSeconds)
+    if (raw.type === 'no_content') {
+      // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。TP1 削除で消える）
+      return undefined as T
+    }
+    // malformed: 本文が JSON として読めなかった元の parse エラーをそのまま再 throw
+    throw raw.error
   }
 
-  // 204 No Content: body が存在しないため response.json() を呼ぶと実際の fetch では
-  // SyntaxError になる（例: DELETE /auth/me の退会成功応答）。
-  if (response.status === 204) {
-    return undefined as T
+  // raw を持たない失敗（factory 形式 mock 経由。gateway の ApiFailure.kind から旧 ApiError への逆変換）
+  const failure = r.failure
+  switch (failure.kind) {
+    case 'network':
+    case 'timeout':
+      throw new ApiError(0, 'Network error')
+    case 'unauthorized':
+      throw new ApiError(401, 'Unknown error')
+    case 'forbidden':
+      throw new ApiError(403, 'Unknown error')
+    case 'not_found':
+      throw new ApiError(404, 'Unknown error')
+    case 'conflict':
+      throw new ApiError(409, 'Unknown error')
+    case 'validation':
+      throw new ApiError(422, failure.detail)
+    case 'rate_limited':
+      throw new ApiError(429, 'Unknown error', failure.retryAfterSeconds)
+    case 'server':
+      throw new ApiError(failure.status, 'Unknown error')
+    case 'unknown':
+      if (failure.status === 204) {
+        // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。TP1 削除で消える）
+        return undefined as T
+      }
+      throw new ApiError(failure.status, 'Unknown error')
   }
-
-  return response.json() as Promise<T>
 }
 
 export function createApiClient() {
