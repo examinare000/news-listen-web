@@ -8,6 +8,8 @@ import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import { deleteAllAudio } from '@/lib/audioCache'
 import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
+import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
+import { createPushRegistration } from '@/lib/push/pushRegistration'
 
 // 認証状態。サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
@@ -103,6 +105,11 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   )
 
   const logout = useCallback(async () => {
+    try {
+      await createPushRegistration({ port: createRealPushBrowserPort(), client: client() }).detachFromSubject()
+    } catch {
+      // 購読行の削除はベストエフォート（決定 23）。失敗した行は次のログイン時の再送で上書きされる。
+    }
     try {
       await client().logout()
     } catch {

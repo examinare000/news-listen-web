@@ -3,6 +3,7 @@
 import React from 'react'
 import { NavigationBar } from '@/components/NavigationBar'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
+import { PushReregistration } from '@/components/PushReregistration'
 import { StreakProvider } from '@/contexts/StreakContext'
 
 // ルート直下（/）に shell-less なランディングページを置けるようにするため、
@@ -11,6 +12,7 @@ import { StreakProvider } from '@/contexts/StreakContext'
 export default function AppGroupLayout({ children }: { children: React.ReactNode }) {
   return (
     <StreakProvider>
+      <PushReregistration />
       <div className="app-shell">
         <NavigationBar />
         <main className="main-content">{children}</main>
