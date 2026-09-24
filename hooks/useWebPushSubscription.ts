@@ -3,13 +3,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createApiClient } from '@/lib/api'
 import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
-import { urlBase64ToUint8Array } from '@/lib/webpush'
+import { createPushRegistration } from '@/lib/push/pushRegistration'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushSubscriptionState } from '@/types/index'
 
 interface UseWebPushSubscriptionOptions {
   /** テスト時に差し替えるポート（省略時は実ブラウザポートを使用）*/
   port?: PushBrowserPort
+  /** 呼び出し側の認証状態。'authenticated' に変わるたびに再送する。省略時は再送しない */
+  authStatus?: 'unknown' | 'authenticated' | 'unauthenticated'
 }
 
 interface UseWebPushSubscriptionResult {
@@ -27,87 +29,41 @@ interface UseWebPushSubscriptionResult {
  */
 export function useWebPushSubscription({
   port: portProp,
+  authStatus,
 }: UseWebPushSubscriptionOptions = {}): UseWebPushSubscriptionResult {
   const [pushState, setPushState] = useState<PushSubscriptionState>('unsubscribed')
-  // ポートはレンダリングをまたいで同一インスタンスを保持
+  // ポートと登録協調オブジェクトはレンダリングをまたいで同一インスタンスを保持
   const [port] = useState<PushBrowserPort>(() => portProp ?? createRealPushBrowserPort())
+  const [registration] = useState(() => createPushRegistration({ port, client: createApiClient() }))
 
   // 初期化: 機能検出 → 権限確認 → 既存購読確認
   useEffect(() => {
     let cancelled = false
 
     async function init() {
-      if (!port.isSupported()) {
-        if (!cancelled) setPushState('unsupported')
-        return
-      }
-
-      if (port.getPermission() === 'denied') {
-        if (!cancelled) setPushState('denied')
-        return
-      }
-
-      try {
-        const existing = await port.getExistingSubscription()
-        if (!cancelled) {
-          setPushState(existing ? 'subscribed' : 'unsubscribed')
-        }
-      } catch {
-        if (!cancelled) setPushState('error')
-      }
+      const result = await registration.resolve()
+      if (!cancelled) setPushState(result)
     }
 
     void init()
     return () => { cancelled = true }
-  }, [port])
+  }, [registration])
+
+  // 認証状態が 'authenticated' に変わるたび（mount 時点で既に 'authenticated' の場合を含む）に再送する
+  useEffect(() => {
+    if (authStatus === 'authenticated') void registration.reregister()
+  }, [authStatus, registration])
 
   const subscribe = useCallback(async () => {
     setPushState('subscribing')
-    try {
-      // 通知許可を要求
-      const permission = await port.requestPermission()
-      if (permission === 'denied') {
-        setPushState('denied')
-        return
-      }
-      if (permission !== 'granted') {
-        setPushState('unsubscribed')
-        return
-      }
-
-      // SW 登録
-      await port.registerServiceWorker('/sw.js')
-
-      // VAPID 公開鍵取得
-      const client = createApiClient()
-      const { public_key } = await client.getVapidPublicKey()
-      const applicationServerKey = urlBase64ToUint8Array(public_key)
-
-      // Push 購読作成
-      const subscription = await port.subscribe({ applicationServerKey })
-
-      // バックエンドに登録
-      await client.subscribePush(subscription)
-
-      setPushState('subscribed')
-    } catch {
-      setPushState('error')
-    }
-  }, [port])
+    const result = await registration.subscribe()
+    setPushState(result)
+  }, [registration])
 
   const unsubscribe = useCallback(async () => {
-    try {
-      const client = createApiClient()
-      const existing = await port.getExistingSubscription()
-      if (existing) {
-        await port.unsubscribe(existing.endpoint)
-        await client.unsubscribePush(existing.endpoint)
-      }
-      setPushState('unsubscribed')
-    } catch {
-      setPushState('error')
-    }
-  }, [port])
+    const result = await registration.unsubscribe()
+    setPushState(result)
+  }, [registration])
 
   return { state: pushState, subscribe, unsubscribe }
 }
