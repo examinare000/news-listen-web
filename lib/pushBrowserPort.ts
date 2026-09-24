@@ -55,7 +55,8 @@ export function createRealPushBrowserPort(): PushBrowserPort {
     },
 
     async getExistingSubscription() {
-      const registration = await navigator.serviceWorker.ready
+      const registration = await navigator.serviceWorker.getRegistration()
+      if (!registration) return null
       const sub = await registration.pushManager.getSubscription()
       if (!sub) return null
       const json = sub.toJSON()
