@@ -708,7 +708,7 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'オフライン保存' }))
 
-    expect(downloadAudio).toHaveBeenCalledWith('p1')
+    expect(downloadAudio).toHaveBeenCalledWith('p1', expect.any(Function))
     await waitFor(() => {
       expect(screen.getByText('保存済み')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'オフライン保存' })).not.toBeInTheDocument()

@@ -17,8 +17,13 @@
  * without a real document, which is unnecessary anyway — Cache.{put,match,delete}
  * all accept a plain string.
  */
-import { createApiClient } from '@/lib/api'
 import type { Podcast } from '@/types'
+
+/**
+ * 署名付き URL 込みの Podcast を取得する関数。`lib/audioCache` は `lib/api` に依存せず、
+ * 呼出側（page）が API クライアントの取得関数を渡す（設計書 W-S1 対象 4・SG-W1 決定 A）。
+ */
+export type FetchPodcast = (podcastId: string) => Promise<Podcast>
 
 const AUDIO_CACHE_NAME = 'audio-v1'
 
@@ -61,11 +66,11 @@ function isCacheStorageSupported(): boolean {
 }
 
 /** 新鮮な署名付き URL を取得し、音声本体とメタデータをキャッシュへ保存する。 */
-export async function downloadAudio(podcastId: string): Promise<void> {
+export async function downloadAudio(podcastId: string, fetchPodcast: FetchPodcast): Promise<void> {
   if (!isCacheStorageSupported()) {
     throw new Error('この端末はオフライン保存に対応していません')
   }
-  const podcast = await createApiClient().getPodcast(podcastId)
+  const podcast = await fetchPodcast(podcastId)
   const response = await fetch(podcast.audio_url)
   const cache = await caches.open(AUDIO_CACHE_NAME)
   await cache.put(audioKey(podcastId), response)

@@ -90,7 +90,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   async function handleDownload() {
     if (!podcast) return
     try {
-      await downloadAudio(podcast.id)
+      await downloadAudio(podcast.id, (id) => createApiClient().getPodcast(id))
       setDownloaded(true)
     } catch {
       showToast('オフライン保存に失敗しました', 'error')
