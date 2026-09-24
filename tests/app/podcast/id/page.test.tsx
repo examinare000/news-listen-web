@@ -4,10 +4,13 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import PodcastDetailPage from '@/app/(app)/podcast/[id]/page'
 import { AppProvider } from '@/contexts/AppContext'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { MockAudio } from '../../../helpers/mockAudio'
 import { setupMockAudio } from '../../../helpers/mockAudio'
+import { createGatewayDouble } from '../../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 
 const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx: vi.fn() }))
 
@@ -53,6 +56,7 @@ const SAMPLE_PODCAST = {
 }
 
 let mockAudio: MockAudio
+let gateway: GatewayDouble
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -62,15 +66,18 @@ beforeEach(() => {
   downloadAudio.mockResolvedValue(undefined)
   localStorage.clear()
   mockAudio = setupMockAudio()
+  gateway = createGatewayDouble()
 })
 
 function renderDetailPage(params = { id: 'p1' }) {
   return render(
     <AppProvider>
       <ToastProvider>
-        <AudioPlayerProvider>
-          <PodcastDetailPage params={Promise.resolve(params)} />
-        </AudioPlayerProvider>
+        <ApiClientProvider gateway={gateway}>
+          <AudioPlayerProvider>
+            <PodcastDetailPage params={Promise.resolve(params)} />
+          </AudioPlayerProvider>
+        </ApiClientProvider>
       </ToastProvider>
     </AppProvider>
   )
@@ -170,24 +177,30 @@ describe('PodcastDetailPage — normal', () => {
 // Podcast 詳細 — 再生フロー (spec §9 L151 / §10.3 L209)
 // ==========================================================
 describe('PodcastDetailPage — play flow', () => {
-  test('handlePlay re-fetches fresh podcast via getPodcast (spec §9 L151: signed-URL must not be reused)', async () => {
-    const getPodcastMock = vi.fn().mockResolvedValue(SAMPLE_PODCAST)
+  test('handlePlay re-fetches fresh podcast via gateway GET podcasts/{id} (spec §9 L151: signed-URL must not be reused)', async () => {
     const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({ getPodcast: getPodcastMock, getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }) } as unknown as ReturnType<typeof createApiClient>)
+    vi.mocked(createApiClient).mockReturnValue({
+      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
+      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
+    } as unknown as ReturnType<typeof createApiClient>)
+    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCAST.id}`, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
-    // Wait for initial page load (first getPodcast call)
+    // Wait for initial page load (page 自身の getPodcast() 呼出)
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
     })
 
-    // Click play — triggers second getPodcast call for fresh signed URL
+    // Click play — AudioPlayerContext が gateway 経由で署名付き URL を取り直す
     await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
 
-    // getPodcast must have been called at least twice: page load + play button
     await waitFor(() => {
-      expect(getPodcastMock.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(gateway.calls).toContainEqual({
+        method: 'GET',
+        path: `/api/backend/podcasts/${SAMPLE_PODCAST.id}`,
+        body: undefined,
+      })
     })
   })
 
@@ -199,6 +212,7 @@ describe('PodcastDetailPage — play flow', () => {
       getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
     } as unknown as ReturnType<typeof createApiClient>)
+    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCAST.id}`, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
