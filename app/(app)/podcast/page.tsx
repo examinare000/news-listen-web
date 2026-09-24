@@ -140,7 +140,7 @@ export default function PodcastPage() {
 
   async function handleDownload(podcast: Podcast) {
     try {
-      await downloadAudio(podcast.id)
+      await downloadAudio(podcast.id, (id) => createApiClient().getPodcast(id))
       setCachedIds((prev) => new Set(prev).add(podcast.id))
     } catch {
       showToast('オフライン保存に失敗しました', 'error')

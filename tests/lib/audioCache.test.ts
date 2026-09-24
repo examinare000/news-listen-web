@@ -29,11 +29,8 @@ function pod(id: string, overrides: Partial<Podcast> = {}): Podcast {
   }
 }
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getPodcast: vi.fn((id: string) => Promise.resolve(pod(id))),
-  })),
-}))
+// lib/audioCache は lib/api を import しない（W-S1 完了条件）。取得関数は引数で渡す。
+const fetchPodcast = vi.fn((id: string) => Promise.resolve(pod(id)))
 
 // audio-cache 専用の cache 名。sw.js の shell 系キャッシュとは別名前空間にして
 // activate 時の旧世代削除ロジックが誤って音声を消さないようにする。
@@ -57,7 +54,7 @@ describe('lib/audioCache', () => {
 
   describe('downloadAudio', () => {
     test('fetches a fresh signed URL via getPodcast then stores the audio under a synthetic same-origin key', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
 
       const cache = await caches.open(AUDIO_CACHE_NAME)
       const stored = await cache.match('/_audio/p1')
@@ -65,7 +62,7 @@ describe('lib/audioCache', () => {
     })
 
     test('stores episode metadata alongside the audio for listing', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
 
       const cache = await caches.open(AUDIO_CACHE_NAME)
       const metaRes = await cache.match('/_audio-meta/p1')
@@ -81,7 +78,7 @@ describe('lib/audioCache', () => {
     // require inventing placeholder values — worse than persisting the object we
     // already have in hand at download time.
     test('also stores the full podcast object for offline queue/UI reconstruction', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
 
       const cached = await getCachedPodcast('p1')
       expect(cached).toMatchObject({ id: 'p1', japanese_intro_text: 'intro p1', duration_seconds: 90 })
@@ -92,7 +89,7 @@ describe('lib/audioCache', () => {
     // は常に blob: URL で上書きするため実害はないが、期限切れ署名 URL を持続化しない防御として
     // 保存前に空文字へ差し替える。
     test('blanks out audio_url before persisting (expiring signed URL must not be persisted)', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
 
       const cached = await getCachedPodcast('p1')
       expect(cached?.audio_url).toBe('')
@@ -111,7 +108,7 @@ describe('lib/audioCache', () => {
     })
 
     test('isCached returns true after download', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
       await expect(isCached('p1')).resolves.toBe(true)
     })
 
@@ -120,7 +117,7 @@ describe('lib/audioCache', () => {
     })
 
     test('getCachedAudioUrl returns a blob: URL when cached', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
       const url = await getCachedAudioUrl('p1')
       expect(url).toMatch(/^blob:/)
     })
@@ -128,7 +125,7 @@ describe('lib/audioCache', () => {
 
   describe('deleteAudio / deleteAllAudio', () => {
     test('deleteAudio removes the audio entry, its listing metadata, and the full podcast object', async () => {
-      await downloadAudio('p1')
+      await downloadAudio('p1', fetchPodcast)
       await deleteAudio('p1')
 
       await expect(isCached('p1')).resolves.toBe(false)
@@ -138,8 +135,8 @@ describe('lib/audioCache', () => {
     })
 
     test('deleteAllAudio clears every cached episode', async () => {
-      await downloadAudio('p1')
-      await downloadAudio('p2')
+      await downloadAudio('p1', fetchPodcast)
+      await downloadAudio('p2', fetchPodcast)
 
       await deleteAllAudio()
 
@@ -154,8 +151,8 @@ describe('lib/audioCache', () => {
     })
 
     test('returns metadata for every cached episode', async () => {
-      await downloadAudio('p1')
-      await downloadAudio('p2')
+      await downloadAudio('p1', fetchPodcast)
+      await downloadAudio('p2', fetchPodcast)
 
       const list = await listCachedEpisodes()
       expect(list).toHaveLength(2)

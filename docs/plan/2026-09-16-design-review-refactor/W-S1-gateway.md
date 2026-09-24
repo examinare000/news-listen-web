@@ -46,7 +46,7 @@
 2. T-T12 → RED → `lib/api/gateway.ts` の `request<T>` と `Result`/`ApiFailure` 型を実装 → GREEN（既存 378 件を Result 形式へ移植）。
 3. T-T13 → RED → deadline 30 秒の timeout 実装 → GREEN。
 4. `ApiClientProvider` を実装し、`contexts/AudioPlayerContext.tsx` の 4 呼出を Provider 経由の gateway 呼出へ置換。
-5. `lib/audioCache.ts:20` の import を解消し、gateway 関数を引数注入に変更。呼出元（`AudioPlayerContext`）から渡す。
+5. `lib/audioCache.ts:20` の import を解消し、`downloadAudio(podcastId, fetchPodcast)` の取得関数を引数注入に変更。呼出元は page 2 本（`app/(app)/podcast/page.tsx`・`app/(app)/podcast/[id]/page.tsx`）で、`(id) => createApiClient().getPodcast(id)` を渡す（SG-W1 決定 A。page の Provider 移行は W-S4 のまま）。
 6. **TP1（temporary path）を導入する**: 既存 `createApiClient()` の関数群（page 側 15 ファイル・37 箇所が呼ぶ）が `throw ApiError` の契約のままで動けるよう、`ApiFailure` から `ApiError` 相当の例外を生成して throw する薄い互換 adapter を残す。owner: user。導入: W-S1。削除条件: `app/`・`components/`・`hooks/` が `ApiError` を import しなくなった時（grep 0。W-S4d1 で満たし、本体削除は W-S4d3）。
 7. 1 slice = 1 PR。
 
@@ -55,7 +55,7 @@
 - T-T12 / T-T13 が `verifies: CI-T12/T13` をテスト名またはコメントに持つ。
 - `contexts/AudioPlayerContext.tsx` の 4 呼出が `ApiClientProvider` 経由の gateway 呼出に置き換わっている。
 - `lib/audioCache.ts` が `lib/api`（旧関数群）を直接 import していない（gateway は引数で受ける）。
-- `contexts/AudioPlayerContext.tsx` 以外の `createApiClient()` 呼出数が着手前と同数であり、既存テストが green のまま（数え方は対象 5 のコマンド）。
+- `contexts/AudioPlayerContext.tsx` 以外の `createApiClient()` 呼出数が着手前 +1（`lib/audioCache.ts` の 1 件が消え、page 2 本が渡すラムダ `(id) => createApiClient().getPodcast(id)` で 2 件増える。2026-09-24 実測: 34 → 35）であり、既存テストが green のまま（数え方は対象 5 のコマンド。SG-W2）。
 - TP1 adapter の owner・導入日・削除条件がコード内コメントまたは PR 説明に明記されている。
 
 ## 禁止事項 / scope 外
