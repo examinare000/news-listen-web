@@ -3,7 +3,7 @@
 ## 概要
 W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fail`）の上に、オフライン保存庫・Coordinator・PositionReporter を新設する。3 段分割 ① の後半（2026-09-24 に W-S2a から分けた）。**既存コードのどこからも新モジュールを呼ばず**、旧再生実装は 1 行も変えない。入口の差し替えは W-S2b。正本は Implementation Spec §3.1・§4 CI-T5〜T8・T10・T11・§5 CP3〜CP5 / CP9 と、Spec 冒頭の追記 3 つ（本文を上書きする。必ず読む）。**検証モード: 再設計しない**。新しい契約 ID は作らない。
 
-> **2026-09-30 の前提点検（W-S2a 完了後）による書き直し**: W-S2a の実装済みの公開面と照合し、起票時の本 order に欠けていた宣言と規則を埋めた。user が確定した決定（親 docs 監査レポート §5）: 取得前・開始前の失敗は Session の `fail` で表す（**SG-C52**。W-S2a1 が入口を足す）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、完聴時の順序は送信を始める順（**SG-C61**）、総時間の優先順（**SG-C54**）、一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、「次へ送り」の規則（**SG-C63**）。決定から導いた宣言（依存の形・戻り値・規則の細部）は、同レポート §5 の「導出（2026-09-30）」W-1〜W-8 に記録した。点検の記録は親 docs `research-reports/2026-09-30-wave3-order-premise-check.md`（web A1〜A10）。再提案しない。
+> **2026-09-30 の前提点検（W-S2a 完了後）による書き直し**: W-S2a の実装済みの公開面と照合し、起票時の本 order に欠けていた宣言と規則を埋めた。user が確定した決定（親 docs 監査レポート §5）: 取得前・開始前の失敗は Session の `fail` で表す（**SG-C52**。W-S2a1 が入口を足す）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、完聴時の順序は送信を始める順（**SG-C61**）、総時間の優先順（**SG-C54**）、一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、「次へ送り」の規則（**SG-C63**）。決定から導いた宣言（依存の形・戻り値・規則の細部）は、同レポート §5 の「導出（2026-09-30）」W-1〜W-8・W-10〜W-12 に記録した。点検の記録は親 docs `research-reports/2026-09-30-wave3-order-premise-check.md`（web A1〜A10）。再提案しない。
 
 ## 規模（見込み。根拠 = 2026-09-30 実測: 旧 `lib/audioCache.ts` 155 行、`contexts/AudioPlayerContext.tsx` の gateway 呼出 3 箇所 `:61,72,121`）
 - production ≈ 560 行（新規のみ）: `offlineLibrary.ts` ≈ 170、`coordinator.ts` ≈ 230、`positionReporter.ts` ≈ 110、`gatewayFns.ts` ≈ 30、`lib/platform/objectUrl.ts` ≈ 10、`lib/platform/storageEstimate.ts` ≈ 10。
@@ -50,6 +50,7 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
    - `cacheStore` が `null` のとき（導出 W-7）: `save` は `unsupported`、`has` は false、`get` は null、`list` は空、`remove` / `clear` は何もしない。`usage` は `deps.estimate()` のまま。
    - Cache 名 `audio-v1` は、このファイルの定数 1 つに置く（W-S5 が主体別の名前へ替える）。entry key は旧と同じ `/_audio/{id}`・`/_audio-meta/{id}`・`/_audio-podcast/{id}`。
    - 型 `CachedEpisodeMeta`・`StorageEstimate`・`SaveFailure` はこのファイルから export する（W-S2b の設定画面が使う）。
+   - `clearOfflineAudio(cacheStore: CacheStore | null): Promise<void>` も export する（導出 W-10。`clear()` の実体。W-S2b の `AuthContext` が、Provider の外から logout 時に呼ぶ。`null` なら何もしない）。
 4. `lib/playback/positionReporter.ts`（CP9）: `createPositionReporter(deps)` を export する。`deps`: `updatePosition`・`markCompleted`（対象 1 の型）、`keyValueStore: KeyValueStore`。公開操作は `attach(session)` / `detach()`。規則は次のとおり（導出 W-6）。
    - **local の形式**: `podcastPositionKey(id)`（`@/lib/config`）へ `JSON.stringify(seconds)` で書く（旧 `hooks/useAudioPlayer.ts` と同じ形式。W-S2c まで旧実装と key を共有する）。
    - **エピソードごとの基準**: `stateChanged(loading)` を受けたら、そのエピソードの基準を戻す（最後に保存した位置 = `resumePosition`、完聴の送信済みの印を倒す）。
@@ -74,8 +75,8 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
    - **`onEnded`**（Session の `stateChanged(ended)` を受けて動く。完聴の記録と位置の書込みは Reporter が行う）: `advance` → 次があれば再生元を解決して開始する。**この経路ではキューが既に次を現在にしている**ので、再生できないと分かった場合・取得に失敗した場合は `session.fail({ id }, reason)` を呼ぶ（SG-C52・PS-01・PS-03。`offline_uncached` と `not_playable` は `source_unavailable`、取得失敗は `fetch_failed`）。次が無ければ何もしない（`ended` のまま）。応答を待ってから進むことはしない（SG-C61）。
    - **`retry()`**: 状態が `errored` のとき、`queue.current` の id で再生元の解決からやり直す（PS-02）。失敗した場合は `onEnded` と同じく `session.fail` を呼ぶ。`errored` 以外では何もしない。
    - **`skipToNext()`**（SG-C63。共有仕様 §2.12）: 次があれば、次の再生元を**先に**解決する。再生できると分かったら `advance` して開始する（今のエピソードは Session の `start` が止める。Reporter が一時停止への遷移で位置を 1 回送る。完聴は送らない）。再生できないと分かったら、キューもセッションも変えず通知を返す。次が無ければ何もしない。戻り値は `startEpisode` と同じ `StartResult`。
-   - `addToQueue` / `playNext`: 何も再生していなければ `startEpisode` と同じ手順で開始する（現行と同じ）。`removeFromQueue` / `reorder`: `queue.ts` の `remove` / `moveUpNext` を呼ぶ。
-   - `nowPlaying()`: `Queue.current` から導く表示用の値（`episodeId` `title` `difficulty` `createdAt` `durationSeconds` と、トランスクリプト・語彙・クイズ・出典）。何も無ければ `null`。`upNext()`: `{ id, title }` の配列。
+   - `addToQueue` / `playNext`: 何も再生していなければ `startEpisode` と同じ手順で開始する（現行と同じ）。戻り値は `Promise<StartResult>`（開始を試みなかった場合は `{ ok: true }`。キューに足したことは、開始できなくても残る。導出 W-11）。`removeFromQueue` / `reorder`: `queue.ts` の `remove` / `moveUpNext` を呼ぶ。
+   - `nowPlaying()`: `Queue.current` から導く表示用の値（`episodeId` `title` `difficulty` `createdAt` `durationSeconds` と、トランスクリプト・語彙・クイズ・出典）。何も無ければ `null`。`upNext()`: `{ id, title }` の配列。`title` は表示用の文字列で、`@/lib/podcastTitle` の `podcastTitle(podcast, 50)`（`upNext()` は 40）の結果を入れる（導出 W-12。現行の再生バーと同じ切り詰め）。
    - `decodeEpisode(podcast) → PlayableEpisode | GeneratingEpisode | FailedEpisode` と `isPlayable(podcast)` を export する。矛盾する DTO（`completed` かつ `error_message` 非 null、`audio_url` が空など）は `FailedEpisode` に倒す（PS-07）。`GeneratingEpisode`・`FailedEpisode` の型はこのファイルに置く。保存済みのエピソードは、`offline.get` の `podcast` に `audioUrl`（blob URL）を入れてから `decodeEpisode` に通し、`audioHandle` を付ける。
 
 **削除・変更**: なし（W-S2a / W-S2a1 のファイルもテスト補助も変えない）。
@@ -87,7 +88,7 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
 | CI-T11 | `coordinator.test.ts`: 表駆動 status 4 × audio_url 2 × error_message 2 = 16。16 行それぞれの期待（Playable / Generating / Failed）を表としてテストに書く | PS-07 |
 | CI-T8 | `positionReporter.test.ts`: 注入した `updatePosition` / `markCompleted` double の呼出列と値。周期（10 秒進むごと）、一時停止への遷移で 1 回、同じ位置は再送しない、一時停止中の `seek` で周期の書込みなし、`errored` / `idle` で周期の書込みなし、完聴の順序（`markCompleted` → 位置）、完聴は 1 回、総時間が不明なときの代替、応答を待たずに次の開始が進むこと | PS-05・PS-05b・PS-06 |
 | CI-T4（Coordinator 側） | `coordinator.test.ts`: 開始ごとに `defaultSpeed()` の値で `session.start` する | PS-08 |
-| CI-T10 | `offlineLibrary.test.ts`: deferred-put double（`MockCache.deferPuts` / `flushPuts`）で、書込みの途中は `has()` が false。`fetchEpisode` が呼ばれること（SG-C55）。永続化した podcast の `audio_url` が空。`cacheStore` が `null` のときの 7 操作。`handle.release()` で revoke | — |
+| CI-T10 | `offlineLibrary.test.ts`: deferred-put double（`MockCache.deferPuts` / `flushPuts`）で、書込みの途中は `has()` が false。`fetchEpisode` が呼ばれること（SG-C55）。永続化した podcast の `audio_url` が空。`cacheStore` が `null` のときの 7 操作。`handle.release()` で revoke。`clearOfflineAudio` が Cache を消し、`null` では何もしない | — |
 | —（導出 W-4） | `gatewayFns.test.ts`: `tests/helpers/gatewayDouble.ts` の呼出列（パスと method）が旧 3 箇所と一致 | — |
 
 ## 完了条件
