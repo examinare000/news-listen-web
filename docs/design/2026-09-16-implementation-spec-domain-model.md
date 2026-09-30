@@ -17,6 +17,19 @@
 > - SG-C24: `PlaybackSession` の公開操作に **`stop`** を足す（§5 CP1 の ops を置換）。`stop` は §3.1 の遷移表の外の**リセット**で、どの状態からでも `idle` へ戻し、分母 13 には数えない。契約 **CI-T1b**: 任意の状態で `stop` → `idle`・`AudioElement` が一時停止し音源を外す（`pause()` → `src` を空に → `load()`）・`idle` での `stop` は何もしない。検証 T-T1b は `AudioElement` double の状態（`paused` と `src`）で観測し、呼出回数は問わない（W-S2a）。
 > - `AudioElement` port は変えない（停止は既存の `pause` / `src` / `load` で表せる）。
 > - 主体離脱時の再生停止 `stopForSubjectLeave()`（W-S5）はこの `stop` を使う。W-S5 は Session を変更しない。
+>
+> **追記（2026-09-30・wave 3 の前提点検による上書き）**: W-S2a の実装後に、続く slice の指示書を現行コードと照合して user 判断で確定した（親 docs 監査レポート §5 の SG-C50・C52〜C57・C61〜C63、共有仕様 §2.4・§2.11・§2.12・§6.4・§6.6、親 docs `adr/105-playback-session-out-of-table-operations-and-shared-rules.md`、`design/web-design.md` §12.6）。本書の次の記述を上書きする。
+> - **取得前・開始前の失敗**（SG-C52。§3.1 の `errored` 行「取得前の失敗は `episodeRef: {id}` のみ」を実現する入口）: `PlaybackSession` に遷移表の外の公開操作「失敗にする」を足す（§5 CP1 の ops を置換）。どの状態からでも、id だけの参照と理由（`fetch_failed` / `source_unavailable`）を渡して `errored` に入れる。13 遷移の分母には数えない。`errored` の `episode` は「再生可能なエピソード」か「id だけの参照」のどちらかを取る。契約 **CI-T1f**: 任意の状態から `errored(理由)` になり、音声要素は一時停止して音源を外す。W-S2a の実装にはこの入口が無いため、**W-S2a の修正 slice** を W-S2a2 の前に入れる。
+> - **`setQueue` の重複 id**（SG-C50）: 開始位置は元の入力で clamp して id を決め、先勝ちで重複を除いた後のその id の位置を現在にする（実装済み。準拠テストに共有仕様 Q-33 を足す）。
+> - **手動で選んだエピソードが開始前に再生できないと分かる場合**（SG-C62。§3.1 Coordinator の `startEpisode`）: キューもセッションも変えず、通知だけを返す。`errored` にするのは、キューが既にそのエピソードを現在にしている場合（`onEnded` 後の advance・`retry()`）だけ。
+> - **完聴時の順序**（SG-C61。§3.1 Coordinator `onEnded`・CI-T8）: 完聴の記録と総時間の位置書込をこの順で送り始める。次の再生開始は応答を待たない。
+> - **総時間の正本**（SG-C54）: 音声要素の値（0 より大きい）→ `PlayableEpisode.durationSeconds`（0 より大きい）→ 不明。再開位置の計算は開始前なので `durationSeconds` を使う。完聴時に送る値は優先順で得た値、不明なら完聴時点の現在位置、それも 0 なら送らない。Session の実装（総時間は音声要素から取り、不明な間は上限で丸めない）は変えない。
+> - **位置同期の契機**（SG-C53。§3.1 PositionReporter・CI-T8）: 再生中の周期送信に加え、一時停止・停止への遷移で即時 1 回送る（共有仕様 §6.4 どおり。現行は周期保存だけなので変わる挙動）。周期送信は状態が `playing` のときだけ行う。タブを閉じる・隠すときの送信は保留。
+> - **OfflineLibrary の保存**（SG-C55。§3.1 の `save(episode: PlayableEpisode)` を置換）: `save(id)`。取得関数は保存庫の生成時に渡し、保存の直前に新しい署名付き URL を取り直す。永続化するときは署名付き URL を空にする（現行 `downloadAudio` と同じ）。
+> - **再生失敗の通知**（SG-C56。§2 の「通知は use case の結果として返し、hook 側で Toast に写す」を具体化）: 後から届く失敗（再生中の音声エラー、自動で次へ進んだ後の失敗）は状態の変化として届くので、再生の状態を購読して `errored` に入ったときに toast を 1 回出す部品を `components/` 側に置く。`PlaybackProvider` は `components/` を import しない。文言は現行の 2 種類。
+> - **音量**（SG-C57。§5 CP1 の「音量」）: Session は音声要素へ設定する唯一の入口。値の保持・`player_volume` への保存・起動時の復元は `PlaybackProvider` が持つ（保存 key の宣言は W-S4b で登録簿へ移す）。
+> - **次へ送り**（SG-C63。CP4 の `skipToNext`）: 共有仕様 §2.12 のとおり（次が再生できれば今を止めて次を再生、次が再生不可と分かれば何も変えない、待機列が空なら何もしない）。
+> - **決定から導いた宣言**（監査レポート §5 の導出 W-1〜W-8。正本は W-S2a1・W-S2a2 の order）: `OfflineLibrary.get(id)` は保存した DTO・blob URL・解放用の handle を返し、`PlayableEpisode` への変換は Coordinator が行う（W-1。§3.1 の `get(id) → PlayableEpisode & {audioHandle}` を置換）。blob URL の発行と保存領域の見積もりは `lib/platform` の adapter を注入する（W-2）。`has(id)` は最後に書く entry で判定する（W-3）。gateway のパスを組み立てる関数は `lib/playback/gatewayFns.ts` に置き、Coordinator・Reporter・保存庫は関数を注入で受ける（W-4）。Coordinator は読み取り側の通知 `subscribe` を持ち、9 操作には数えない（W-5）。PositionReporter の規則（エピソードごとの基準の戻し方・同じ位置を再送しない・完聴は 1 回・Reporter が完聴の記録を送る・Coordinator が Reporter を先に attach する）（W-6）。Cache Storage が無い環境では保存庫の各操作が安全に縮退する（W-7）。`startEpisode(id)` は結果（開始した／通知の種類）を返す（W-8）。保存庫は Provider の外から消すための `clearOfflineAudio(cacheStore)` を export する（W-10）。`addToQueue` / `playNext` も結果を返す（W-11）。`nowPlaying()` / `upNext()` の `title` は `podcastTitle` を通した表示用の文字列（W-12）。toast は `components/PlaybackToasts.tsx` が出す: `errored` に入ったとき 1 回出す部品と、開始の 4 操作の結果を toast に写す hook（W-13）。再生ボタンは `errored` なら `retry()`、`ended` なら現在のエピソードを開始し直す（W-14）。
 
 ## 0. Decision frame と function_plan
 
