@@ -120,7 +120,7 @@ lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: 
 
 | port | 根拠 | 既存の萌芽 |
 |---|---|---|
-| `ApiGateway` | SG5（テスト隔離・本番経路同一）、LF1/LF15 | `lib/api.ts request()` |
+| `ApiGateway` | SG5（テスト隔離・本番経路同一）、LF1/LF15 | `lib/api/legacyRequest.ts request()`（W-S1b で `lib/api.ts` から移設） |
 | `AudioElement` | テストで `MockAudio` を差している事実（`tests/helpers/mockAudio.ts`）を公開 seam に昇格 | `useAudioPlayer` の `new Audio()` |
 | `KeyValueStore` | OB-C7（6 経路の localStorage を単一 owner に）、private browsing 失敗の正規化（CI-P13） | `hooks/useLocalStorage`, `lib/config.ts` |
 | `CacheStore` | `tests/helpers/mockCaches.ts` の seam 昇格、OB-C11/C14 の不変条件を capsule 内に閉じる | `lib/audioCache.ts` |
