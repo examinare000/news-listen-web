@@ -5,7 +5,7 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 
 正本は Implementation Spec `docs/design/2026-09-16-implementation-spec-domain-model.md`（冒頭の追記と §3.1・§5 CP4・§6 S2 行）、W-S2a1・W-S2a2 の order が固定した宣言、親 docs `design/web-design.md` §12.2・§12.6、共有仕様 §2.11・§2.12・§4.3・§4.4・§6.4・§6.6。**検証モード: 再設計しない**。新しい契約 ID は作らない。
 
-> **2026-09-30 の前提点検による書き直し**: 読み取り専用のレビュー役の指摘 B1〜B15（親 docs `research-reports/2026-09-30-wave3-order-premise-check/web.md`）と、user が確定した決定（親 docs 監査レポート §5）を反映した: 一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、再生失敗の通知は toast を維持し、出す部品を `components/` 側に置く（**SG-C56**）、音量は新 Provider が持つ（**SG-C57**）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、次へ送り（**SG-C63**）。order を書く側が決定から導いた宣言は **W-10〜W-14**（監査レポート §5.0）。再提案しない。
+> **2026-09-30 の前提点検による書き直し**: 読み取り専用のレビュー役の指摘 B1〜B15（親 docs `research-reports/2026-09-30-wave3-order-premise-check/web.md`）と、user が確定した決定（親 docs 監査レポート §5）を反映した: 一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、再生失敗の通知は toast を維持し、出す部品を `components/` 側に置く（**SG-C56**）、オフラインで未保存のエピソードを選んだときの文言を 1 つ足す（**SG-C69**）、巻き戻した位置も保存する（**SG-C67**）、音量は新 Provider が持つ（**SG-C57**）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、次へ送り（**SG-C63**）。order を書く側が決定から導いた宣言は **W-10〜W-14**（監査レポート §5.0）。再提案しない。
 
 ## 規模（見込み。根拠 = 2026-09-30 実測の行数。W-S1b の merge でずれるので着手時に数え直す）
 - production ≈ 420 行: `contexts/PlaybackProvider.tsx` 新設 ≈ 220、`components/PlaybackToasts.tsx` 新設 ≈ 60、`components/AudioPlayerBar.tsx`（251 行）≈ 50、`app/(app)/podcast/page.tsx`（235 行）≈ 30、`app/(app)/podcast/[id]/page.tsx`（455 行）≈ 15、`app/(app)/settings/page.tsx`（511 行）≈ 20、`contexts/AuthContext.tsx`（164 行）≈ 6、`app/layout.tsx` ≈ 4。
@@ -45,7 +45,7 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
    - Provider は toast を出さない。
 2. `components/PlaybackToasts.tsx`（SG-C56。導出 W-13）: 再生の知らせを toast に写す部品。
    - `PlaybackErrorToaster`（描画は `null`）: `usePlayback().session` を見て、**`errored` に入ったときに 1 回** toast（error）を出す。文言は現行の 2 種類: 理由が `media`・`autoplay_blocked` なら「音声を再生できません」、`fetch_failed`・`source_unavailable` なら「再生できませんでした」。`errored` のまま再描画されても出し直さない。
-   - `usePlaybackActions()`: `startEpisode` / `addToQueue` / `playNext` / `skipToNext` を包み、戻り値が `{ ok: false }` のとき「再生できませんでした」の toast（error）を出す。page と再生バーは、この 4 操作をこの hook から呼ぶ。
+   - `usePlaybackActions()`: `startEpisode` / `addToQueue` / `playNext` / `skipToNext` を包み、戻り値が `{ ok: false }` のとき toast（error）を出す。文言は、`notice` が `offline_uncached` なら「オフラインのため再生できません」（SG-C69。共有仕様 §2.11。Android と同じ文言）、`not_playable`・`fetch_failed` なら現行の「再生できませんでした」。page と再生バーは、この 4 操作をこの hook から呼ぶ。
 
 **新規（test 用の固定）**
 3. `tests/public/sw.prefix.test.ts`（T-T18・**TP2**）: `public/sw.js` と `lib/swCacheCleanup.ts` の prefix 集合（`'shell-'`・`'api-'`）の一致を fs の読み比べで固定する。owner: user。導入: W-S2b。削除条件: ビルド時注入か SW の module 化。
@@ -86,11 +86,12 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 | PS-06（SG-X1） | 完聴時に server へ書く位置が 0 → **総時間**。順序 = 完聴の記録 → 総時間の位置 1 回。次の開始は応答を待たない | 完聴の記録 → 位置 0 | 同上 |
 | PS-08 | エピソードの開始ごとに、速度を既定速度に戻す。再生バーの速度変更は既定速度を書き換えない | バーの変更が `SET_SPEED` で既定速度を書き換え、次のエピソードへ持ち越す | `AudioPlayerBar.test.tsx`・`PlaybackProvider.queue.test.tsx` |
 | RS-03 / RS-04 / RS-05（SG-X2） | 合成した候補が「総時間 − 2」以上なら先頭から | server の位置をそのまま使う | W-S2a の `resume.test.ts` ＋ `PlaybackProvider.offline.test.tsx` |
-| —（SG-C53） | 一時停止したとき・別のエピソードへ切り替えたときに、位置を 1 回（local と server へ）書く。同じ再生の中で、書いた値より小さい位置（巻き戻し）は server へ送らない | 周期（10 秒進むごと）だけ。巻き戻した位置も周期で送る | `PlaybackProvider.completion.test.tsx` |
+| —（SG-C53・SG-C67） | 一時停止したとき・別のエピソードへ切り替えたときに、位置を 1 回（local と server へ）書く。巻き戻した位置も、このときに保存される | 周期（最後に保存した位置から 10 秒進むごと）だけ。巻き戻した位置は、保存済みの位置を追い越すまで保存されない |
+| —（SG-C69） | オフラインで未保存のエピソードを選ぶと、toast が「オフラインのため再生できません」になる | 「再生できませんでした」 | `PlaybackProvider.completion.test.tsx` |
 | —（SG-C63） | 「次へ」で、次が再生できないと分かったら、キューも再生も変えずに toast を出す | キューを先に進めてから取得し、失敗すると進んだまま残る | `PlaybackProvider.queue.test.tsx` |
 | —（導出 W-14） | 聴き終えた後に再生ボタンを押すと、再生元の解決からやり直して先頭から始まる | 読み込み済みの音源を先頭から再生する（取得しない） | `AudioPlayerBar.test.tsx` |
 
-**不変として固定する行**: PS-05（`idle`・`errored` では位置を送らない。現行も送る契機が無い。`PlaybackProvider.completion.test.tsx` で行 ID 付きで固定する）、PS-05b（一時停止中は周期送信しない。SG-X4）、RS-01 / RS-02 / RS-06 / RS-07、server が 0 のとき local の位置へ戻る合成、Q-01〜Q-33、§2.3〜§2.10 の操作、手動の開始が再生できないときに何も変えず toast だけ出すこと（SG-C62。現行と同じ）、toast の文言 2 種類と `role="alert"`、`AudioPlayerBar` の表示要素と題の切り詰め（50 字・待機列 40 字）、音量の保存形式と初期値、settings のオフライン一覧・削除、オフライン保存の失敗の toast、logout で音声キャッシュが消えること、e2e 3 本。OS やブラウザが外から再生を止めた場合に状態へ反映しないのも現行と同じ（`AudioElement` は `pause` の事象を持たない）。
+**不変として固定する行**: PS-05（`idle`・`errored` では位置を送らない。現行も送る契機が無い。`PlaybackProvider.completion.test.tsx` で行 ID 付きで固定する）、PS-05b（一時停止中は周期送信しない。SG-X4）、RS-01 / RS-02 / RS-06 / RS-07、server が 0 のとき local の位置へ戻る合成、Q-01〜Q-33、§2.3〜§2.10 の操作、手動の開始が再生できないときに何も変えず toast だけ出すこと（SG-C62。現行と同じ）、toast の現行の文言 2 種類（オフラインで未保存の場合を除く）と `role="alert"`、`AudioPlayerBar` の表示要素と題の切り詰め（50 字・待機列 40 字）、音量の保存形式と初期値、settings のオフライン一覧・削除、オフライン保存の失敗の toast、logout で音声キャッシュが消えること、e2e 3 本。OS やブラウザが外から再生を止めた場合に状態へ反映しないのも現行と同じ（`AudioElement` は `pause` の事象を持たない）。
 
 ## 完了条件
 - `npm test` / `npm run lint` / `npm run typecheck` / `npm run typecheck:ts7` / `npm run build` 成功。e2e `offline-playback` / `queue-autoadvance` / `main-flow` が**手順・assertion とも無変更で** green（e2e に位置同期の assertion は無い。2026-09-30 実測: `grep -n "/position\|PATCH\|/completed" e2e/*.ts` は 0 件）。
@@ -107,7 +108,7 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 - 旧ファイル・`AppContext.currentPodcast`・`reorderUpNext` を削除・rename しない（W-S2c）。eslint ルールを追加しない（W-S2c）。
 - `Episode` の UI 展開（`PodcastCard` の props 分岐。PS-07）は W-S4a。`PreferencesRegistry` は W-S4b。主体別のキャッシュ名と `stopForSubjectLeave` は W-S5。
 - タブを閉じる・隠すときの位置の送信を入れない（共有仕様 §6.4 の web の保留）。
-- 再生失敗の表示を再生バーの中へ移さない。toast の文言を変えない・増やさない（SG-C56）。
+- 再生失敗の表示を再生バーの中へ移さない。toast の文言は、現行の 2 種類とオフライン用の 1 つだけ（SG-C56・SG-C69）。
 - 旧新 Provider の併存移行・段階的切替をしない。仕様にない業務条件を足さない。
 
 ## 特性テスト（baseline。19 ファイル。2026-09-30 実測: `grep -rln "@/contexts/AudioPlayerContext\|@/hooks/useStartPodcast\|@/hooks/useAudioPlayer\|@/lib/audioCache\|@/lib/playbackQueue\|@/lib/resolvePlayback\|@/lib/playbackPosition\|AudioPlayerProvider\|useAudioPlayerContext" tests`）
@@ -117,12 +118,12 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 | 書換（8） | `tests/components/AudioPlayerBar.test.tsx`（564）、`tests/app/podcast/page.test.tsx`（402）、`tests/app/podcast/id/page.test.tsx`（854）、`tests/app/app-group-layout.test.tsx`（56）、`tests/app/settings/page.test.tsx`（1,211）、`tests/contexts/AuthContext.test.tsx`（197）、`tests/contexts/AuthContext.push.test.tsx`（218）、`tests/contexts/AuthContext.expiry.test.tsx`（176） | mock を `usePlayback()` の double へ替え、oracle を公開 API へ移す。期待値を変えてよいのは「変わる挙動」に当たる行だけ。AuthContext の 3 本は `vi.mock('@/lib/audioCache', …)` を `vi.mock('@/lib/playback/offlineLibrary', …)`（`clearOfflineAudio` の double）へ替える（`AuthContext.test.tsx:26-29,72,127,148`・`AuthContext.push.test.tsx:27-30,98,143`。`expiry` はコメント `:11` だけ）。「消去が失敗しても logout が完了する」ケース（`AuthContext.test.tsx:148`）は保つ |
 | 新設（5。baseline に数えない） | `tests/contexts/PlaybackProvider.{queue,offline,completion}.test.tsx`（旧 3 本と同じ観点を新 Provider に対して書く）、`tests/components/PlaybackToasts.test.tsx`、`tests/public/sw.prefix.test.ts` | — |
 
-新設のテストで固定するもの（旧 3 本の観点に加えて）: toast が `errored` に入ったとき 1 回だけ出て、`role="alert"` であること（旧 `AudioPlayerContext.queue.test.tsx:151,169,210`・`AudioPlayerBar.test.tsx:130-140` と同じ観測）。`usePlaybackActions()` が `{ ok: false }` で toast を出すこと。音量の初期値が保存値になること（旧 `AudioPlayerBar.test.tsx:214` の観点）。再生ボタンの 6 状態の表。`AudioPlayerBar.test.tsx:130-140` の「音声要素の error で toast」のテストは、toast を出す部品が変わるので `PlaybackToasts.test.tsx` へ移す（観測と文言は同じ。`AudioPlayerBar.test.tsx` からは消してよい）。
+新設のテストで固定するもの（旧 3 本の観点に加えて）: toast が `errored` に入ったとき 1 回だけ出て、`role="alert"` であること（旧 `AudioPlayerContext.queue.test.tsx:151,169,210`・`AudioPlayerBar.test.tsx:130-140` と同じ観測）。`usePlaybackActions()` が `{ ok: false }` で toast を出し、`offline_uncached` のときだけ「オフラインのため再生できません」になること。音量の初期値が保存値になること（旧 `AudioPlayerBar.test.tsx:214` の観点）。再生ボタンの 6 状態の表。`AudioPlayerBar.test.tsx:130-140` の「音声要素の error で toast」のテストは、toast を出す部品が変わるので `PlaybackToasts.test.tsx` へ移す（観測と文言は同じ。`AudioPlayerBar.test.tsx` からは消してよい）。
 
 ## 検証
 `npm test`、`npm run test:e2e`（3 本）、上記 grep 4 種、`npm run build`。UV3（resume の再適用・読み込み後の速度・toast の表示）は e2e（Chromium）で観測し、結果を PR 説明に残す。
 
 ## 記録
 - 完了時、共有仕様 §4.4 の PS-01〜PS-08 の web の保留（解除条件 = W-S2b の完了。PS-07 は W-S4a）と、§6.4 の web の保留のうち「一時停止・停止への遷移時の即時 1 回」を解除できる旨を親 docs へ返す。
-- 共有仕様 §2.11 の「オフライン起因は『オフライン』と分かる文言にする」は、web では満たさないまま残る（SG-C56 が文言を現行の 2 種類と決めた）。親 docs へ返す（保留として記載する）。
+- 共有仕様 §2.11 の「オフライン起因は『オフライン』と分かる文言にする」は、手動の開始について満たす（SG-C69）。自動で次へ進んだ後のオフライン起因は区別しないまま残る（共有仕様に保留として記載済み）。
 - UV3 の観測結果と、表と実装の差があれば `docs/trial-log/` へ。
