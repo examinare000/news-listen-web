@@ -3,7 +3,7 @@
 ## 概要
 W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fail`）の上に、オフライン保存庫・Coordinator・PositionReporter を新設する。3 段分割 ① の後半（2026-09-24 に W-S2a から分けた）。**既存コードのどこからも新モジュールを呼ばず**、旧再生実装は 1 行も変えない。入口の差し替えは W-S2b。正本は Implementation Spec §3.1・§4 CI-T5〜T8・T10・T11・§5 CP3〜CP5 / CP9 と、Spec 冒頭の追記 3 つ（本文を上書きする。必ず読む）。**検証モード: 再設計しない**。新しい契約 ID は作らない。
 
-> **2026-09-30 の前提点検（W-S2a 完了後）による書き直し**: W-S2a の実装済みの公開面と照合し、起票時の本 order に欠けていた宣言と規則を埋めた。user が確定した決定（親 docs 監査レポート §5）: 取得前・開始前の失敗は Session の `fail` で表す（**SG-C52**。W-S2a1 が入口を足す）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、完聴時の順序は送信を始める順（**SG-C61**）、総時間の優先順（**SG-C54**）、一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、「次へ送り」の規則（**SG-C63**）。決定から導いた宣言（依存の形・戻り値・規則の細部）は、同レポート §5 の「導出（2026-09-30）」W-1〜W-8・W-10〜W-12 に記録した。点検の記録は親 docs `research-reports/2026-09-30-wave3-order-premise-check.md`（web A1〜A10）。再提案しない。
+> **2026-09-30 の前提点検（W-S2a 完了後）による書き直し**: W-S2a の実装済みの公開面と照合し、起票時の本 order に欠けていた宣言と規則を埋めた。user が確定した決定（親 docs 監査レポート §5）: 取得前・開始前の失敗は Session の `fail` で表す（**SG-C52**。W-S2a1 が入口を足す）、手動で選んだものが開始前に再生できないと分かる場合は状態を変えない（**SG-C62**）、完聴時の順序は送信を始める順（**SG-C61**）、総時間の優先順（**SG-C54**）、一時停止・停止への遷移で位置を 1 回送る（**SG-C53**）、保存は `save(id)`（**SG-C55**）、「次へ送り」の規則（**SG-C63**）。決定から導いた宣言（依存の形・戻り値・規則の細部）は、同レポート §5 の「導出（2026-09-30）」W-1〜W-8・W-10〜W-12・W-15 に記録した。2026-09-30 夜の一問一答（SG-C64〜C79）で、巻き戻した位置も書く（SG-C67）と、利用者の開始を自動より優先する（SG-C73）を足した。点検の記録は親 docs `research-reports/2026-09-30-wave3-order-premise-check.md`（web A1〜A10）。再提案しない。
 
 ## 規模（見込み。根拠 = 2026-09-30 実測: 旧 `lib/audioCache.ts` 155 行、`contexts/AudioPlayerContext.tsx` の gateway 呼出 3 箇所 `:61,72,121`）
 - production ≈ 560 行（新規のみ）: `offlineLibrary.ts` ≈ 170、`coordinator.ts` ≈ 230、`positionReporter.ts` ≈ 110、`gatewayFns.ts` ≈ 30、`lib/platform/objectUrl.ts` ≈ 10、`lib/platform/storageEstimate.ts` ≈ 10。
@@ -56,7 +56,7 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
    - **エピソードごとの基準**: `stateChanged(loading)` を受けたら、そのエピソードの基準を戻す（最後に保存した位置 = `resumePosition`、完聴の送信済みの印を倒す）。
    - **周期**: 状態が `playing` のときの `positionChanged` で、最後に保存した位置から 10 秒以上進んだら local と server へ書く（旧実装と同じ、位置の進みによる間引き）。`paused` での `seek` による `positionChanged` では周期の書込みをしない（SG-X4・PS-05b）。
    - **一時停止・停止への遷移**（SG-C53）: `playing` から `paused` へ変わったとき、および `playing` / `paused` から `idle` へ変わったとき（`stop`）に、最後に分かっている位置を 1 回 local と server へ書く。最後に保存した位置と同じなら書かない。
-   - **単調非減少**: 同じエピソードの 1 回の再生（`loading` から次の `loading` まで）の中で、最後に server へ書いた位置より小さい位置は server へ送らない（共有仕様 §6.4）。完聴時の書込みは例外。
+   - **巻き戻した位置も書く**（SG-C67・2026-09-30 夜）: 位置の大小で送信を止めない。周期の条件（最後に保存した位置から 10 秒以上**進んだ**ら）は今のままなので、巻き戻した位置が書かれるのは、一時停止・停止への遷移のとき。記録時刻を付けて送る形と、オフラインで送れなかった位置を後で送る形（親 docs ADR-109）は、本 slice には入れない（backend の B-S7 と、W-S2c の後に起こす位置同期の slice で入れる）。
    - **完聴**（SG-X1・SG-C61・PS-06）: `listenCompleted` を受けたら、`markCompleted(id)` → local に 0 → server へ総時間、の順で**送り始める**。応答は待たない。同じ再生の中で 2 回目以降の `listenCompleted` は無視する。
    - **完聴時に送る総時間**（SG-C54）: 直前の状態の `duration` が 0 より大きければその値、そうでなければ `episode.durationSeconds`（0 より大きい場合）、どちらも無ければ最後に分かっている位置（0 より大きい場合）。すべて 0 なら server への位置の書込みを省く。
    - **送らない状態**（PS-05）: 状態が `errored` / `idle` のとき、周期の書込みはしない。
@@ -71,7 +71,7 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
      3. `cached` なら `offline.get(id)`、`network` なら `fetchEpisode(id)` でエピソードを得る。`network` で取得に失敗したら、キューもセッションも変えず `{ ok: false, notice: 'fetch_failed' }` を返す。
      4. `decodeEpisode` で再生可能か判定する。再生可能でなければ、キューもセッションも変えず `{ ok: false, notice: 'not_playable' }` を返す。
      5. 再生可能なら、キューを整える（`jump` 済みならそのまま、無ければ `playNext` → `jump`。現行の挿入規則）→ `candidate = server > 0 ? server : local`（local は `keyValueStore` の `podcastPositionKey(id)` を `JSON.parse` して有限の正数だけ採る）→ `resume = resolveResumePosition(candidate, episode.durationSeconds)`（SG-C54。開始前なので DTO の総時間を使う）→ `session.start(episode, resume, defaultSpeed())`（PS-08）→ `{ ok: true }`。
-     6. await の後は、その間に別の `startEpisode` が始まっていないかを確かめる（後から始めた方を優先する。古い方は何も変えずに `{ ok: true }` を返してよい）。
+     6. await の後は、その間に別の開始が始まっていないかを確かめる（後から始めた方を優先する。古い方は何も変えずに `{ ok: true }` を返してよい）。**利用者の開始を自動より優先する**（SG-C73・導出 W-15）: 利用者が起こした開始（`startEpisode`・`retry`・`skipToNext`・`addToQueue` / `playNext` の即再生）の待ちが 1 つでも残っている間、`onEnded` は次へ進む処理を始めない（完聴の記録は Reporter が送る）。`onEnded` の待ちの間に利用者の開始が来たら、`onEnded` の側を捨てる。
    - **`onEnded`**（Session の `stateChanged(ended)` を受けて動く。完聴の記録と位置の書込みは Reporter が行う）: `advance` → 次があれば再生元を解決して開始する。**この経路ではキューが既に次を現在にしている**ので、再生できないと分かった場合・取得に失敗した場合は `session.fail({ id }, reason)` を呼ぶ（SG-C52・PS-01・PS-03。`offline_uncached` と `not_playable` は `source_unavailable`、取得失敗は `fetch_failed`）。次が無ければ何もしない（`ended` のまま）。応答を待ってから進むことはしない（SG-C61）。
    - **`retry()`**: 状態が `errored` のとき、`queue.current` の id で再生元の解決からやり直す（PS-02）。失敗した場合は `onEnded` と同じく `session.fail` を呼ぶ。`errored` 以外では何もしない。
    - **`skipToNext()`**（SG-C63。共有仕様 §2.12）: 次があれば、次の再生元を**先に**解決する。再生できると分かったら `advance` して開始する（今のエピソードは Session の `start` が止める。Reporter が一時停止への遷移で位置を 1 回送る。完聴は送らない）。再生できないと分かったら、キューもセッションも変えず通知を返す。次が無ければ何もしない。戻り値は `startEpisode` と同じ `StartResult`。
@@ -84,9 +84,9 @@ W-S2a（port・Session・Queue・source・resume）と W-S2a1（Session の `fai
 ## 契約（RED テストの対応。Spec §4）
 | CI | RED テスト（`tests/lib/playback/`） | 行 ID |
 |---|---|---|
-| CI-T5 / T6 / T7 | `coordinator.test.ts`: 注入した関数 double の呼出列で検証する。`unavailable` では `fetchEpisode` が呼ばれない。手動の開始で再生できない場合はキューとセッションが変わらず `notice` が返る（SG-C62）。advance 後の失敗で `Queue.current` が失敗エピソード・`errored`・`retry` で再解決。全公開操作の後に INV-P1（セッションが `idle` でないとき `session.episode.id === Queue.current.id`） | PS-01〜PS-04 |
+| CI-T5 / T6 / T7 | `coordinator.test.ts`: 注入した関数 double の呼出列で検証する。`unavailable` では `fetchEpisode` が呼ばれない。手動の開始で再生できない場合はキューとセッションが変わらず `notice` が返る（SG-C62）。advance 後の失敗で `Queue.current` が失敗エピソード・`errored`・`retry` で再解決。全公開操作の後に INV-P1（セッションが `idle` でないとき `session.episode.id === Queue.current.id`）。利用者の開始の優先（SG-C73）: 取得を保留できる double で、(1) 手動 B を保留 → a が `ended` → B を解放 → B が始まる（自動は始まらない）、(2) 自動 C を保留 → 手動 B を保留 → C を先に解放 → 何も始まらない → B を解放 → B が始まる | PS-01〜PS-04 |
 | CI-T11 | `coordinator.test.ts`: 表駆動 status 4 × audio_url 2 × error_message 2 = 16。16 行それぞれの期待（Playable / Generating / Failed）を表としてテストに書く | PS-07 |
-| CI-T8 | `positionReporter.test.ts`: 注入した `updatePosition` / `markCompleted` double の呼出列と値。周期（10 秒進むごと）、一時停止への遷移で 1 回、同じ位置は再送しない、一時停止中の `seek` で周期の書込みなし、`errored` / `idle` で周期の書込みなし、完聴の順序（`markCompleted` → 位置）、完聴は 1 回、総時間が不明なときの代替、応答を待たずに次の開始が進むこと | PS-05・PS-05b・PS-06 |
+| CI-T8 | `positionReporter.test.ts`: 注入した `updatePosition` / `markCompleted` double の呼出列と値。周期（10 秒進むごと）、一時停止への遷移で 1 回（巻き戻して小さくなった位置も書く）、同じ位置は再送しない、一時停止中の `seek` で周期の書込みなし、`errored` / `idle` で周期の書込みなし、完聴の順序（`markCompleted` → 位置）、完聴は 1 回、総時間が不明なときの代替、応答を待たずに次の開始が進むこと | PS-05・PS-05b・PS-06 |
 | CI-T4（Coordinator 側） | `coordinator.test.ts`: 開始ごとに `defaultSpeed()` の値で `session.start` する | PS-08 |
 | CI-T10 | `offlineLibrary.test.ts`: deferred-put double（`MockCache.deferPuts` / `flushPuts`）で、書込みの途中は `has()` が false。`fetchEpisode` が呼ばれること（SG-C55）。永続化した podcast の `audio_url` が空。`cacheStore` が `null` のときの 7 操作。`handle.release()` で revoke。`clearOfflineAudio` が Cache を消し、`null` では何もしない | — |
 | —（導出 W-4） | `gatewayFns.test.ts`: `tests/helpers/gatewayDouble.ts` の呼出列（パスと method）が旧 3 箇所と一致 | — |
