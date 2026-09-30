@@ -12,6 +12,11 @@
 > - SG-X2: resume は **末尾 2 秒窓**（共有仕様 §4.3 RS-01〜07）。CI-T3 の「duration 以上なら 0」を置換。
 > - SG-X4: 位置同期の周期送信は再生中のみ（web は現行どおり）。
 > - パスワード（SG7）: **12〜20 文字**（ADR-101。本書の「8〜20」を置換）。
+>
+> **追記（2026-09-30・wave 1 完了後の前提点検による上書き）**: 再生の停止の扱いを user 判断で確定した（親 docs 監査レポート §5 の SG-C24・SG-C25、共有仕様 §6.6）。本書の次の記述を上書きする（本書は改訂せず、この追記と各 slice の order を優先する）。
+> - SG-C24: `PlaybackSession` の公開操作に **`stop`** を足す（§5 CP1 の ops を置換）。`stop` は §3.1 の遷移表の外の**リセット**で、どの状態からでも `idle` へ戻し、分母 13 には数えない。契約 **CI-T1b**: 任意の状態で `stop` → `idle`・`AudioElement` が一時停止し音源を外す（`pause()` → `src` を空に → `load()`）・`idle` での `stop` は何もしない。検証 T-T1b は `AudioElement` double の状態（`paused` と `src`）で観測し、呼出回数は問わない（W-S2a）。
+> - `AudioElement` port は変えない（停止は既存の `pause` / `src` / `load` で表せる）。
+> - 主体離脱時の再生停止 `stopForSubjectLeave()`（W-S5）はこの `stop` を使う。W-S5 は Session を変更しない。
 
 ## 0. Decision frame と function_plan
 
