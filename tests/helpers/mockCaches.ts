@@ -1,4 +1,6 @@
 import { vi } from 'vitest'
+import type { CacheStore, CacheWriteFailure } from '@/lib/playback/ports'
+import type { Result } from '@/lib/api/gateway'
 
 /**
  * jsdom には Cache Storage API (`caches`) が実装されていないため、テスト用モックを提供する。
@@ -11,10 +13,37 @@ import { vi } from 'vitest'
  */
 export class MockCache {
   private store: Map<string, Response> = new Map()
+  /** deferPuts() 後は非 null。put の反映と promise の解決を flushPuts() まで保留する。 */
+  private pending: Array<() => void> | null = null
 
   async put(request: Request | string, response: Response): Promise<void> {
     const key = typeof request === 'string' ? request : request.url
-    this.store.set(key, response)
+    const apply = () => {
+      this.store.set(key, response)
+    }
+    if (this.pending === null) {
+      apply()
+      return
+    }
+    // 返す promise と store への反映の両方を flushPuts() まで保留する（deferred-put）。
+    await new Promise<void>((resolve) => {
+      this.pending!.push(() => {
+        apply()
+        resolve()
+      })
+    })
+  }
+
+  /** 以後の put を保留する。 */
+  deferPuts(): void {
+    this.pending = []
+  }
+
+  /** 保留中の put を反映して解決し、以後の保留を解除する。 */
+  flushPuts(): void {
+    const queued = this.pending ?? []
+    this.pending = null
+    for (const settle of queued) settle()
   }
 
   async match(request: Request | string): Promise<Response | undefined> {
@@ -37,8 +66,32 @@ export class MockCache {
   }
 }
 
-export class MockCacheStorage {
+export class MockCacheStorage implements CacheStore {
   private stores: Map<string, MockCache> = new Map()
+  private responses: Map<string, string> = new Map()
+  private failures: Map<string, CacheWriteFailure> = new Map()
+
+  /** putFromUrl が成功する URL とその本文を設定する。 */
+  respondTo(url: string, body: string): void {
+    this.responses.set(url, body)
+  }
+
+  /** putFromUrl が返す失敗を URL ごとに指定する（ステータス写像は持たない。格納しない）。 */
+  failUrl(url: string, failure: CacheWriteFailure): void {
+    this.failures.set(url, failure)
+  }
+
+  async putFromUrl(cacheName: string, key: string, url: string): Promise<Result<void, CacheWriteFailure>> {
+    const failure = this.failures.get(url)
+    if (failure) return { ok: false, failure }
+    const body = this.responses.get(url)
+    if (body === undefined) {
+      return { ok: false, failure: { kind: 'download_failed', failure: { kind: 'network' } } }
+    }
+    const bucket = await this.open(cacheName)
+    await bucket.put(key, new Response(body))
+    return { ok: true, value: undefined }
+  }
 
   async open(name: string): Promise<MockCache> {
     if (!this.stores.has(name)) {

@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import type { AudioElement } from '@/lib/playback/ports'
 
 type EventListener = (event: Event) => void
 
@@ -6,12 +7,13 @@ type EventListener = (event: Event) => void
  * jsdom に Audio 実装がないため、テスト用モッククラスを提供する。
  * play/pause/currentTime/volume/playbackRate/イベント発火ヘルパーを備える。
  */
-export class MockAudio {
+export class MockAudio implements AudioElement {
   src: string = ''
   currentTime: number = 0
   duration: number = 0
   volume: number = 1
   playbackRate: number = 1
+  defaultPlaybackRate: number = 1
   paused: boolean = true
   // HTMLMediaElement.error は MediaError | null だが、テストでは boolean flag で代替
   error: null | { code: number } = null
