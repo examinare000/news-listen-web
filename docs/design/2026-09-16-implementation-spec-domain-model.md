@@ -3,6 +3,7 @@
 日付: 2026-09-16 ／ mode: design（read-only、実装は別フェーズ）／ owner: user ／ decision_maturity: **approved（2026-09-16 user 承認。SG9=採用。SG7 は ADR-101 で 12〜20 文字へ、SG8 の一括切替は 2026-09-23 の再スライスで 3 段分割へ改めた）** ／ 最終更新: 2026-09-30（本文の表を現行値へ更新。末尾「改訂履歴」）
 入力: `docs/research-reports/2026-09-16-code-design-review.md`（finding RF*・§8 人間判断）と同ディレクトリの Function package（G*/IV*/OB-C*/CI*/LF*/F*/SG*）。
 位置づけ: 親リポ `docs/design/web-design.md` §6〜§9 の**target 版**。実装が進んだ節から web-design.md を書き換える（本書は移行中の設計正本）。
+目標アーキテクチャの Spec との関係（2026-09-30）: module 全体（全 context）の構造の正本は [2026-09-30-implementation-spec-target-architecture.md](2026-09-30-implementation-spec-target-architecture.md)（以下「新 Spec」。根拠は親 docs ADR-110）である。新 Spec は、層と path の対応・3 つのモデル（ドメイン / リード / データ）の対応・command と query の入口・依存の規則・検証の仕様・slice の全体（補完 slice W-T1〜W-T15 と、未着手の order の補正）を持つ。本書は、その範囲（再生・認証・設定・テストの土台）の use case・状態遷移・契約（CI-T*）・capsule（CP*）・temporary path（TP1〜TP3）の詳細の正本のまま残る。置き場（path）・型の所属・入口の分け方は新 Spec が優先し、状態遷移と契約の期待値は本書が優先する。本書の本文のうち新 Spec と食い違っていた行は、2026-09-30 に直した（末尾の改訂履歴「2026-09-30（目標アーキテクチャ）」）。
 運用（2026-09-30 改訂）: 本文の表は 2026-09-30 に現行値へ更新した。**本文が現在有効な契約**である。冒頭の追記節は改訂の経緯として残す（追記が「置換」「上書き」と書く内容は本文へ反映済み）。以後は本文を直し、末尾の「改訂履歴」に 1 行足す。決定 ID の台帳は親 docs `research-reports/2026-09-23-design-docs-mino-audit.md` の §5（SG-* = user が承認した決定）と §5.0（W-* = 承認済みの決定からの導出）。採用済みで未実装の決定は「target（決定 ID・未実装）」と書く。slice の進捗は `docs/plan/2026-09-16-design-review-refactor/README.md` の状態欄が正本で、本書には書かない。
 
 > 設計原則（本書の判断順）: actor の目的 → use case → その判断に必要な概念・不変条件 → 契約 → カプセル（公開操作と隠す技術）→ 依存方向 → 移行。pattern 名・class 数は成果にしない。1 実装しかない箇所に factory / Strategy を作らない（Boundary RO1〜RO6 を踏襲）。
@@ -114,20 +115,22 @@ contexts/ (composition root / providers) …… adapter を生成し capsule を
 lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: localStorage / Cache Storage / Audio / fetch)
 ```
 
+`lib/<context>/` の下は `domain/`・`application/`・`infrastructure/` の 3 層に分ける（新 Spec §3。導出 W-16）。上の図の `lib/<context>/` は domain と application、`lib/platform/` と `lib/<context>/infrastructure/` は adapter に当たる。下の表の「置き場」は context の単位で書いてあり、層ごとのファイルの置き場は新 Spec §3.2 と §5 が正本である。
+
 | context | purpose | 所有する概念（source of truth） | 置き場（target） |
 |---|---|---|---|
-| **Playback** | 聴き続ける | `PlaybackSession`（transport 状態）, `Queue`（現在再生中・待機列）, `PlaybackSource`, `ResumeRule`, `OfflineLibrary` | `lib/playback/`、`contexts/PlaybackProvider.tsx`、`hooks/usePlayback*.ts`、`components/PlaybackToasts.tsx`（toast を出す部品と hook。W-13） |
-| **Catalog** | 聴く対象を選ぶ | `Episode`（Playable/Generating/Failed）, `Article`（star/dismiss）, `GenerationQuota`, `Source`/`FeaturedSource`, 生成状態の遷移検知 | `lib/catalog/` |
-| **Learning** | 定着・継続 | quiz, vocabulary, streak, dashboard, achievement 既読 | `lib/learning/`（本書では境界と obligation のみ） |
-| **Account** | 誰であるか・何ができるか | `AuthSession`（判別共用体）, `AdminAccess` policy, `PasswordPolicy`（単一）, credentials / sessions | `lib/account/`、`contexts/AuthProvider.tsx` |
-| **Preferences** | 自分の使い方 | 設定レジストリ（key・codec・値域・保存先）。server 設定と local 設定を同じ registry で宣言 | `lib/preferences/`、`contexts/PreferencesProvider.tsx` |
-| **Admin** | 運営 | 一覧・作成・更新・失効（generic。ルールは backend） | `lib/api/admin.ts`（gateway 呼出のみ）+ `hooks/useAdminGate.ts` |
+| **Playback** | 聴き続ける | `PlaybackSession`（transport 状態）, `Queue`（現在再生中・待機列）, `PlaybackSource`, `ResumeRule`, `OfflineLibrary` | `lib/playback/{domain,application,infrastructure}/`、`contexts/PlaybackProvider.tsx`、`hooks/usePlayback*.ts`、`components/PlaybackToasts.tsx`（toast を出す部品と hook。W-13） |
+| **Catalog** | 聴く対象を選ぶ | `Episode`（Playable/Generating/Failed）, `Article`（star/dismiss）, `GenerationQuota`, `Source`/`FeaturedSource`, 生成状態の遷移検知 | `lib/catalog/{domain,application,infrastructure,presentation}/` |
+| **Learning** | 定着・継続 | quiz, vocabulary, streak, dashboard, achievement 既読 | `lib/learning/{domain,application,infrastructure}/`（model・入口・L-R との対応は新 Spec §5.6） |
+| **Account** | 誰であるか・何ができるか | `AuthSession`（判別共用体）, `AdminAccess` policy, `PasswordPolicy`（単一）, credentials / sessions | `lib/account/{domain,application,infrastructure}/`、`contexts/AuthProvider.tsx` |
+| **Preferences** | 自分の使い方 | 設定レジストリ（値域・既定値・主体依存の宣言は domain、key と codec は infrastructure。registry は 2 つを合成した公開物: 導出 W-32）。server 設定と local 設定を同じ registry で宣言 | `lib/preferences/{domain,application,infrastructure}/`、`contexts/PreferencesProvider.tsx` |
+| **Admin** | 運営 | 一覧・作成・更新・失効（規則の正本は backend。web が持つ入力の検査と表示用の形は新 Spec §5.7） | `lib/admin/{domain,application,infrastructure}/`、`components/AdminGate.tsx` |
 | **Notifications** | 通知 | `PushSubscriptionState`（状態機械は購読 hook が維持）。端末の購読とサーバ登録の整合は `PushRegistration`（5 操作: `resolve` / `subscribe` / `unsubscribe` / `reregister` / `detachFromSubject`）が持つ。認証状態が `authenticated` に変わるたびに既存の購読を backend へ再送し、logout ではサーバ行だけを解除する（ADR-104 決定 18〜24・SG-C5・C6。W-0 で実装済み） | `lib/push/pushRegistration.ts`、`components/PushReregistration.tsx`、`hooks/useWebPushSubscription.ts` |
-| **Platform** | 技術境界 | `ApiGateway`（request＋`ApiFailure`）, `KeyValueStore`, `CacheStore`, `AudioElement`, BFF proxy（server） | `lib/api/gateway.ts`、`lib/platform/*`、`app/api/backend/[...path]/route.ts` |
+| **Platform** | 技術境界 | `ApiGateway`（request＋`ApiFailure`）, `KeyValueStore`, `CacheStore`, `AudioElement`, BFF proxy（server） | `lib/api/gateway.ts`、`lib/platform/*`（`KeyValueStore`・`CacheStore` の型もここ）、`lib/shared/`（`Result`・`ApiFailure` の型）、`app/api/backend/[...path]/route.ts` |
 
-**依存方向の禁止事項（prohibited_structures）**
-- `lib/<context>/` は React・`fetch`・`localStorage`・`caches`・`Audio` を import しない（port 経由のみ）。
-- `lib/playback/` は `lib/api/` を import しない（Explorer/Architecture の違反 `audioCache.ts → api.ts` を解消。取得は Coordinator が Catalog gateway から受け取って渡す）。gateway のパス・method・body を組み立てる関数は `lib/playback/gatewayFns.ts`（`lib/api/gateway` からは型の import だけ）に置き、Coordinator・PositionReporter・OfflineLibrary は `Result` を返す関数を注入で受ける（W-4）。ブラウザのグローバル（blob URL の発行・解放、保存領域の見積もり）も直接使わず、`lib/platform` の adapter（`objectUrl.ts`・`storageEstimate.ts`）を注入で受ける（W-2）。
+**依存方向の禁止事項（prohibited_structures）**（機械的に判定する形と、現状の違反数は新 Spec §4 の TA-D1〜TA-D12 が正本）
+- `lib/<context>/domain/` と `lib/<context>/application/` は React・`fetch`・`localStorage`・`caches`・`Audio`・`Response` を使わず、`JSON.parse` / `JSON.stringify` を書かない（port 経由のみ）。通信のデータモデル（`@/types` の DTO）も import しない。
+- `lib/playback/domain/` と `lib/playback/application/` は `lib/api/` を import しない（Explorer/Architecture の違反 `audioCache.ts → api.ts` を解消）。位置の書込と完聴の記録の request を組み立てる関数は `lib/playback/infrastructure/gatewayFns.ts` に置き、エピソードの取得は `lib/catalog/infrastructure/episodeGateway.ts` が DTO を `Episode` に変換して返す。Coordinator・PositionReporter は `Result` を返す port を注入で受ける（W-4 を、導出 W-18・W-23 で改めた）。ブラウザのグローバル（blob URL の発行・解放、保存領域の見積もり）は、保存庫の実装（`lib/playback/infrastructure/offlineLibrary.ts`）が `lib/platform` の adapter（`objectUrl.ts`・`storageEstimate.ts`）を注入で受けて使う（W-2）。
 - `contexts/` は `components/` を import しない（`AudioPlayerContext → Toast` の逆依存を解消。通知は use case の結果として返し、hook 側で Toast に写す。toast を出すのは `components/PlaybackToasts.tsx`: SG-C56・W-13。§3.1）。
 - `app/` は `ApiError.status` や `localStorage` を直接参照しない（`ApiFailure` と Preferences registry を使う）。
 
@@ -141,6 +144,8 @@ lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: 
 | `CacheStore` | `tests/helpers/mockCaches.ts` の seam 昇格、OB-C11/C14 の不変条件を capsule 内に閉じる | `lib/audioCache.ts` |
 
 `Clock` port・Strategy 階層・汎用 Storage port（RO3）は作らない（根拠なし）。
+
+上の 4 つのうち `ApiGateway`・`KeyValueStore`・`CacheStore` は技術 seam（型は `lib/api`・`lib/platform`）、`AudioElement` は domain の port である。これとは別に、application が外部への要求を表す port（`EpisodeSource`・`PositionSync`・`OfflineLibrary`・`LocalPositionStore` と、context ごとの `*Gateway`）を `lib/<context>/application/ports.ts` に置く。W-4 の「注入する関数」に型の名前を付けたもので、引数と戻り値は application か domain の型だけを使う（新 Spec §5 の各 context の「port と adapter」）。`LocalPositionStore` は汎用の Storage port ではなく、端末の位置という 1 つの目的の port である（導出 W-20）。
 
 ## 3. ドメインモデル（Completeness target）
 
@@ -162,13 +167,13 @@ lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: 
 - `fail`（「失敗にする」。SG-C52。target・未実装: W-S2a1）: 取得前・開始前の失敗を表す入口。どの状態からでも、id だけの参照と理由（`fetch_failed` / `source_unavailable`）を渡して `errored` に入れる。音声要素は一時停止して音源を外す。`fail` の後の `errored` は `position` が 0、`speed` は直前の値（無ければ 1.0）（W-9）。契約は CI-T1f。
 - 読み取り側の通知 `subscribe`（実装済み: `lib/playback/session.ts`）: `stateChanged` / `positionChanged` / `listenCompleted` を届ける。完聴時は `listenCompleted` → `stateChanged(ended)` の順で emit する。
 
-**「現在再生中」の二重表現の解消（gate 指摘 2）**: `Queue`（共有仕様 §2.1、`items` は `Podcast` DTO のまま）は「順序と現在位置」の正本、`PlaybackSession` は「現在位置の decode 済み `PlayableEpisode`（再生に必要な payload）」の保持者。不変条件 **INV-P1**: `session` が `idle` でないとき `session.episode.id === Queue.current(queue).id`。UI が「何が再生中か」を問う唯一の入口は Coordinator の `nowPlaying()` query（`Queue.current` から id、`session.episode` から title / difficulty / createdAt / duration を導出した view model）。`AppContext.currentPodcast` と `AudioPlayerBar` の DTO 直読み（`components/AudioPlayerBar.tsx:16,28-30,65-66,139,160`）はこの query に置き換える。`nowPlaying()` と `upNext()` の `title` は `podcastTitle` を通した表示用の文字列（50 字・40 字。現行の再生バーの表示を変えない。日本語イントロの原文は持たせない。W-12）。
+**「現在再生中」の二重表現の解消（gate 指摘 2）**: `Queue`（共有仕様 §2.1。要素は Catalog の domain の値 `QueuedEpisode` = `id` と題の材料。DTO を入れない: 導出 W-17）は「順序と現在位置」の正本、`PlaybackSession` は「現在位置の decode 済み `PlayableEpisode`（再生に必要な payload）」の保持者。不変条件 **INV-P1**: `session` が `idle` でないとき `session.episode.id === Queue.current(queue).id`。UI が「何が再生中か」を問う唯一の入口は Coordinator の `nowPlaying()` query（`Queue.current` から id、`session.episode` から title / difficulty / createdAt / duration を導出した view model）。`AppContext.currentPodcast` と `AudioPlayerBar` の DTO 直読み（`components/AudioPlayerBar.tsx:16,28-30,65-66,139,160`）はこの query に置き換える。`nowPlaying()` と `upNext()` の `title` は `podcastTitle` を通した表示用の文字列（50 字・40 字。現行の再生バーの表示を変えない。日本語イントロの原文は持たせない。W-12。目標では同じ規則を `lib/catalog/domain/episode.ts` の `displayTitle` が持つ）。`nowPlaying()` と同じ水準で、キューと再生の表示用の形（`UpNextItem`・`QueueView`・`PlaybackView`・`OfflineEpisodeView`・`StorageUsageView`）を `lib/playback/application/readModels.ts` に型として決める（新 Spec §5.1。導出 W-21）。リードモデルは呼ぶたびに新しく作る凍結済みの値で、domain の object と DTO を含まない。
 
 遷移表の分母（T-T1 用に固定）: idle→loading, loading→paused, loading→errored, paused→playing, paused→paused(seek), paused→loading(start), playing→paused, playing→ended, playing→errored, playing→playing(timeupdate), ended→loading(advance), errored→loading(retry), errored→loading(start) の **13 遷移**。表外の遷移（例: idle→playing、ended→playing）は禁止。
 
 不変条件: `position ∈ [0, duration]`（seek / seekRelative とも clamp、CI-P08）。速度は `PLAYBACK_SPEEDS` 内（OB-C9）。`start` 時のセッション速度は Preferences の既定速度で初期化し、以後はセッション内で保持・`load` 後に再適用（§8 Q5、CI-P12）。`play()` の reject は `errored(autoplay_blocked | media)` へ遷移し、呼出側は状態で観測する（CI-P09/P10）。総時間の正本は「音声要素の値（0 より大きい）→ `PlayableEpisode.durationSeconds`（0 より大きい）→ 不明」で、不明な間は位置を上限で丸めない（SG-C54）。音量は、Session が音声要素へ設定する唯一の入口で、値の保持・`player_volume` への保存・起動時の復元は `PlaybackProvider` が持つ（SG-C57）。
 
-**Queue** — 共有仕様 §2 の `QueueState` と公開操作をそのまま採用（`items` は `Podcast` DTO。iOS/Android と共有する契約なので型を変えない）。公開操作は §2 どおり **正規化** する（`setQueue` の `startAt` clamp §2.4 と重複 id の扱い = 開始位置を元の入力で clamp して id を決め、先勝ちで重複を除いた後のその id の位置を現在にする: SG-C50・Q-33・実装済み、`add`/`playNext` の dedupe §2.5/2.6、範囲外 `moveUpNext` の no-op §2.7）。**入力を拒否しない**。追加するのは内部の不変条件 gate `Queue.create(items, currentIndex)`（不変条件 1〜3 を検査し、違反は **programmer error として throw**。全公開操作の戻り値がこれを通る。OB-C4 / CI-Q01）。公開操作は throw しない。`Queue.current` を「現在再生中（の位置）」の唯一の正本と宣言する（SG3、OB-C12）。`AppContext.currentPodcast` は削除。`start`/`setQueue` は conformance（Q-*）が検証する §2.3/2.4 の操作なので **残す**（SG6 default。削除は Q-spec 準拠を壊す）。`reorderUpNext` → `moveUpNext` の rename は挙動不変の純粋 rename として **独立コミット**（引数意味＝upNext 基準・削除前オフセット、conformance 行 ID は不変。影響: `lib/playbackQueue.ts:95`, `contexts/AudioPlayerContext.tsx:188`, テスト 3 ファイル）。
+**Queue** — 共有仕様 §2 の `QueueState` と公開操作をそのまま採用する。3 platform で共有する契約は、操作と期待値（Q-01〜Q-33）であり、要素の型ではない。web は `QueueState<T extends { readonly id: string }>` とし、Coordinator は `T = QueuedEpisode`（Catalog の domain。`lib/catalog/domain/episode.ts`）で使う（導出 W-17。旧: 「`items` は `Podcast` DTO。型を変えない」）。`create` は `items` を複製して凍結し、状態も凍結して返す。`current()` などが返す値から内部の状態を書き換えられない（検査は新 Spec §7 の TA-V5・TA-V6）。公開操作は §2 どおり **正規化** する（`setQueue` の `startAt` clamp §2.4 と重複 id の扱い = 開始位置を元の入力で clamp して id を決め、先勝ちで重複を除いた後のその id の位置を現在にする: SG-C50・Q-33・実装済み、`add`/`playNext` の dedupe §2.5/2.6、範囲外 `moveUpNext` の no-op §2.7）。**入力を拒否しない**。追加するのは内部の不変条件 gate `Queue.create(items, currentIndex)`（不変条件 1〜3 を検査し、違反は **programmer error として throw**。全公開操作の戻り値がこれを通る。OB-C4 / CI-Q01）。公開操作は throw しない。`Queue.current` を「現在再生中（の位置）」の唯一の正本と宣言する（SG3、OB-C12）。`AppContext.currentPodcast` は削除。`start`/`setQueue` は conformance（Q-*）が検証する §2.3/2.4 の操作なので **残す**（SG6 default。削除は Q-spec 準拠を壊す）。`reorderUpNext` → `moveUpNext` の rename は挙動不変の純粋 rename として **独立コミット**（引数意味＝upNext 基準・削除前オフセット、conformance 行 ID は不変。影響: `lib/playbackQueue.ts:95`, `contexts/AudioPlayerContext.tsx:188`, テスト 3 ファイル）。
 
 **PlaybackSource / ResumeRule** — 既存の純関数（`resolvePlaybackSource`, `resolveResumePosition`）を `lib/playback/` に置く。`resolveResumePosition(candidate, durationSeconds)` の入力は候補位置と総時間で、候補位置の合成（`server > 0 ? server : local`）は Coordinator の 1 箇所で行う（SG-B5）。`'unavailable'` のとき Coordinator はネットワーク取得を行わない（CI-X02 / OB-C6）。手動の開始ではキューもセッションも変えずに通知を返し（SG-C62）、`errored(source_unavailable)` に写すのは、キューが既にそのエピソードを現在にしている場合（自動で次へ進んだ後・`retry()`）だけ（SG-C52）。
 
@@ -177,7 +182,7 @@ lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: 
 | 操作 | 事後条件 |
 |---|---|
 | `save(id)`（SG-C55） | 取得関数は保存庫の生成時に渡し、保存の直前に新しい署名付き URL を取り直す（現行 `downloadAudio` と同じ挙動）。応答 `ok` のときだけ格納（CI-C01）。audio → meta → episode の順に書き、最後の書込が完了するまで `has()` は false（CI-C05 の原子性を「manifest 最後書き」で実現）。永続化するときは署名付き URL を空にする。重複 save は収束 |
-| `get(id)` → 保存した DTO・blob URL・解放用の handle（無ければ null）（W-1） | `PlayableEpisode` への変換は Coordinator が行う（保存庫が Coordinator を import すると循環する。保存済みの DTO は `audio_url` が空。CI-C02 の「再生可能」は変換後に成り立つ）。handle の `release()` で revoke。発行者＝解放者（CI-C03 / OB-C14。Session は `start` 時に前 handle を release）。blob URL の発行・解放は `lib/platform` の adapter を注入で受ける（W-2） |
+| `get(id)` → `PlayableEpisode`（`audioHandle` 付き。無ければ null）（導出 W-19。W-1 の「保存した DTO・blob URL・handle を返し、変換は Coordinator」を改めた） | 保存庫は port（`lib/playback/application/ports.ts`）と実装（`lib/playback/infrastructure/offlineLibrary.ts`）に分ける。永続 record の型は実装が持ち（`offlineRecord.ts`。形は現行と同じ）、record → `PlayableEpisode` の変換も実装が行う（`Episode` の規則が `lib/catalog/domain` にあるので、W-1 の理由だった循環は起きない）。handle の `release()` で revoke。発行者＝解放者（CI-C03 / OB-C14。Session は `start` 時に前 handle を release）。blob URL の発行・解放は `lib/platform` の adapter を注入で受ける（W-2） |
 | `has(id)` | 最後に書く entry（`/_audio-podcast/{id}`）で判定する（W-3） |
 | `remove(id)` / `clear()` / `list()` / `usage()` | `list()` は列挙中の削除で例外を投げない（CI-C04）。`usage()` は保存領域の見積もりの adapter を注入で受ける（W-2） |
 
@@ -185,10 +190,10 @@ lib/<context>/ (domain model・policy)   ←  lib/platform/ (ports の adapter: 
 
 Cache Storage が無い環境（`createBrowserCacheStore()` が `null`）では、`save` は `unsupported`、`has` は false、`get` は null、`list` は空、`remove` / `clear` は何もしない（W-7）。保存庫は `clearOfflineAudio(cacheStore)` を export する（`clear()` の実体。logout は `PlaybackProvider` の外側の認証 Provider が行い、保存庫の生成に要る依存を持たないため。W-10）。Cache の名前と主体別化は §3.3。
 
-**PlaybackCoordinator（use case orchestration・`lib/playback/coordinator.ts` の非 React 関数群。`contexts/PlaybackProvider` が配線する）**
+**PlaybackCoordinator（use case orchestration・`lib/playback/application/coordinator.ts` の非 React 関数群。`contexts/PlaybackProvider` が配線する）**
 
-- 依存（W-5）: `session`・`offline`・`positionReporter`・`fetchEpisode`・`keyValueStore`・`isOnline`・`defaultSpeed`。gateway の関数は注入で受ける（W-4）。Coordinator は PositionReporter を先に attach し、その後で Session を購読する（完聴時に Reporter が先に事象を受ける。W-6）。公開操作は 9 つ（§5 CP4）。これとは別に読み取り側の通知 `subscribe` を持ち、9 操作には数えない（自動で次へ進んだときに Provider が再描画できるようにする。W-5）。
-- `startEpisode(id)`（id を受け、結果（開始した／通知の種類）を返す。W-8）: `source = resolvePlaybackSource({hasCached: library.has(id), isOnline})` → `cached` なら `library.get`（DTO から `PlayableEpisode` への変換は Coordinator: W-1）／ `network` なら注入された取得関数（W-4）。`unavailable` のとき、または取得した Episode が Playable でないとき（IV2 を閉じる、OB-C10）など、**開始前に再生できないと分かった場合は、キューもセッションも変えず、通知だけを返す**（再生中のものは続く。SG-C62）。再生できる場合、Queue は `jump` 済みならそのまま、無ければ `playNext`→`jump`（現状の挿入規則を維持）。`candidate = server > 0 ? server : local`、`resume = resolveResumePosition(candidate, durationSeconds)`（合成はこの 1 箇所だけ: SG-B5。開始前なので総時間は `PlayableEpisode.durationSeconds` を使う: SG-C54）。`session.start(episode, resume, speed: prefs.defaultSpeed)`。
+- 依存（W-5。導出 W-18・W-20 で 2 つを改めた）: `session`・`offline`・`positionReporter`・`episodes`（port `EpisodeSource`。`Episode` を返す。旧 `fetchEpisode` は DTO を返していた）・`localPositions`（port `LocalPositionStore`。旧 `keyValueStore`）・`isOnline`・`defaultSpeed`。Coordinator は PositionReporter を先に attach し、その後で Session を購読する（完聴時に Reporter が先に事象を受ける。W-6）。公開操作は 9 つ（§5 CP4）で、入口の型は command 7 つ（`PlaybackCommands`）と query（`PlaybackQueries`）に分ける。query には `queueView()`・`playbackView()`・`savedPosition(id)` を足す（command は増やさない。導出 W-21。新 Spec §5.1 の TA-C-PB・TA-Q-PB）。これとは別に読み取り側の通知 `subscribe` を持ち、9 操作には数えない（自動で次へ進んだときに Provider が再描画できるようにする。W-5）。`addToQueue` / `playNext` の入力は DTO ではなく `QueueEntryInput`（`id`・題・イントロ）で、Coordinator が `QueuedEpisode` を作ってからキューに入れる（導出 W-22）。
+- `startEpisode(id)`（id を受け、結果（開始した／通知の種類）を返す。W-8）: `source = resolvePlaybackSource({hasCached: library.has(id), isOnline})` → `cached` なら `library.get`（`PlayableEpisode` を返す: W-19）／ `network` なら port `EpisodeSource`（DTO → `Episode` の変換は `lib/catalog/infrastructure`: W-18）。`unavailable` のとき、または取得した Episode が Playable でないとき（IV2 を閉じる、OB-C10）など、**開始前に再生できないと分かった場合は、キューもセッションも変えず、通知だけを返す**（再生中のものは続く。SG-C62）。再生できる場合、Queue は `jump` 済みならそのまま、無ければ `playNext`→`jump`（現状の挿入規則を維持）。`candidate = server > 0 ? server : local`、`resume = resolveResumePosition(candidate, durationSeconds)`（合成はこの 1 箇所だけ: SG-B5。開始前なので総時間は `PlayableEpisode.durationSeconds` を使う: SG-C54）。`session.start(episode, resume, speed: prefs.defaultSpeed)`。
 - `addToQueue` / `playNext` も、開始の結果を同じ形で返す（何も再生していないときの即再生が失敗したことを、呼んだ側が toast にできるようにする。W-11）。
 - `skipToNext`（SG-C63。共有仕様 §2.12）: 次が再生できれば今を止めて次を再生する。次が再生不可と分かれば何も変えない。待機列が空なら何もしない。
 - 利用者の開始の優先（SG-C73・W-15）: 利用者が起こした開始の待ちが残っている間、自動で次へ進む処理を始めない。自動の待ちの間に利用者の開始が来たら、自動の側を捨てる。
@@ -208,24 +213,24 @@ Cache Storage が無い環境（`createBrowserCacheStore()` が `null`）では�
 
 ### 3.2 Catalog
 
-**Episode** — `Podcast` DTO の decode 結果。判別共用体。
+**Episode** — 判別共用体。判別の規則（下の表）と生成関数は Catalog の domain（`lib/catalog/domain/episode.ts` の `classifyEpisode`）が持ち、`Podcast` DTO の読み取り（field の名前・欠落の補完・`partial_failed` の読み替え）は `lib/catalog/infrastructure/episodeMapper.ts` が行う（導出 W-18。旧: 「`Podcast` DTO の decode 結果」で、decode は Coordinator の中）。domain の型は DTO の型を参照しない。任意付加物（transcript・vocabulary・quiz・sources）は domain の型の読み取り専用の配列で、生成時に複製して深く凍結する。
 
-| 種別 | 条件（decode 規則） | 保持 |
+| 種別 | 条件（判別の規則。DTO の field 名で書く） | 保持 |
 |---|---|---|
 | `PlayableEpisode` | `status==='completed'` ∧ `audio_url!==''` ∧ `error_message===null` | id, title(fallback: japanese_intro_text), audioUrl, duration, difficulty, createdAt, serverPosition, 任意: transcript, vocabulary, quiz, sources(source_kind による帰属表示可否) |
 | `GeneratingEpisode` | `status==='processing'` | id, title, difficulty, createdAt |
-| `FailedEpisode` | `status ∈ {'failed','partial_failed'}` | id, title, errorMessage |
+| `FailedEpisode` | `status==='failed'`（mapper が `partial_failed` を `failed` に読み替えてから渡す: PS-07b・ADR-108・導出 W-31） | id, title, errorMessage |
 | （矛盾 DTO） | 上記に当たらない組合せ（例: completed かつ error_message 非 null） | `FailedEpisode(errorMessage ?? 'inconsistent')` に fail-closed。decode 時に警告を計測（IV1 を型で閉じる） |
 
 optional field 群は「DTO 世代」ではなく `PlayableEpisode` の任意付加物として吸収する（G4）。UI の▶は `PlayableEpisode` にしか付かない（`PodcastCard` の props を Episode 種別で分ける）。
 
-**GenerationQuota / 上限到達** — `rate_limited` 失敗の `scope: 'monthly' | 'daily' | 'unknown'` を Catalog policy が決める（`/monthly/i` regex と `retryAfter > 86400` の ADR-073 フォールバックはここに 1 箇所。LF2）。文言は hook。
+**GenerationQuota / 上限到達** — 上限の種別（月次か日次か）は Catalog の domain（`lib/catalog/domain/generationLimit.ts` の `classifyGenerationLimit`）が決める（`/monthly/i` regex と `retryAfter > 86400` の ADR-073 フォールバックはここに 1 箇所。LF2）。判定の入力は `ApiFailure.rate_limited` の `detail` と `retryAfterSeconds` で、`detail` は W-S4a で `rate_limited` に足す（導出 W-24。gateway の `scope` は `unknown` のまま）。文言は hook。
 
-**生成状態の遷移検知**（`podcast/page.tsx:81-108` の RO3）— `detectCompleted(prev: Episode[], next: Episode[]) → id[]` を純関数として Catalog に置く。ポーリング停止条件は `usePodcastListPolling` が単一所有（caller の `enabled` 分割を解消）。
+**生成状態の遷移検知**（`podcast/page.tsx:81-108` の RO3）— `detectCompleted(prev: Episode[], next: Episode[]) → id[]` を純関数として Catalog に置く（`lib/catalog/domain/generationWatch.ts`）。ポーリングの停止の条件も同じファイルが持ち、`usePodcastListPolling` はそれを使って駆動するだけにする（caller の `enabled` 分割を解消）。slice は W-T3（UC-S1。新 Spec §8）。
 
 ### 3.3 Account
 
-**AuthSession** — 判別共用体（OB-C8、IV6/IV7 を閉じる）。
+**AuthSession** — 判別共用体（OB-C8、IV6/IV7 を閉じる）。状態と遷移は `lib/account/domain/authSession.ts` の純関数が持ち、`contexts/AuthProvider.tsx` は state を持って呼ぶだけにする（導出 W-28）。`authenticated` が持つ値は、W-T6 で DTO `AuthUser` から domain の `Subject` に替える（新 Spec §5.3）。
 
 | 状態 | 値 | 遷移 |
 |---|---|---|
@@ -242,15 +247,15 @@ optional field 群は「DTO 世代」ではなく `PlayableEpisode` の任意付
 
 **AdminAccess policy** — `adminAccess(session) → 'loading' | 'login_required' | 'denied' | 'granted'`。`AdminGate` component が 4 ページ共通で `loading` は読み込み中表示、`login_required` はログインモーダル、`denied` は文言、`granted` のみ children（§8 Q7、OB-C5）。
 
-**PasswordPolicy** — `lib/account/password.ts` に 1 実装（target・未実装: W-S4c）。**新規設定の長さは 12〜20 文字**（親 docs ADR-101。2026-09-16 の SG7「8〜20 文字」を改めた。最小 12 は backend が正本で、上限 20 は新しく設定する経路だけに掛かる）。文字種規則は現行 `countPasswordCharacterClasses` を維持。`signup` / `AccountSection`（最小 12）と `admin/users`（最小 8・上限なし）を 12〜20 へ揃える挙動変更を伴う。backend 側の検証値との整合（OB-A1）は ADR-101 で確定済み。
+**PasswordPolicy** — `lib/account/domain/password.ts` に 1 実装（target・未実装: W-S4c）。**新規設定の長さは 12〜20 文字**（親 docs ADR-101。2026-09-16 の SG7「8〜20 文字」を改めた。最小 12 は backend が正本で、上限 20 は新しく設定する経路だけに掛かる）。文字種規則は現行 `countPasswordCharacterClasses` を維持。`signup` / `AccountSection`（最小 12）と `admin/users`（最小 8・上限なし）を 12〜20 へ揃える挙動変更を伴う。backend 側の検証値との整合（OB-A1）は ADR-101 で確定済み。
 
 ### 3.4 Preferences
 
-設定レジストリ: 各設定を `{ key, scope: 'local' | 'server', codec(encode/decode/validate), default, subjectScoped }` で宣言（OB-C7 / OB-C9、IV8/IV9 を閉じる）。`subjectScoped` は主体依存か（主体離脱の後始末で消すか）の宣言で、分類は共有仕様 §6.5 の分類表に従う（SG-A6）。表に無い key を足すときは共有仕様の表を先に更新する。registry の実装は W-S4b（target・未実装）。
+設定レジストリ: 各設定を `{ key, scope: 'local' | 'server', codec(encode/decode/validate), default, subjectScoped }` で宣言（OB-C7 / OB-C9、IV8/IV9 を閉じる）。`subjectScoped` は主体依存か（主体離脱の後始末で消すか）の宣言で、分類は共有仕様 §6.5 の分類表に従う（SG-A6）。表に無い key を足すときは共有仕様の表を先に更新する。registry の実装は W-S4b（target・未実装）。宣言のうち、値域・既定値・`subjectScoped` は `lib/preferences/domain/settings.ts`、`key` と `codec` は `lib/preferences/infrastructure/localSettingsStore.ts` に置き、registry は 2 つを合成した公開物とする（導出 W-32。CI-T17 は変わらない）。
 
 | 設定 | scope | 値域 | 現状の迂回（解消先） | 主体依存（SG-A6） |
 |---|---|---|---|---|
-| defaultPlaybackSpeed | local（`KEY_DEFAULT_PLAYBACK_SPEED`）＋ server（`UserPreferences.default_playback_speed`） | `PLAYBACK_SPEEDS` | `settings/page.tsx:349-352` の二重書込、`AppContext` raw dispatch | 主体依存（消す） |
+| defaultPlaybackSpeed | local（`KEY_DEFAULT_PLAYBACK_SPEED`）＋ server（`UserPreferences.default_playback_speed`）。**現状の実装は local だけ**で、server へは送らず、読まない（`app/(app)/settings/page.tsx:36,349-352`）。server と同期するかは判断待ち（新 Spec §10.3 の J-W1）で、決まるまで W-S4b は現行どおり local だけで実装する | `PLAYBACK_SPEEDS` | `settings/page.tsx:349-352` の二重書込、`AppContext` raw dispatch | 主体依存（消す） |
 | timeFormat | local | `'absolute' \| 'relative'` | `AppContext` | 端末設定（残す） |
 | theme | local | `'dark' \| 'light'` | `app/layout.tsx:45-49` inline script（**temporary path TP3**: import 不可のため key 文字列と列挙を複製し、テストで一致を pin） | 端末設定（残す） |
 | sfxEnabled | local | boolean | `lib/sfx.ts` | 端末設定（残す） |
@@ -261,10 +266,10 @@ optional field 群は「DTO 世代」ではなく `PlayableEpisode` の任意付
 
 `PreferencesProvider` は registry から `get(setting)` / `set(setting, value)`（validate 済みのみ受理）だけを公開。raw dispatch は公開しない。
 
-### 3.5 Learning / Admin / Notifications（境界と obligation のみ）
+### 3.5 Learning / Admin / Notifications（model・入口・規則は新 Spec §5.5〜§5.7 が正本）
 
-- Learning: `quiz`・`vocabulary`・`streak`・`dashboard` は gateway 呼出＋表示が主で、ルールは「staleness 5 分」「ストリーク増加時の効果音」「実績既読」の 3 つ。`StreakContext` の効果音は use case hook 側の副作用へ移す（Provider から UI 副作用を外す）。詳細 model は学習機能サイクル（§8 保留）で作る。OB-L1: `lib/learning/` に上記 3 ルールの純関数を置く。
-- Admin: ルールは backend。web 側は `AdminGate` と gateway 呼出のみ。
+- Learning: model・command と query・規則（7 件）と、学習仕様 L-R01〜L-R21 との対応は、新 Spec §5.6 に書いた（導出 W-33。旧: 「詳細 model は学習機能サイクルで作る」「ルールは 3 つ」）。OB-L1 の 3 ルール（「staleness 5 分」「ストリーク増加時の効果音」「実績既読」）は、その中の TA-R-LN-1・TA-R-LN-5 に当たる。`StreakContext` の効果音は use case hook 側の副作用へ移す（Provider から UI 副作用を外す）。slice は W-T11〜W-T13。
+- Admin: 規則の正本は backend。web は `AdminGate` に加えて、入力の検査（featured の order の採番・招待の入力・自己ロックアウトの guard）と表示用の形を `lib/admin/` に持つ（新 Spec §5.7。旧: 「`AdminGate` と gateway 呼出のみ」）。slice は W-T8。
 - Notifications: `PushSubscriptionState` の状態機械は維持する。ADR-104 決定 18〜24 で、再登録（`authenticated` に変わるたびに既存の購読を再送）と logout 時のサーバ行の解除を足した（W-0 で実装済み。置き場は §2 の表）。
 
 ## 4. 契約（Contract target）
@@ -286,9 +291,9 @@ optional field 群は「DTO 世代」ではなく `PlayableEpisode` の任意付
 | CI-T7 | Coordinator | INV-P1（`session.episode.id === Queue.current.id`）。「何が再生中か」の唯一の読出口は `nowPlaying()`。`AppContext.currentPodcast` と `Podcast` DTO の直読みは存在しない | OB-C12, SG3 | T-T7a: INV-P1 を全 Coordinator 操作後に検査（unit）。T-T7b: eslint `no-restricted-properties`/`no-restricted-imports` で `currentPodcast` 参照と `contexts/` → `components/` import を禁止し CI（S3）で実行 |
 | CI-T8 | PositionReporter | 同一 episode の `ListenCompleted` は 1 回の再生の中で 1 回。完聴時は「完聴の記録 → local 0 → server へ総時間」の順で送り始め（SG-X1・SG-C54。CI-A13）、次の開始は応答を待たない（SG-C61）。周期送信は `playing` のときだけ（SG-X4）。一時停止・停止への遷移で 1 回送り、同じ位置は再送しない（SG-C53・W-6）。巻き戻した位置も書く（SG-C67。「server 位置書込は単調非減少」は廃止） | CI-A10, A11, A12、共有仕様 PS-05・PS-05b・PS-06 | T-T8: gateway double の呼出列を観測 |
 | CI-T9 | Queue | 公開操作は §2 どおり正規化（clamp / dedupe / no-op）し throw しない。全戻り値は不変条件 1〜3 を満たす。`setQueue` の重複 id は先勝ち（SG-C50）。Q-01〜Q-33 不変 | CI-Q01, CI-Q03 | conformance（Q-01〜Q-32 は実装済み。Q-33 の行は W-S2a1 で足す）＋ T-T9: 公開操作の戻り値に対する不変条件 property test（items 一意・index 範囲・空⇒null） |
-| CI-T10 | OfflineLibrary | `save(id)` は ok 応答のみ・完了前は `has()` false（最後に書く entry で判定: W-3）・重複収束。`get` は保存した DTO・blob URL・handle か null（W-1）。handle は release で revoke。Cache Storage が無い環境では安全に縮退する（W-7） | CI-C01, C02, C03, C05 | T-T10: `put()` の解決をテスト側が制御する deferred-put `CacheStore` double（`MockCaches` 拡張）で途中状態を公開 API `has()` から観測 |
-| CI-T11 | EpisodeDecoder | DTO → 判別共用体。矛盾 DTO は `FailedEpisode` に fail-closed。▶は Playable のみ | OB-C10, IV1, IV2 | T-T11（表駆動 status 4 × audio_url 2 × error_message 2 = 16） |
-| CI-T12 | ApiGateway | 失敗は `Result` の `ApiFailure`。`rate_limited` は `retryAfterSeconds` と `scope` を持つ。204 は `Result<void>` | CI-A01, A02, A04 | T-T12（既存 `tests/lib/api.*.test` を Result 形式へ移植） |
+| CI-T10 | OfflineLibrary | `save(id)` は ok 応答のみ・完了前は `has()` false（最後に書く entry で判定: W-3）・重複収束。`get` は `PlayableEpisode`（`audioHandle` 付き）か null（導出 W-19。旧 W-1 は「保存した DTO・blob URL・handle」）。handle は release で revoke。Cache Storage が無い環境では安全に縮退する（W-7） | CI-C01, C02, C03, C05 | T-T10: `put()` の解決をテスト側が制御する deferred-put `CacheStore` double（`MockCaches` 拡張）で途中状態を公開 API `has()` から観測 |
+| CI-T11 | EpisodeDecoder | DTO → 判別共用体。矛盾 DTO は `FailedEpisode` に fail-closed。▶は Playable のみ | OB-C10, IV1, IV2 | T-T11（表駆動 status 4 × audio_url 2 × error_message 2 = 16。共有仕様の PS-07・PS-07b の行 ID をテスト名に含める）。規則と mapper のテストは W-T2、UI 側は W-S4a が持つ（W-S2a2 は持たない） |
+| CI-T12 | ApiGateway | 失敗は `Result` の `ApiFailure`。`rate_limited` は `retryAfterSeconds` と `scope` を持つ（W-S4a で `detail` を足す。加算だけで、既存の field は変えない: 導出 W-24）。204 は `Result<void>` | CI-A01, A02, A04 | T-T12（既存 `tests/lib/api.*.test` を Result 形式へ移植） |
 | CI-T13 | ApiGateway | 有限 deadline（30s）で `timeout` になる | CI-A03 | T-T13（fake timer） |
 | CI-T14 | BFF | `BACKEND_API_KEY` 欠落は 500・generic 本文（`BACKEND_BASE_URL` と同じ）。`BACKEND_BASE_URL` が path を持つ場合も設定不正として 500（A1 の契約化） | CI-A20, A21, A22(部分) | T-T14（`tests/app/api/proxy.test.ts` へ追加。path 付き BASE_URL の負例を含む） |
 | CI-T15 | AuthSession・主体離脱 | 4 状態のみ。`getMe` の `unauthorized` 以外は `unavailable`。主体離脱（遷移①②④）の後始末・起動時回収・`user_id` 不正時の扱いは、共有仕様 §4.4 の SL-01〜SL-10 を準拠テストの行とする（§3.3）。消去失敗は `CleanupIncomplete` として観測可能。次の主体の確立は後始末を待たない | OB-C8, CI-S01, OB-C1, ADR-104, SG-A1・A6・B3・B6・C13 | T-T15（`CacheStore` double＋gateway double。テスト名に SL の行 ID を含める）。W-S0 = SL-03・SL-05 と後始末の骨格、W-S4c = 4 状態、W-S4d3 = 検知点、W-S5 = SL-01・SL-02・SL-04・SL-06〜SL-10 |
@@ -305,9 +310,9 @@ code_design:
   capsules:
     - {id: CP1, name: PlaybackSession, owns: [transport 状態 union, 位置 clamp, セッション速度, 音声要素への音量設定の唯一の入口（値の保持と保存は PlaybackProvider: SG-C57）, AudioElement port], hides: [Audio API, blob handle の release タイミング], emits: [positionChanged, listenCompleted, stateChanged]}
     - {id: CP2, name: Queue, owns: [QueueState と不変条件 1〜3（内部 gate create）], hides: [配列操作], note: "共有仕様 §2 の公開操作をそのまま"}
-    - {id: CP3, name: OfflineLibrary, owns: [保存庫の不変条件, blob handle lifecycle], hides: [Cache Storage key 体系, 3 entry 構成], note: "get は保存した DTO・blob URL・handle を返す（W-1）。clearOfflineAudio(cacheStore) を export する（W-10）"}
-    - {id: CP4, name: PlaybackCoordinator, owns: [UC-P1/P3/P4 の判断: source 選択・挿入規則・失敗方針・INV-P1], hides: [gateway 呼出, ports], note: "依存 7 つと読み取り側の通知 subscribe（W-5）。開始系は結果を返す（W-8・W-11）。利用者の開始を優先（W-15）"}
-    - {id: CP5, name: EpisodeDecoder, owns: [DTO→Episode 判別], hides: [optional field の世代差]}
+    - {id: CP3, name: OfflineLibrary, owns: [保存庫の不変条件, blob handle lifecycle], hides: [Cache Storage key 体系, 3 entry 構成], note: "port は lib/playback/application、実装は lib/playback/infrastructure。get は PlayableEpisode（audioHandle 付き）を返す（W-19。旧 W-1 は DTO・blob URL・handle）。clearOfflineAudio(cacheStore) を export する（W-10）"}
+    - {id: CP4, name: PlaybackCoordinator, owns: [UC-P1/P3/P4 の判断: source 選択・挿入規則・失敗方針・INV-P1], hides: [gateway 呼出, ports], note: "依存 7 つと読み取り側の通知 subscribe（W-5。fetchEpisode → EpisodeSource、keyValueStore → LocalPositionStore: W-18・W-20）。開始系は結果を返す（W-8・W-11）。利用者の開始を優先（W-15）。入口の型は PlaybackCommands と PlaybackQueries に分ける（W-21）"}
+    - {id: CP5, name: EpisodeDecoder, owns: [Episode 判別の規則（lib/catalog/domain/episode.ts）, DTO の読み取り（lib/catalog/infrastructure/episodeMapper.ts）], hides: [optional field の世代差], note: "W-18。旧: Coordinator の中"}
     - {id: CP6, name: ApiGateway, owns: [request, CSRF 付与, ApiFailure 正規化, deadline], hides: [fetch, cookie, status 数値]}
     - {id: CP7, name: AuthSession + AdminAccess, owns: [認証状態 union, 主体離脱の後始末 SubjectCleanup（遷移①②④。ADR-104）, 認可 policy], hides: [getMe, WebAuthn port の注入]}
     - {id: CP8, name: PreferencesRegistry, owns: [key・codec・値域・保存先・主体依存の宣言 subjectScoped（SG-A6）], hides: [localStorage, JSON encode]}
@@ -316,8 +321,8 @@ code_design:
     - {capsule: CP1, ops: [start(episode, resume, speed), play, pause, seek, seekRelative, setSpeed, setVolume, state(), stop, fail, subscribe]}   # stop = SG-C24（実装済み）。fail = SG-C52（target: W-S2a1）。subscribe は読み取り側の通知
     - {capsule: CP2, ops: [emptyQueue, current, upNext, start, setQueue, add, playNext, jump, advance, remove, moveUpNext]}
     - {capsule: CP3, ops: [save(id), get, has, remove, clear, list, usage]}   # save(id) = SG-C55
-    - {capsule: CP4, ops: [startEpisode, retry, addToQueue, playNext, removeFromQueue, reorder, skipToNext, nowPlaying(), upNext()]}   # 9 操作。読み取り側の通知 subscribe は 9 に数えない（W-5）。主体離脱時の再生停止は Session の stop を使い（SG-C24・C25）、位置同期は送らない（SG-C16）。それを CP4 の操作 stopForSubjectLeave() として足す形は W-S5 の order の提案（導出 ID なし）
-    - {capsule: CP5, ops: [decodeEpisode, isPlayable]}
+    - {capsule: CP4, ops: [startEpisode, retry, addToQueue, playNext, removeFromQueue, reorder, skipToNext, nowPlaying(), upNext()]}   # 9 操作。読み取り側の通知 subscribe は 9 に数えない（W-5）。主体離脱時の再生停止は Session の stop を使い（SG-C24・C25）、位置同期は送らない（SG-C16）。それを CP4 の command stopForSubjectLeave() として足す（W-S5。導出 W-30）。query には queueView() / playbackView() / savedPosition(id) を足す（W-21。command は増やさない）。addToQueue / playNext の入力は QueueEntryInput（W-22）
+    - {capsule: CP5, ops: [classifyEpisode（domain）, decodeEpisode（infrastructure。DTO → Episode）, displayTitle（domain）]}
     - {capsule: CP6, ops: ["get/post/put/patch/delete<T>(path, body?) → Promise<Result<T, ApiFailure>>"]}
     - {capsule: CP7, ops: [session(), login, loginWithPasskey, register, logout, retry, adminAccess()]}
     - {capsule: CP8, ops: [get(setting), set(setting, value), ready]}   # ready は branch_decisions の isRestoring（PreferencesProvider が持つ）
@@ -347,7 +352,7 @@ code_design:
     - {subject: "lib/api の context 別 6 分割を W-S1（旧 S1）で行う", rationale: "SG5『最小注入点』を超える。W-S1b（リソース単位の分割）と W-S4d1 以降（旧 S4 以降）へ送る（gate 指摘 5）"}
     - {subject: "QueueState の branded type 化", rationale: "iOS/Android と共有する型表現の乖離。内部 gate create で代替"}
     - {subject: "旧 AudioPlayerProvider と新 PlaybackProvider の併存移行", rationale: "SG3（正本一意）と二重 owner が両立せず、併存期間の方が回復不能。特性テスト追加で保護（gate 検討案）"}
-  dependency_direction: ["app → hooks → contexts → lib/<context> ← lib/platform", "lib/playback ↛ lib/api（Coordinator が gateway 関数を注入で受ける。関数の置き場は lib/playback/gatewayFns.ts: W-4）", "contexts ↛ components（eslint で禁止・T-T7b）"]
+  dependency_direction: ["app → hooks → contexts → lib/<context> ← lib/platform（lib/<context> の中は application → domain、infrastructure → application・domain。機械的な規則は新 Spec §4 の TA-D1〜TA-D12）", "lib/playback/{domain,application} ↛ lib/api（Coordinator が port を注入で受ける。request を組み立てる関数の置き場は lib/playback/infrastructure/gatewayFns.ts: W-4・W-23）", "contexts ↛ components（eslint で禁止・T-T7b）"]
   change_scenarios:
     - {id: CS1, name: replace implementation（Audio → 別再生技術 / Cache Storage → IndexedDB / fetch → 別 transport）, expected: pass, evidence: "port の adapter 差替えで CP1/CP3/CP6 の contract test が不変"}
     - {id: CS4, name: change one business rule（挿入規則・失敗方針・パスワード規則・rate_limited scope）, expected: pass（1 ファイル）, evidence: "CP4 / lib/account/password.ts / lib/catalog policy に閉じる"}
@@ -362,6 +367,8 @@ code_design:
 
 slice ID は、親 docs `plan/2026-09-16-design-review-refactor.md`（2026-09-23 再スライス版）と `docs/plan/2026-09-16-design-review-refactor/README.md` の接頭辞付き ID `W-*` を使う（2026-09-30 に旧 ID S0〜S5 から置き換えた。対応は「旧 ID」列）。**進捗の正本は README の状態欄**で、本書には書かない。依存と投入順も README と親 plan が正本。
 
+**slice の全体**（下の表の slice と、目標アーキテクチャの補完 slice W-T1〜W-T15 を実行する順に並べた表・未着手の order の補正・一時経路の登録簿）は、新 Spec §8 が正本である。下の表の内容欄は、新 Spec §8.3 の補正を反映して読む（置き場の path は新 Spec §3.2）。最初の補完 slice W-T1（層の骨格と、依存の向きの検査）は W-S2a1 の前、W-T2（Catalog の `Episode`）は W-S2a2 の前に置く。
+
 | slice | 旧 ID | 内容 | 特性テスト（baseline） | RED（T-T*） | temporary path |
 |---|---|---|---|---|---|
 | W-S0 constraint | S0 | BFF fail-closed（CI-T14）、失効時 cleanup（現 `AuthContext` 内・CI-T15 の cleanup 部分のみ先行）、`AdminAccess` + `AdminGate`（CI-T16） | `tests/app/api/proxy.test.ts`（40）、`tests/contexts/AuthContext*.test.tsx`、admin 4 page test、`tests/components/NavigationBar.test.tsx` | T-T14, T-T15(部分: SL-03・SL-05 と後始末の骨格), T-T16 | なし |
@@ -370,19 +377,20 @@ slice ID は、親 docs `plan/2026-09-16-design-review-refactor.md`（2026-09-23
 | W-S1b api-split | S4 の一部（2026-09-23 に独立） | `lib/api.ts` を backend リソース単位の 10 ファイル（`lib/api/*.ts`）へ分割。関数名・型・呼出側は不変。`request()` と `ApiError` は `lib/api/legacyRequest.ts` | `tests/lib/api.*.test` ほか（挙動不変） | —（特性テストのみ） | TP1 を継続 |
 | W-S2a playback-domain | S2 の ① | `lib/playback/{ports,session,queue,source,resume}` と `lib/platform/{audioElement,cacheStore,keyValueStore}`。Session の `stop`（SG-C24）、速度 2 概念、状態 union を含む。既存コードから呼ばない | —（新規コードのみ） | T-T1〜T-T4・T-T1b・T-T9、RS-01〜RS-07 | なし |
 | W-S2a1 session-fail-entry | S2 の ①（2026-09-30 新設） | Session に「失敗にする」入口 `fail` を足す（SG-C52・W-9）。準拠テストに Q-33 を足す（SG-C50）。既存コードから呼ばない | W-S2a の Session・Queue のテスト | T-T1f・Q-33 | なし |
-| W-S2a2 playback-coordination | S2 の ① | `lib/playback/{offlineLibrary,coordinator,positionReporter,gatewayFns}`、`lib/platform/{objectUrl,storageEstimate}`、`EpisodeDecoder`（Coordinator 内）、`nowPlaying()` の view model（W-1〜W-8・W-10〜W-12・W-15）。既存コードから呼ばない | —（新規コードのみ） | T-T5〜T-T8・T-T10・T-T11 | なし |
+| W-S2a2 playback-coordination | S2 の ① | `lib/playback/application/{coordinator,positionReporter,readModels,ports}`、`lib/playback/infrastructure/{offlineLibrary,offlineRecord,localPositionStore,gatewayFns}`、`lib/platform/{objectUrl,storageEstimate}`、`nowPlaying()` ほかのリードモデル（W-2〜W-8・W-10〜W-12・W-15 と、W-18〜W-22）。`EpisodeDecoder` は含めない（W-T2 が `lib/catalog` に置く）。既存コードから呼ばない | —（新規コードのみ） | T-T5〜T-T8・T-T10（T-T11 は W-T2） | なし |
 | W-S2b playback-entry | S2 の ② | `PlaybackProvider`（旧 `AudioPlayerProvider` を置換）、`components/PlaybackToasts.tsx`（W-13）、**`AudioPlayerBar` と `podcast/page.tsx:199` の「再生中」判定を `nowPlaying()` へ置換**、`useStartPodcast` を使わない（Coordinator の `startEpisode` を直接）、失敗方針、再生ボタン（W-14）、音量（SG-C57）。共有仕様 §2・Q-* は挙動不変。変わる挙動は決定済みの行だけ（PS-01〜PS-06・PS-08、RS-03〜05、SG-C53・C63・C67・C69、W-14） | 旧再生実装を参照するテスト（2026-09-30 実測で 19 ファイル。集合は order が実測で固定する）と e2e `offline-playback` / `queue-autoadvance` / `main-flow` | 準拠テスト（行 ID をテスト名に含む）、T-T18 | **TP2** `sw.js` prefix 複製の pin テスト（T-T18）。owner: user、導入: W-S2b、削除条件: ビルド時注入か SW を module 化した時 |
 | W-S2c playback-cleanup | S2 の ③ | 旧再生実装と `AppContext.currentPodcast` の削除、`reorderUpNext` の削除（`moveUpNext` へ統一）、依存方向 eslint（T-T7b のルール本体） | —（削除のみ。参照 0 件を grep で判定） | T-T7b | なし |
 | W-S3 gates | S3 | CI に `typecheck:ts7` と独立 build、T-T7b の eslint ルールの実行 | — | ci.yml / eslint.config 差分 | なし |
-| W-S4a catalog（学習サイクルで） | S4 | `Episode` を `PodcastCard`/`podcast` pages へ展開、`error_message` の文言写像、`rate_limited.scope`。**保留**: `error_message` の値域は親 docs ADR-108 で 3 値になり、「一部失敗」の表示を消す作業をどの slice が持つかは決まっていない（解除条件 = W-S4a の投入前点検で決める） | page tests | T-T11（UI 側）・PS-07 | なし |
+| W-S4a catalog（学習サイクルで） | S4 | `Episode` を `PodcastCard`/`podcast` pages へ展開、`error_message` の文言写像、上限の種別（`classifyGenerationLimit`）。`error_message` の値域は 3 値（親 docs ADR-108）で実装し、「一部失敗」の表示（`StatusBadge`）もこの slice で消す（backend の B-S6 を待たない。mapper が `partial_failed` を失敗に読み替えるので、B-S6 の前後どちらでも成り立つ。導出 W-31。旧: 「どの slice が持つかは決まっていない」） | page tests | T-T11（UI 側）・PS-07・PS-07b | なし |
 | W-S4b prefs（学習サイクルで） | S4 | `PreferencesRegistry`（`subjectScoped` の宣言: SG-A6）、`AppContext` の解体の完了 | page tests | T-T17 | **TP3** inline theme script の key/列挙複製（pin テスト）。owner: user、導入: W-S4b、削除条件: `beforeInteractive` script を module から生成できた時 |
 | W-S4c account（学習サイクルで） | S4 | `PasswordPolicy` 12〜20 の単一化（ADR-101）、`AuthSession` 判別共用体 | 認証・account のテスト | T-T15（4 状態）・T-T16 | なし |
 | W-S4d2a / W-S4d2b tests（学習サイクルで） | S4 | page テストを gateway double へ移植する（production は不変） | —（oracle 不変） | — | なし |
-| W-S4d1 context-gateway（学習サイクルで） | S4 | `lib/api/<resource>` の `Result` 化と page 側の注入点移行。TP1 は残す。再生系の gateway 関数の置き場は `lib/playback/gatewayFns.ts`（W-4）までが確定で、この slice 以降の置き場は判断待ち | page tests | T-T12（呼出側） | TP1 を継続 |
+| W-S4d1 context-gateway（学習サイクルで） | S4 | `lib/api/<resource>` の `Result` 化と page 側の注入点移行。TP1 は残す。再生系の gateway 関数の置き場は `lib/playback/infrastructure/gatewayFns.ts` を恒久とし、`lib/playback/api.ts` は作らない。context ごとの export 集合は `lib/<context>/infrastructure/api.ts`（導出 W-23。旧: 「この slice 以降の置き場は判断待ち」）。`lib/push/pushRegistration.ts` も対象に含め、client の失敗を `Result` で受ける（導出 W-25） | page tests | T-T12（呼出側） | TP1 を継続 |
 | W-S4d3 tp1-removal（学習サイクルで） | S4 | TP1 の削除、HTTP status 数値分岐の eslint、任意 API の `unauthorized` での失効検知 | — | T-T15（検知点）・SL-05 | TP1 を削除 |
 | W-S5 subject-cache | —（2026-09-23 新設。旧表の「S5 learning」とは別） | 主体別音声キャッシュ `audio-v1-{user_id}`、起動時の回収、旧 `audio-v1` の初回全削除、主体依存 key の削除、主体離脱時の再生停止（ADR-104 決定 27・SG-A1・A6・B3・B6・C13）。backend の `user_id` 公開（B-S5a）の後 | 認証 Provider のテスト、e2e `offline-playback` | SL-01・SL-02・SL-04・SL-06〜SL-10 | なし（不可逆点: Cache 名前空間の変更） |
-| （learning。保留・order 未作成） | S5 | `lib/learning/` の 3 ルール、StreakContext の副作用移動。学習機能サイクルで着手 | — | OB-L1 | — |
-| （位置同期のクライアント側。target・未起票） | — | SG-C74・C76・C77、親 docs ADR-109 決定 7〜14（§3.1 の target）。W-S2c と backend B-S7 の後に slice を起こす（SG-C79） | — | — | — |
+| W-T11・W-T12・W-T13（learning。order 未作成） | S5 | Learning の domain・command と query（新 Spec §5.6）。クイズと語彙（W-T11）、単語テスト（W-T12）、ダッシュボード・ストリーク・実績・効果音と StreakContext の副作用移動（W-T13）。旧: 「保留。学習機能サイクルで着手」 | page tests | OB-L1・新 Spec の TA-R-LN-1〜7 | — |
+| W-T14（位置同期のクライアント側。target・order 未作成） | — | SG-C74・C76・C77、親 docs ADR-109 決定 7〜14（§3.1 の target）。W-S2c と backend B-S7 の後に order を書く（SG-C79） | — | — | — |
+| W-T1〜W-T10・W-T15（補完 slice。order 未作成） | — | 層の骨格と検査（W-T1）、Catalog の `Episode`（W-T2）、context ごとの application とリードモデル（W-T3〜W-T9）、UC-S3（W-T10a）、許可リストの解消（W-T15）。内容は新 Spec §8.2 | — | 新 Spec の TA-V1〜TA-V10 | 新 Spec §8.4 の TP-A1〜TP-A8 |
 
 **3 段分割**（旧: 「S2 は一括切替・SG8」。2026-09-23 の再スライスで改訂）: 旧 S2 は ① ドメイン層の新設（W-S2a・W-S2a1・W-S2a2）→ ② 入口の差し替え（W-S2b）→ ③ 旧実装の削除（W-S2c）に分けた（親 plan「一括切替を 3 段に割る」）。① は新規コードだけ、② は「挙動不変＋決定済みの行だけが変わる」、③ は削除だけで判定する。旧新 Provider の併存移行はしない（§5 rejected_overdesign。② の入口の切替は 1 PR で行う）。
 
@@ -406,7 +414,7 @@ slice ID は、親 docs `plan/2026-09-16-design-review-refactor.md`（2026-09-23
 | R7 本番経路のテスト | — | ApiGateway seam, ports | CI-T12 + 各 T-T が real gateway＋fetch double | 各 slice に real `request()` 経由の integration 1 本以上。E2E の `page.route` stub は本 Spec では変えない（backend 実接続は環境が無く out_of_scope と明記） | partial（E2E は据置） |
 | R8 CI ゲート | — | — | — | ci.yml | covered（W-S3） |
 
-**UC 側の coverage 分母（gate 指摘 10）**: UC 21 件のうち CI-T を持つのは UC-P1〜P6, UC-A1, UC-M*（gate）, UC-S2 の 10 件。**CI 対象外 11 件と理由**: UC-L1〜L5（学習サイクル（§6 の learning 行。旧 S5）で model 化。今回は gateway 呼出＋表示で、web 側の判断が「文言」以外に無い）、UC-M1〜M4 の操作本体（ルールは backend。web は表示と送信のみ）、UC-A2/A3（W-S4b の Preferences / W-S4c の PasswordPolicy で扱う）、UC-S1（`usePodcastListPolling` の停止条件単一化は旧 S4 の範囲）、UC-S3（`reportClientError` の gateway 経由化は旧 S4 の範囲）。
+**UC 側の coverage 分母（gate 指摘 10）**: UC 21 件のうち CI-T を持つのは UC-P1〜P6, UC-A1, UC-M*（gate）, UC-S2 の 10 件。**CI 対象外 11 件と理由**: UC-L1〜L5（学習サイクル（§6 の learning 行。旧 S5）で model 化。今回は gateway 呼出＋表示で、web 側の判断が「文言」以外に無い）、UC-M1〜M4 の操作本体（ルールは backend。web は表示と送信のみ）、UC-A2/A3（W-S4b の Preferences / W-S4c の PasswordPolicy で扱う）、UC-S1（`usePodcastListPolling` の停止条件単一化は旧 S4 の範囲）、UC-S3（`reportClientError` の gateway 経由化は旧 S4 の範囲）。**2026-09-30**: この 11 件には、新 Spec §5 で model の置き場・command と query・規則を、§8 で slice を割り当てた（UC-L1 = W-T4、UC-L2〜L5 = W-T11〜W-T13・W-T7a、UC-M1〜M4 = W-T8、UC-A2 = W-T6、UC-A3 = W-S4b・W-T7a、UC-S1 = W-T3、UC-S3 = W-T10a）。
 
 ## 8. 検証計画と decision
 
@@ -481,3 +489,27 @@ decision:
 | §6 切替方式 / rollback・§8 SG8 / residual_risks | S2 は一括切替（SG8）。特性テスト 12＋e2e 3 | 3 段分割（①新設 → ②入口の差し替え → ③削除） | 親 plan「一括切替を 3 段に割る」 |
 | §6 不可逆点 | なし | W-S5 の Cache 名前空間の変更 | ADR-104 決定 27・SG-A1 |
 | §8 `change_control`・`next_phase` | 本書を更新して再承認。S0 実装 | 本文を直して改訂履歴に足す。slice 単位の実装（進捗は README） | —（運用の変更） |
+
+### 2026-09-30（目標アーキテクチャ。新 Spec と食い違う行の補正）
+
+根拠は親 docs ADR-110（決定 2・3・4・7・8・9）と、新 Spec `2026-09-30-implementation-spec-target-architecture.md` の節。決定 ID の W-16〜W-36 は新 Spec §10.1 の導出（台帳 §5.0 への登録の案）。状態遷移と契約（CI-T*）の期待値は変えていない。
+
+| 節 / 行 ID | 旧値 | 現行値 | 根拠（ADR-110 と新 Spec の節） |
+|---|---|---|---|
+| 冒頭 | 新 Spec との関係の記載なし | 新 Spec = 構造・層・モデルの対応・command と query・依存の規則・検証・slice の全体。本書 = その範囲の状態遷移と契約の詳細 | 決定 1。新 Spec §1.2 |
+| §2 context の表・依存方向の禁止事項 | `lib/<context>/` は 1 層。`lib/playback/gatewayFns.ts`。Learning は「境界と obligation のみ」、Admin は `lib/api/admin.ts` と `hooks/useAdminGate.ts` | `lib/<context>/{domain,application,infrastructure}`。`lib/playback/infrastructure/gatewayFns.ts`。Learning・Admin にも層を置く。domain と application は DTO と `Response`・JSON の変換を扱わない | 決定 3・9。新 Spec §3・§4（W-16） |
+| §2 port を置く根拠 | port は 4 つだけ | 技術 seam 3 つと domain の port 1 つ（内容は同じ）に、application の port を足す | 決定 3。新 Spec §5 の「port と adapter」（W-20） |
+| §3.1「現在再生中」の段・Queue の段 | Queue の `items` は `Podcast` DTO のまま。iOS / Android と共有する契約なので型を変えない | `QueueState<T>`。要素は `QueuedEpisode`。共有する契約は操作と期待値（Q-01〜Q-33）。`create` は複製して凍結する | 決定 2・7・8。新 Spec §5.1（W-17） |
+| §3.1「現在再生中」の段 | 表示用の形は `nowPlaying()` だけ | `UpNextItem`・`QueueView`・`PlaybackView`・`OfflineEpisodeView`・`StorageUsageView` を型として決める | 決定 2・4。新 Spec §5.1（W-21） |
+| §3.1 OfflineLibrary の `get`・§4 CI-T10・§5 CP3 | 保存した DTO・blob URL・handle を返し、変換は Coordinator（W-1） | `PlayableEpisode`（`audioHandle` 付き）を返す。port と実装を分ける | 決定 2（port の戻り値は application か domain の型）。新 Spec §5.1（W-19） |
+| §3.1 Coordinator の置き場・依存・公開操作・§5 CP4 | `lib/playback/coordinator.ts`。依存に `fetchEpisode`（DTO を返す）と `keyValueStore`。公開 9 操作 | `lib/playback/application/coordinator.ts`。`EpisodeSource` と `LocalPositionStore`。入口の型は command 7 と query に分け、query を 3 つ足す。`addToQueue` / `playNext` の入力は `QueueEntryInput` | 決定 2・4・5。新 Spec §5.1（W-18・W-20・W-21・W-22） |
+| §3.2 Episode・§5 CP5 | `Podcast` DTO の decode 結果。`EpisodeDecoder` は Coordinator の中。`FailedEpisode` の条件に `partial_failed` | 規則は `lib/catalog/domain/episode.ts`、DTO の読み取りは `lib/catalog/infrastructure/episodeMapper.ts`。`partial_failed` は mapper が失敗に読み替える | 決定 2・8。新 Spec §5.2（W-18・W-31） |
+| §3.2 上限到達・§4 CI-T12 | `rate_limited` の `scope` を Catalog policy が決める | 種別は `classifyGenerationLimit` が `detail` と `retryAfterSeconds` から決める。`rate_limited` に `detail` を足す | 新 Spec §8.3 の不整合 1（W-24） |
+| §3.2 生成状態の遷移検知 | 停止条件は `usePodcastListPolling` が単一所有 | 規則は `lib/catalog/domain/generationWatch.ts`。hook は駆動だけ。slice は W-T3 | 決定 9。新 Spec §5.2（W-35） |
+| §3.3 AuthSession・PasswordPolicy | 置き場は `contexts/AuthProvider.tsx` と `lib/account/password.ts` | 遷移は `lib/account/domain/authSession.ts` の純関数。`lib/account/domain/password.ts` | 決定 3。新 Spec §5.3（W-28） |
+| §3.4 registry・defaultPlaybackSpeed の行 | 1 宣言が key・codec・値域を持つ。scope は local ＋ server | 値域は domain、key と codec は infrastructure。既定速度の現状は local だけで、server との同期は判断待ち | 決定 2。新 Spec §5.4（W-32）・§10.3 の J-W1 |
+| §3.5 | Learning は 3 ルールだけで、詳細 model は学習サイクル。Admin は `AdminGate` と gateway 呼出のみ | 新 Spec §5.6・§5.7 が正本 | 決定 9（SG-A5 の保留を web について解く）。新 Spec §5.6・§5.7（W-33） |
+| §4 CI-T11 | T-T11 の置き場の記載なし | 規則と mapper のテストは W-T2、UI 側は W-S4a。PS-07・PS-07b の行 ID を含める | 新 Spec §8.3 |
+| §5 `dependency_direction` | `lib/playback ↛ lib/api` | `lib/playback/{domain,application} ↛ lib/api`。機械的な規則は新 Spec §4 | 決定 3・10。新 Spec §4 |
+| §6 slice の表（前文・W-S2a2・W-S4a・W-S4d1・learning・位置同期の行） | 「一部失敗」を消す slice と、W-S4d1 以降の gateway 関数の置き場は未確定。learning は保留 | W-S4a で消す。`gatewayFns.ts` を恒久とする。learning は W-T11〜W-T13。補完 slice W-T1〜W-T15 の行を足す | 決定 8・9・10。新 Spec §8（W-23・W-31） |
+| §7 UC の coverage | CI 対象外 11 件 | 11 件に、新 Spec で model・入口・slice を割り当てた | 決定 9。新 Spec §9 |
