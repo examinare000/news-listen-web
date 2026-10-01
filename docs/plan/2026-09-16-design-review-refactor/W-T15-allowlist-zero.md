@@ -12,7 +12,7 @@
 - production ≈ 200 行（大半は import の 1 行置換）、設定 ≈ −80 行（許可リスト）、test ≈ 80 行（import の置換・TA-V10 の記録）。合計 10² 行。
 
 ## 前提・着手条件
-- 依存: **W-T1〜W-T13 と W-T14 の全部**（W-T7b・W-T10b を含む）、および W-S2a1〜W-S5 の全部の web PR が main に merge 済み、**かつ親リポの submodule ポインタが進んでいる**こと（新 Spec §8.1「全部」）。
+- 依存: **W-T1〜W-T13 と W-T14 の全部**（W-T7b・W-T10b を含む。W-T7b は SG-D9 で ready になり、判断待ちの依存は無い）、および W-S2a1〜W-S5 の全部の web PR が main に merge 済み、**かつ親リポの submodule ポインタが進んでいる**こと（新 Spec §8.1「全部」）。
 - backend B-S6 の契約（`error_message` 3 値・`status` に `partial_failed` を返さない）が backend main にあるかを着手時に確かめる（親 main の backend submodule の `api/schemas.py`）。
 - baseline green: `npm test` / `npm run lint` / `npm run typecheck` / `npm run typecheck:ts7` / `npm run build` / `npm run test:e2e`。
 - コマンドはすべて `web/` で実行する。`docs/trial-log/`（web・親）を最初に読む。

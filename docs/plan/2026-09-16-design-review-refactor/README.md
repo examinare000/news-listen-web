@@ -5,7 +5,7 @@
 
 > **投入前の前提点検が必須（2026-10-01）。** どの order も、投入の直前に「着手前の前提点検」（order の中の表。無い order は「対象」「完了条件」が引用する実測値・行番号・件数・型名）を実コードで数え直し、値が違えば order を直してから投入する。order は書いた時点の実コードを引用しており、前の slice が入るたびに値が動く。点検をせずに投入しない。あわせて、親 docs [refactor plan](../../../../docs/plan/2026-09-16-design-review-refactor.md)「実装の停止と再開ゲート」が満たされるまで、どの slice も投入しない。
 >
-> **2026-10-01 の更新**: 新 Spec §8.2 の補完 slice W-T1〜W-T15 の order を作り、§8.3 の補正を未着手の order（W-S2a1・W-S2a2・W-S2b・W-S2c・W-S3・W-S4a・W-S4b・W-S4c・W-S4d1・W-S4d2a・W-S4d3・W-S5）へ反映した（各 order 冒頭の「2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正」節）。W-S4d2b は §8.3 で補正なし。user が 2026-10-01 に採用した決定: SG-D3（「習得」の語。J-W2 の (a)）・SG-D4（既定速度はサーバーを正本。J-W1 の (a)）・SG-D5（BFF が `Retry-After` を中継。J-W3 の (a)）。
+> **2026-10-01 の更新**: 新 Spec §8.2 の補完 slice W-T1〜W-T15 の order を作り、§8.3 の補正を未着手の order（W-S2a1・W-S2a2・W-S2b・W-S2c・W-S3・W-S4a・W-S4b・W-S4c・W-S4d1・W-S4d2a・W-S4d3・W-S5）へ反映した（各 order 冒頭の「2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正」節）。W-S4d2b は §8.3 で補正なし。user が 2026-10-01 に採用した決定: SG-D3（「習得」の語。J-W2 の (a)）・SG-D4（既定速度はサーバーを正本。J-W1 の (a)）・SG-D5（BFF が `Retry-After` を中継。J-W3 の (a)）・SG-D9（W-T7b の保存の失敗・切り替え直後・読めなかったときの扱い。D-W7b-1）。
 
 ## slice と実行する順（新 Spec §8.1 の順。同じ submodule では 1 本ずつ投入する）
 
@@ -36,7 +36,7 @@
 | 18 | [W-T5-catalog-sources-entry-gate.md](W-T5-catalog-sources-entry-gate.md) | 購読・onboarding・入口の判定 | W-S4d3 | 未着手（ready） |
 | 19 | [W-T6-account-management.md](W-T6-account-management.md) | account 管理の use case・`Subject`・`AuthView`（TP-A8 の削除） | W-S4d3・W-S5 | 未着手（ready） |
 | 20 | [W-T7a-preferences-server.md](W-T7a-preferences-server.md) | サーバー設定（難易度・週の目標）の command と query | W-S4d3・W-S4b | 未着手（ready） |
-| 21 | [W-T7b-default-speed-server.md](W-T7b-default-speed-server.md) | 既定の再生速度をサーバーを正本にして同期する（SG-D4） | W-T7a | **D-W7b-1（保存の失敗の扱い）が決まるまで投入しない** |
+| 21 | [W-T7b-default-speed-server.md](W-T7b-default-speed-server.md) | 既定の再生速度をサーバーを正本にして同期する（SG-D4） | W-T7a | 未着手（ready。保存の失敗・切り替え直後・読めなかったときの扱いは SG-D9） |
 | 22 | [W-T8-admin.md](W-T8-admin.md) | admin の 4 画面を command・query・リードモデルに | W-S4d3 | 未着手（ready） |
 | 23 | [W-T9-notifications-platform.md](W-T9-notifications-platform.md) | Notifications と、ブラウザの adapter の置き場 | W-S4d3 | 未着手（ready） |
 | 24 | [W-T10a-error-reporter.md](W-T10a-error-reporter.md) | エラー通報を gateway 経由に（UC-S3） | W-S4d3 | 未着手（ready） |
@@ -45,7 +45,7 @@
 | 27 | [W-T12-learning-vocabulary-test.md](W-T12-learning-vocabulary-test.md) | 単語テストの状態機械を domain へ | W-S4d3 | 未着手（ready） |
 | 28 | [W-T13-learning-dashboard-streak-sfx.md](W-T13-learning-dashboard-streak-sfx.md) | ダッシュボード・ストリーク・実績・効果音を Learning へ | W-S4d3・W-S4b | 未着手（ready） |
 | 29 | [W-T14-position-sync.md](W-T14-position-sync.md) | 位置同期のクライアント側（ADR-109 決定 7〜14） | W-S2c・**B-S7** | **B-S7 待ち（枠だけ。B-S7 の契約が main に入ってから本文を確定して投入）** |
-| 30 | [W-T15-allowlist-zero.md](W-T15-allowlist-zero.md) | 許可リストを 0 件に・一時経路（TP-A1・A2・A7）を外す | 全部 | 未着手。W-T7b（D-W7b-1）の後（全部に依存するので、判断待ちの W-T7b に推移的に依存する） |
+| 30 | [W-T15-allowlist-zero.md](W-T15-allowlist-zero.md) | 許可リストを 0 件に・一時経路（TP-A1・A2・A7）を外す | 全部 | 未着手（ready。最後。全部に依存する） |
 
 順序を問わない組（新 Spec §8.1）: W-T3〜W-T10a（page が重ならない。`settings/page.tsx` を触る W-T6・W-T7a・W-T7b・W-T13 は続けて置き、後から入る側が rebase）。W-T11〜W-T13。W-T10b は依存が無く、どこにでも置ける。W-T14 は依存が揃えば W-S2c の後のどこにでも置ける。W-S4b・W-S4c・W-S5 は認証 Provider・`settings/page.tsx`・`PlaybackProvider.tsx` が重なるので直列（順序不定）。
 
@@ -92,9 +92,8 @@ release の単位は「依存先の submodule PR ＋ 親リポのポインタ PR
 
 ## unresolved
 
-- **W-T7b の D-W7b-1**（設定画面での既定速度のサーバー保存が失敗したときの扱い）: SG-D4 は「サーバーを正本にし、ログイン時に端末へ写す」を決めたが、保存の失敗の扱いは新 Spec §8.2 の W-T7b 行（「J-W1 の結果による」）に無い。推奨は難易度と同じ規則（TA-R-PF-3）。決まるまで W-T7b を投入しない。
 - **W-T14** は backend B-S7 待ち（order は枠だけ。B-S7 の契約から request・応答・期待値を写して確定させる。SG-C79）。
-- 上記以外の order に未決の選択は無い（2026-09-23 夜の user 決定 SG-C5・C6・C13、2026-09-30 の SG-C50〜C79、2026-10-01 の SG-D3〜D5 で閉じた）。
+- 上記以外の order に未決の選択は無い（2026-09-23 夜の user 決定 SG-C5・C6・C13、2026-09-30 の SG-C50〜C79、2026-10-01 の SG-D3〜D5 と、order の起票で出た W-T7b の D-W7b-1 を決めた SG-D9 で閉じた）。
 
 ## takt への投入手順（親リポ `news-listen` の作業ツリーで）
 

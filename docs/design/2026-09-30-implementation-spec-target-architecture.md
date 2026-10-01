@@ -408,7 +408,7 @@ command の戻り値は `void`、`Result<void, 失敗>`、`Result<receipt, 失�
 | TA-C-PF-1 | `set(setting, value)`（local） | `void`（値域の外は既定へ正規化。CI-T17） | `dispatch(SET_SPEED)`・`setTimeFormat`・`useLocalStorage`・`ThemeToggle` |
 | TA-C-PF-2 | `setDefaultDifficulty(level)` | `Result<void, ApiFailure>`（最新の要求だけを反映し、失敗したら元の値に戻す） | `settings/page.tsx:147-173` |
 | TA-C-PF-3 | `setWeeklyGoal(goal)` | `Result<void, ApiFailure>` | `settings/page.tsx:174-196`（400ms の debounce は hook に残す） |
-| TA-C-PF-4 | `setDefaultPlaybackSpeed(speed)`（W-T7b。SG-D4） | `Result<void, ApiFailure>`。保存の失敗時の扱いは D-W7b-1（§10.3） | `settings/page.tsx:36,349-352`（現行は local だけ） |
+| TA-C-PF-4 | `setDefaultPlaybackSpeed(speed)`（W-T7b。SG-D4） | `Result<void, ApiFailure>`。端末へ即時に書いてからサーバーへ保存し、最新の要求の結果だけを反映する。最新の要求が失敗したら元の値に戻し、画面は toast「再生速度の保存に失敗しました」（error）を出す（SG-D9 の 1。TA-R-PF-3 と同じ規則）。サーバーから読めなかったときは端末に残る最後の値（無ければ 1.0）を使う（SG-D9 の 3） | `settings/page.tsx:36,349-352`（現行は local だけ） |
 | TA-Q-PF-1 | `get(setting)`・`ready` | 設定の値 ／ `boolean` | `useApp().state`・`isRestoring` |
 | TA-Q-PF-2 | `getServerPreferences` | `ServerPreferencesView` | `settings/page.tsx` の取得 |
 
@@ -424,6 +424,8 @@ command の戻り値は `void`、`Result<void, 失敗>`、`Result<receipt, 失�
 **port と adapter**: `LocalSettingsStore`（application）→ `lib/preferences/infrastructure/localSettingsStore.ts`（`KeyValueStore` を使う）。`PreferencesGateway`（application）→ `lib/preferences/infrastructure/preferencesGateway.ts`。
 
 **現状 / 移行中 / 目標**: 移行中 = W-S4b（registry・`AppContext` の解体。既定速度は現行の契約のまま）。目標 = W-T7a（サーバー設定の command と query）。W-T7b（SG-D4）で既定速度もサーバーが正本になる。
+
+**既定の再生速度の読めなかったとき・移行（SG-D9）**: サーバーから設定を読めなかったとき（認証の確定時の写し・設定画面を開いたときの取得）は、端末に残っている最後の値を使う（無ければ 1.0。1.0 に書き換えない）。設定画面では、読めなかったことを既定速度の行に既存の文言「設定の読み込みに失敗しました。」と「再試行」で出し、再試行で取得をやり直す（iOS の `AppState.preferencesSyncFailed` と同じ。SG-D9 の 3）。難易度の取得の失敗の表示は変えない。移行: W-T7b を入れた直後は、認証の確定時にサーバーの値で端末の値を上書きし、端末に残っていた値は捨てる。端末の値をサーバーへ上げる移行の処理は持たない（web だけで選んだ値が 1.0 に戻り得ることは受け入れる。SG-D9 の 2）。
 
 ### 5.5 Notifications
 
@@ -639,7 +641,7 @@ architecture.md §8 の検査を、web の手段に落とす。検査の無い�
 | 18 | **W-T5** | 購読・onboarding・入口の判定を application へ移す | W-S4d3 | 適用 | ready（order は未作成） |
 | 19 | **W-T6** | account 管理の use case と、`Subject`・`AuthView` を置く | W-S4d3・W-S5 | 適用 | ready（order は未作成） |
 | 20 | **W-T7a** | サーバー設定（難易度・週の目標）の command と query を置く | W-S4d3・W-S4b | 適用 | ready（order は未作成） |
-| 21 | **W-T7b** | 既定の再生速度をサーバーと同期する（SG-D4） | W-T7a | 適用 | 保存の失敗時の扱い（D-W7b-1。§10.3）が決まるまで投入しない |
+| 21 | **W-T7b** | 既定の再生速度をサーバーと同期する（SG-D4） | W-T7a | 適用 | ready（SG-D4・SG-D9） |
 | 22 | **W-T8** | admin の 4 画面を command・query・リードモデルにする | W-S4d3 | 適用 | ready（order は未作成） |
 | 23 | **W-T9** | Notifications と、ブラウザの adapter の置き場を揃える | W-S4d3 | 適用 | ready（order は未作成） |
 | 24 | **W-T10a** | エラー通報を gateway 経由にする（UC-S3） | W-S4d3 | 適用 | ready（order は未作成） |
@@ -648,7 +650,7 @@ architecture.md §8 の検査を、web の手段に落とす。検査の無い�
 | 27 | **W-T12** | 単語テストの状態機械を domain へ移す | W-S4d3 | 適用 | ready（order は未作成） |
 | 28 | **W-T13** | ダッシュボード・ストリーク・実績・効果音を Learning へ移す | W-S4d3・W-S4b | 適用 | ready（order は未作成） |
 | 29 | **W-T14** | 位置同期のクライアント側（ADR-109 決定 7〜14） | W-S2c・B-S7 | 適用 | 待ち（B-S7 が main に入ってから order を書く。SG-C79） |
-| 30 | **W-T15** | 許可リストを空にし、一時経路を外す | 全部 | 適用 | W-T7b（D-W7b-1）の後（全部に依存するので、判断待ちの W-T7b に推移的に依存する） |
+| 30 | **W-T15** | 許可リストを空にし、一時経路を外す | 全部 | 適用 | ready（最後。全部に依存する） |
 
 W-T3〜W-T10a は順序を問わない（page が重ならない。`settings/page.tsx` を触る W-T6・W-T7a は続けて置く）。W-T11〜W-T13 も順序を問わない。W-T14 は、依存が揃えば W-S2c の後のどこにでも置ける。
 
@@ -803,7 +805,7 @@ order は、この段階では編集していない。次の担当が、下の�
 | W-T14 | 共有仕様 §6.2・§6.4 | F-POD-08 |
 | W-T15 | 許可リスト 0 件・TA-V10 | NFR-09・NFR-10 |
 
-W-T7b は TA-C-PF-4（F-SET-04・SG-D4）、W-T10b は CI-T14 の `Retry-After` の中継（F-FEED-06・SG-D5）。2026-10-01 に採用されたため、上の表には行を足していない。
+W-T7b は TA-C-PF-4（F-SET-04・SG-D4・SG-D9）、W-T10b は CI-T14 の `Retry-After` の中継（F-FEED-06・SG-D5）。2026-10-01 に採用されたため、上の表には行を足していない。
 
 **coverage**
 
@@ -863,7 +865,7 @@ W-T7b は TA-C-PF-4（F-SET-04・SG-D4）、W-T10b は CI-T14 の `Retry-After` 
 
 > **2026-10-01: user が採用した。** J-W1 は (a) サーバーを正本にする（台帳 SG-D4。W-T7b は ready）。J-W2 は (a)（SG-D3）。J-W3 は (a) 中継する（SG-D5。W-T10b は ready）。以下は判断の材料として残す。
 
-> **2026-10-01 に新しく出た判断（order の起票で発見）**: **D-W7b-1** 設定画面で既定の再生速度のサーバー保存が失敗したときの扱い（SG-D4 は「サーバーを正本にする」までを決めた）。推奨は難易度（TA-C-PF-2）と同じ規則で、元の値に戻して toast を出す（toast の文言が 1 つ増える）。W-T7b だけを止める。
+> **2026-10-01 に新しく出た判断（order の起票で発見）は SG-D9 で決定**: **D-W7b-1** 設定画面で既定の再生速度のサーバー保存が失敗したときの扱い（SG-D4 は「サーバーを正本にする」までを決めた）。user の回答（台帳 SG-D9）: (1) 難易度（TA-C-PF-2・TA-R-PF-3）と同じ規則で、元の値に戻して toast「再生速度の保存に失敗しました」（error）を出す。(2) W-T7b の直後はサーバーの値を正とし、端末の値は捨てる（移行の処理を足さない）。(3) 読めなかったときは端末の最後の値（無ければ 1.0）を使い、設定画面に出して再試行できるようにする。W-T7b は ready。
 
 調べても決まらず、利用者に見える挙動か、承認済みの決定を変えるものだけを挙げる。
 
@@ -920,8 +922,8 @@ decision:
   engineering_status: planned          # 実装は止めてある。コード・テスト・設定は変えていない
   release_status: not_applicable
   decision_maturity: {status: proposed, owner: user, scope: [web/], approval: "ADR-110 を含む PR の承認で確定する"}
-  next_phase: {name: "order の作成と補正（§8.2・§8.3）→ 再開ゲート（親 docs plan）", status: awaiting_approval, blocked_by: ["user の再開の指示", "D-W7b-1（W-T7b だけを止める）"]}
-  selection_gates: [D-W7b-1]   # J-W1 = SG-D4、J-W2 = SG-D3、J-W3 = SG-D5（2026-10-01 に採用）
+  next_phase: {name: "order の作成と補正（§8.2・§8.3）→ 再開ゲート（親 docs plan）", status: awaiting_approval, blocked_by: ["user の再開の指示"]}
+  selection_gates: []   # J-W1 = SG-D4、J-W2 = SG-D3、J-W3 = SG-D5、D-W7b-1 = SG-D9（2026-10-01 に決定）
   unexecuted_verification: ["npm test / lint / typecheck / build", "AST による違反数の数え直し（W-T1）", "本番の 429 応答の header"]
   residual_risks: ["W-S2a2 の規模", "TP-A6 の期間", "QueueState<T> に伴うテストの型注釈"]
 ```
@@ -930,4 +932,5 @@ decision:
 
 | 日付 | 内容 |
 |---|---|
-| 2026-10-01 | J-W1・J-W2・J-W3 の採用（SG-D4・SG-D3・SG-D5）を本文（§5.4・§5.8・§8.1・§8.2・§9・§10.4・§12）へ反映。TA-C-PF-4 を追加し、TA-Q-CT-8 の持ち主を W-T7a にした。許可リストの例外 2 つ（TP-A4・TP-A6）と、`LocalPositionStore.clearAll` を W-S5 で足すことを明記。新しい判断 D-W7b-1 を §10.3 に追加（order の起票時の突き合わせ） |
+| 2026-10-01 | J-W1・J-W2・J-W3 の採用（SG-D4・SG-D3・SG-D5）を本文（§5.4・§5.8・§8.1・§8.2・§9・§10.4・§12）へ反映。TA-C-PF-4 を追加し、TA-Q-CT-8 の持ち主を W-T7a にした。許可リストの例外 2 つ（TP-A4・TP-A6）と、`LocalPositionStore.clearAll` を W-S5 で足すことを明記。新しい判断 D-W7b-1（同日に SG-D9 で決定）を §10.3 に追加（order の起票時の突き合わせ） |
+| 2026-10-01 | D-W7b-1 を SG-D9 で決定（保存の失敗で元の値に戻し toast・切り替え直後は端末の値を捨てる・読めなかったときは端末の最後の値と設定画面の表示）。TA-C-PF-4・§5.4・§8.1（W-T7b・W-T15 を ready）・§10.3・§12 へ反映 |

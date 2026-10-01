@@ -507,7 +507,7 @@ decision:
 | §3.2 上限到達・§4 CI-T12 | `rate_limited` の `scope` を Catalog policy が決める | 種別は `classifyGenerationLimit` が `detail` と `retryAfterSeconds` から決める。`rate_limited` に `detail` を足す | 新 Spec §8.3 の不整合 1（W-24） |
 | §3.2 生成状態の遷移検知 | 停止条件は `usePodcastListPolling` が単一所有 | 規則は `lib/catalog/domain/generationWatch.ts`。hook は駆動だけ。slice は W-T3 | 決定 9。新 Spec §5.2（W-35） |
 | §3.3 AuthSession・PasswordPolicy | 置き場は `contexts/AuthProvider.tsx` と `lib/account/password.ts` | 遷移は `lib/account/domain/authSession.ts` の純関数。`lib/account/domain/password.ts` | 決定 3。新 Spec §5.3（W-28） |
-| §3.4 registry・defaultPlaybackSpeed の行 | 1 宣言が key・codec・値域を持つ。scope は local ＋ server | 値域は domain、key と codec は infrastructure。既定速度の現状は local だけで、server との同期は判断待ち | 決定 2。新 Spec §5.4（W-32）・§10.3 の J-W1 |
+| §3.4 registry・defaultPlaybackSpeed の行 | 1 宣言が key・codec・値域を持つ。scope は local ＋ server | 値域は domain、key と codec は infrastructure。既定速度の現状は local だけ。server との同期は 2026-10-01 に SG-D4 で決定（W-T7b。失敗・移行・読めなかったときの扱いは SG-D9） | 決定 2。新 Spec §5.4（W-32）・§10.3 の J-W1・D-W7b-1 |
 | §3.5 | Learning は 3 ルールだけで、詳細 model は学習サイクル。Admin は `AdminGate` と gateway 呼出のみ | 新 Spec §5.6・§5.7 が正本 | 決定 9（SG-A5 の保留を web について解く）。新 Spec §5.6・§5.7（W-33） |
 | §4 CI-T11 | T-T11 の置き場の記載なし | 規則と mapper のテストは W-T2、UI 側は W-S4a。PS-07・PS-07b の行 ID を含める | 新 Spec §8.3 |
 | §5 `dependency_direction` | `lib/playback ↛ lib/api` | `lib/playback/{domain,application} ↛ lib/api`。機械的な規則は新 Spec §4 | 決定 3・10。新 Spec §4 |
