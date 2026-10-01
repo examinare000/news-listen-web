@@ -1,5 +1,14 @@
 ## web リファクタ W-S2b: `PlaybackProvider` への入口差し替え（挙動不変＋確定行のみ変更）
 
+> **2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正**（新 Spec = `docs/design/2026-09-30-implementation-spec-target-architecture.md`）
+> - (1) `usePlayback()` の (b) 群は `PlaybackView`（`playbackView()` の query）を出し、`PlaybackState` を出さない。再生ボタンは `primaryAction`、「次へ」は `queueView().canSkipNext` を読む（W-21・TA-R-PB-8）。
+> - (2) page は `QueueEntryInput`（`{ id, title, intro }`）を渡す。DTO から 3 field を写すのは page（**TP-A4**。W-T3 で消す）。
+> - (3) Provider は `JSON.parse` を書かない。`savedPosition` は query（`PlaybackQueries.savedPosition`）を呼ぶ。音量の codec だけは Provider に残す（**TP-A5**。W-S4b で外す）。
+> - (4) `PlaybackErrorToaster` は `PlaybackView.failure` を読む。
+> - (5) 型 `CachedEpisodeMeta`・`StorageEstimate` の import を `@/lib/playback/application/readModels` の `OfflineEpisodeView`・`StorageUsageView` に替えた。
+> - (6) 共有仕様の PS-01〜PS-06・PS-08 の web の保留を解くのはこの slice、と明記した（「記録」）。
+> - あわせて、W-S2a2 の補正に合わせて path（`lib/playback/{domain,application,infrastructure}/`）と公開面（command 7・query 5・`nowPlaying()` 5 field）を直し、完了条件に TA-V1・TA-V2 と許可リストの `removeBy: W-S2b` の行が 0 件を足した。
+
 ## 概要
 W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackProvider.tsx` で配線し、`app/layout.tsx` の `AudioPlayerProvider` を置き換える。3 段分割の ②。共有仕様 §2・Q-01〜Q-33 の挙動は**不変**（特性テストと e2e 3 本で判定）。変わる挙動は下の「変わる挙動」の表だけで、準拠テスト（行 ID をテスト名に含む）で判定する。旧実装の削除は W-S2c で行い、本 slice では削除しない。
 
@@ -22,29 +31,29 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 - コマンドはすべて `web/` で実行する。`docs/trial-log/`（web・親）を最初に読む。
 
 ## W-S2a2 の公開面（本 slice が使うもの。実物で確認する）
-- `createPlaybackCoordinator(deps)`: 9 操作 `startEpisode(id)` / `retry()` / `addToQueue(podcast)` / `playNext(podcast)` / `removeFromQueue(id)` / `reorder(from, to)` / `skipToNext()` / `nowPlaying()` / `upNext()` と、通知 `subscribe`。`startEpisode`・`addToQueue`・`playNext`・`skipToNext` は `Promise<StartResult>` を返す（`{ ok: true } | { ok: false; notice: 'offline_uncached' | 'not_playable' | 'fetch_failed' }`）。
-- `nowPlaying()` の値: `episodeId`・`title`（表示用。`podcastTitle` を通した後の文字列）・`difficulty`・`createdAt`・`durationSeconds` と、トランスクリプト・語彙・クイズ・出典。`upNext()` は `{ id, title }` の配列。
-- `createOfflineLibrary(deps)`: `save(id)` / `get(id)` / `has(id)` / `remove(id)` / `clear()` / `list()` / `usage()`。`save` は `Result<void, SaveFailure>` を返す（throw しない）。`clearOfflineAudio(cacheStore)`: Provider の外から Cache を消す関数。
-- `createPositionReporter(deps)`・`createPlaybackGatewayFns(gateway)`・`lib/platform/{audioElement,cacheStore,keyValueStore,objectUrl,storageEstimate}.ts` の生成関数。
-- Session（W-S2a・W-S2a1）: `state / start / play / pause / seek / seekRelative / setSpeed / setVolume / stop / fail / subscribe`。
+- `lib/playback/application/coordinator.ts` の `createPlaybackCoordinator(deps)`: `PlaybackCommands`（command 7: `startEpisode(id)` / `retry()` / `addToQueue(input: QueueEntryInput)` / `playNext(input)` / `removeFromQueue(id)` / `reorder(from, toOffset)` / `skipToNext()`）と `PlaybackQueries`（query 5: `nowPlaying()` / `upNext()` / `queueView()` / `playbackView()` / `savedPosition(id)`）と通知 `subscribe`。開始系 4 つは `Promise<StartResult>`（`{ ok: true } | { ok: false; notice: 'offline_uncached' | 'not_playable' | 'fetch_failed' }`）。
+- リードモデル（`lib/playback/application/readModels.ts`）: `NowPlaying`（`episodeId`・`title`（表示用。50 字）・`difficulty`・`createdAt`・`durationSeconds` の 5 field）、`UpNextItem`（`id`・`title`（40 字））、`QueueView`（`nowPlaying`・`upNext`・`canSkipNext`）、`PlaybackView`（`status`・`position`・`duration`・`speed`・`primaryAction`・`failure`）、`OfflineEpisodeView`、`StorageUsageView`。
+- `lib/playback/infrastructure/offlineLibrary.ts` の `createOfflineLibrary(deps)`（port `OfflineLibrary`: `save(id)` / `get(id)` / `has(id)` / `remove(id)` / `clear()` / `list()` / `usage()`。`save` は `Result<void, SaveFailure>`）と `clearOfflineAudio(cacheStore)`。
+- `createPositionReporter(deps)`（application）・`createPositionSync(gateway)`（`infrastructure/gatewayFns.ts`）・`createLocalPositionStore(kv)`（`infrastructure/localPositionStore.ts`）・`createEpisodeGateway(gateway)`（`lib/catalog/infrastructure/episodeGateway.ts`。W-T2）・`lib/platform/{audioElement,cacheStore,keyValueStore,objectUrl,storageEstimate}.ts` の生成関数。
+- Session（`lib/playback/domain/session.ts`）: `state / start / play / pause / seek / seekRelative / setSpeed / setVolume / stop / fail / subscribe`。`PLAYBACK_SPEEDS` も同じファイル。
 
 ## 対象（web サブモジュールのみ）
 **新規（production 2 本）**
 1. `contexts/PlaybackProvider.tsx`: React の配線だけを持つ。`components/` を import しない。
-   - **生成**（クライアントで 1 回だけ。再描画で作り直さない）: `createBrowserAudioElement()` → `createPlaybackSession` → `createPlaybackGatewayFns(useApiClient())` → `createOfflineLibrary` → `createPositionReporter` → `createPlaybackCoordinator`。Reporter の attach と購読の順序は Coordinator が行う（W-S2a2）。Provider は `session.subscribe` と `coordinator.subscribe` で再描画する。
-   - **Coordinator へ渡す依存**: `isOnline` は `navigator.onLine`（`navigator` が無ければ true。旧実装と同じ）。`defaultSpeed` は `useApp().state.playbackSpeed` の最新値を返す関数（PS-08。8 段に無い値は Session が 1.0 に丸める）。`keyValueStore` は `lib/platform/keyValueStore.ts` の adapter。
+   - **生成**（クライアントで 1 回だけ。再描画で作り直さない）: `createBrowserAudioElement()` → `createPlaybackSession` → `createEpisodeGateway(useApiClient())`・`createPositionSync(useApiClient())`・`createLocalPositionStore(createBrowserKeyValueStore())` → `createOfflineLibrary` → `createPositionReporter` → `createPlaybackCoordinator`。Reporter の attach と購読の順序は Coordinator が行う（W-S2a2）。Provider は `session.subscribe` と `coordinator.subscribe` で再描画する。
+   - **Coordinator へ渡す依存**: `isOnline` は `navigator.onLine`（`navigator` が無ければ true。旧実装と同じ）。`defaultSpeed` は `useApp().state.playbackSpeed` の最新値を返す関数（PS-08。8 段に無い値は Session が 1.0 に丸める）。端末の位置は `LocalPositionStore`（Provider は `JSON.parse` / `JSON.stringify` を位置について書かない）。
    - **公開 hook は `usePlayback()` 1 つ**。返す値は次の 5 群に固定する。
 
      | 群 | 値 |
      |---|---|
-     | (a) Coordinator | 9 操作をそのまま（増やさない） |
-     | (b) Session の状態 | `session`（`PlaybackState`）と、その派生 `isPlaying`（`status === 'playing'`）・`position`（`loading` は `resumePosition`、`playing` / `paused` / `errored` は `position`、`idle` / `ended` は 0）・`duration`（`playing` / `paused` / `ended` は `duration`、ほかは 0）・`speed`（状態が速度を持てばその値、持たなければ既定速度） |
+     | (a) Coordinator | `PlaybackCommands` の 7 つと `PlaybackQueries` の `nowPlaying` / `upNext` / `queueView` をそのまま（増やさない） |
+     | (b) 再生の状態 | `playbackView()` の値 `PlaybackView`（`status`・`position`・`duration`・`speed`・`primaryAction`・`failure`）だけ。`PlaybackState`（domain）を Provider の外へ出さない（blob URL を含むため。既存 Spec §5 の leakage guard）。派生値の式は W-S2a2 の `readModels.ts` が持ち、Provider は計算しない |
      | (c) Session の操作 | `play` / `pause` / `seek` / `seekRelative` / `setSpeed` / `setVolume` |
-     | (d) 音量（SG-C57） | `volume`（0〜1）。初期値は `KEY_PLAYER_VOLUME` を `JSON.parse` した 0〜1 の数値（それ以外は 1.0。旧 `readSavedVolume` と同じ）で、生成の直後に 1 回 `session.setVolume` する。(c) の `setVolume(v)` は、Session への設定・値の更新・`JSON.stringify(v)` での保存を行う |
-     | (e) 保存庫と位置 | `offline`（`OfflineLibrary` をそのまま）と `savedPosition(id): number \| null`（`podcastPositionKey(id)` を `JSON.parse` し、有限の正数だけ返す。それ以外は `null`。カードの表示用で、resume の合成には使わない） |
+     | (d) 音量（SG-C57） | `volume`（0〜1）。初期値は `KEY_PLAYER_VOLUME` を `JSON.parse` した 0〜1 の数値（それ以外は 1.0。旧 `readSavedVolume` と同じ）で、生成の直後に 1 回 `session.setVolume` する。(c) の `setVolume(v)` は、Session への設定・値の更新・`JSON.stringify(v)` での保存を行う。**この codec だけが Provider に残る `JSON.*`（TP-A5。W-S4b が registry の設定へ移して外す）** |
+     | (e) 保存庫と位置 | `offline`（port `OfflineLibrary` をそのまま）と `savedPosition(id): number \| null`（`PlaybackQueries.savedPosition` をそのまま。カードの表示用で、resume の合成には使わない） |
    - Provider は toast を出さない。
 2. `components/PlaybackToasts.tsx`（SG-C56。導出 W-13）: 再生の知らせを toast に写す部品。
-   - `PlaybackErrorToaster`（描画は `null`）: `usePlayback().session` を見て、**`errored` に入ったときに 1 回** toast（error）を出す。文言は現行の 2 種類: 理由が `media`・`autoplay_blocked` なら「音声を再生できません」、`fetch_failed`・`source_unavailable` なら「再生できませんでした」。`errored` のまま再描画されても出し直さない。
+   - `PlaybackErrorToaster`（描画は `null`）: `usePlayback()` の `PlaybackView.failure` を見て、**`null` から値に変わったときに 1 回** toast（error）を出す。文言は現行の 2 種類: `failure` が `media` なら「音声を再生できません」、`unavailable` なら「再生できませんでした」。`errored` のまま再描画されても出し直さない。
    - `usePlaybackActions()`: `startEpisode` / `addToQueue` / `playNext` / `skipToNext` を包み、戻り値が `{ ok: false }` のとき toast（error）を出す。文言は、`notice` が `offline_uncached` なら「オフラインのため再生できません」（SG-C69。共有仕様 §2.11。Android と同じ文言）、`not_playable`・`fetch_failed` なら現行の「再生できませんでした」。page と再生バーは、この 4 操作をこの hook から呼ぶ。
 
 **新規（test 用の固定）**
@@ -53,27 +62,29 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 **変更（production 6 本）**
 4. `app/layout.tsx`: `AudioPlayerProvider`（`:7` の import と `:88,94` の要素。2026-09-30 実測）を `PlaybackProvider` に替え、その内側に `<PlaybackErrorToaster />` を置く。Provider の並び順は変えない。
 5. `components/AudioPlayerBar.tsx`:
-   - `useApp().state.currentPodcast` の直読み（`:16,28,30,65,66,139,160`）を `nowPlaying()` の値へ替える。`nowPlaying()` が `null` なら描画しない。題は `nowPlaying().title` をそのまま出す。
-   - `useAudioPlayerContext()`（`:5,18`）を `usePlayback()` と `usePlaybackActions()` へ替える。`currentTime` → `position`、`duration` → `duration`（0 なら `nowPlaying().durationSeconds`）、`upNext` → `upNext()`（題は `title` をそのまま）、`reorderQueue` → `reorder`、`skipToNext` → `usePlaybackActions().skipToNext`。
-   - **再生ボタン**（`:32-40`）:
+   - `useApp().state.currentPodcast` の直読み（`:16,28,30,65,66,139,160`）を `nowPlaying()` の値（5 field）へ替える。`nowPlaying()` が `null` なら描画しない。題は `nowPlaying().title` をそのまま出す。
+   - `useAudioPlayerContext()`（`:5,18`）を `usePlayback()` と `usePlaybackActions()` へ替える。`currentTime` → `PlaybackView.position`、`duration` → `PlaybackView.duration`（0 のときの代替は query が解決済み）、`upNext` → `queueView().upNext`（題は `title` をそのまま）、「次へ」の表示 → `queueView().canSkipNext`（`upNext.length` で決めない）、`reorderQueue` → `reorder`、`skipToNext` → `usePlaybackActions().skipToNext`。
+   - **再生ボタン**（`:32-40`）: `PlaybackView.primaryAction` で分岐する（`status` を見て決めない。W-14 の表は `readModels.ts` が持つ）:
 
-     | `session.status` | 押したとき |
+     | `primaryAction`（← `status`） | 押したとき |
      |---|---|
-     | `playing` | `pause()` |
-     | `paused` | `play()` |
-     | `errored` | `retry()`（再生元の解決からやり直す。PS-02） |
-     | `ended` | `usePlaybackActions().startEpisode(nowPlaying().episodeId)`（先頭から。完聴時に位置が総時間で書かれているので、末尾 2 秒窓が 0 に写す） |
-     | `loading`・`idle` | 何もしない |
-   - **速度**: 既定速度を player へ同期する effect（`:22-26`）を消す。セレクト（`:233-247`）の `value` は `usePlayback().speed`、`onChange` は `setSpeed` を呼ぶ（`SET_SPEED` を dispatch しない。既定速度は書き換えない: PS-08）。`PLAYBACK_SPEEDS` の import（`:6`）を `@/lib/playback/session` へ。
+     | `pause`（← `playing`） | `pause()` |
+     | `play`（← `paused`） | `play()` |
+     | `retry`（← `errored`） | `retry()`（再生元の解決からやり直す。PS-02） |
+     | `replay`（← `ended`） | `usePlaybackActions().startEpisode(nowPlaying().episodeId)`（先頭から。完聴時に位置が総時間で書かれているので、末尾 2 秒窓が 0 に写す） |
+     | `none`（← `loading`・`idle`） | 何もしない |
+   - **速度**: 既定速度を player へ同期する effect（`:22-26`）を消す。セレクト（`:233-247`）の `value` は `PlaybackView.speed`、`onChange` は `setSpeed` を呼ぶ（`SET_SPEED` を dispatch しない。既定速度は書き換えない: PS-08）。`PLAYBACK_SPEEDS` の import（`:6`）を `@/lib/playback/domain/session` へ（presentation が値を返すだけの定数を domain から import するのは許される: 新 Spec §4 補足）。
    - 音量（`:223-231`）は `usePlayback().volume` と `setVolume`。
-6. `app/(app)/podcast/page.tsx`: `useStartPodcast`（`:9,49,162`）を `usePlaybackActions().startEpisode` へ。`playNextInQueue` / `addToQueue`（`:10,51,195,196`）を `usePlaybackActions()` の `playNext` / `addToQueue` へ。`:199` の「再生中」判定を `nowPlaying()?.episodeId === podcast.id` へ。`isCached`（`:12,128`）を `offline.has(id)` へ。`downloadAudio`（`:143`）を `offline.save(podcast.id)` へ替え、戻り値が `{ ok: false }` なら現行と同じ toast「オフライン保存に失敗しました」を出す（現行は throw を catch している。`:146`）。`getSavedPosition`（`:7,189`）を `savedPosition(podcast.id)` へ（`null` は現行の 0 と同じ扱い = 表示しない）。
+6. `app/(app)/podcast/page.tsx`: `useStartPodcast`（`:9,49,162`）を `usePlaybackActions().startEpisode` へ。`playNextInQueue` / `addToQueue`（`:10,51,195,196`）を `usePlaybackActions()` の `playNext` / `addToQueue` へ。引数は `QueueEntryInput`（`{ id: podcast.id, title: podcast.title ?? null, intro: podcast.japanese_intro_text }`。page が DTO から写す = **TP-A4**。W-T3 が `EpisodeCardView.label` から作る形にして消す）。`:199` の「再生中」判定を `nowPlaying()?.episodeId === podcast.id` へ。`isCached`（`:12,128`）を `offline.has(id)` へ。`downloadAudio`（`:143`）を `offline.save(podcast.id)` へ替え、戻り値が `{ ok: false }` なら現行と同じ toast「オフライン保存に失敗しました」を出す（現行は throw を catch している。`:146`）。`getSavedPosition`（`:7,189`）を `savedPosition(podcast.id)` へ（`null` は現行の 0 と同じ扱い = 表示しない）。
 7. `app/(app)/podcast/[id]/page.tsx`: 6 と同じ置換（`useStartPodcast` `:9,40,76`・`isCached` `:10,85`・`downloadAudio` `:93,96`）。
-8. `app/(app)/settings/page.tsx`: `listCachedEpisodes` / `estimateUsage` / `deleteAudio` / `deleteAllAudio`（`:17,125,135,140`）を `usePlayback().offline` の `list` / `usage` / `remove` / `clear` へ。型 `CachedEpisodeMeta`・`StorageEstimate` の import を `@/lib/playback/offlineLibrary` へ。`PLAYBACK_SPEEDS` の import（`:6`）を `@/lib/playback/session` へ。既定速度の保存（`SET_SPEED` の dispatch `:352`）は現状維持（W-S4b で登録簿へ）。
-9. `contexts/AuthContext.tsx`: logout の `deleteAllAudio()`（`:9` の import と `:124` の呼出）を `clearOfflineAudio(createBrowserCacheStore())`（W-S2a2。導出 W-10）へ替える。`Promise.all` の形と、失敗しても logout が完了する扱いは変えない。`usePlayback()` に依存しない（`AuthProvider` は `PlaybackProvider` の外側にある）。
+8. `app/(app)/settings/page.tsx`: `listCachedEpisodes` / `estimateUsage` / `deleteAudio` / `deleteAllAudio`（`:17,125,135,140`）を `usePlayback().offline` の `list` / `usage` / `remove` / `clear` へ。型 `CachedEpisodeMeta`・`StorageEstimate` の import を、`@/lib/playback/application/readModels` の `OfflineEpisodeView`・`StorageUsageView` へ替える（field 名が違えば表示側の読み取りを合わせる。表示は不変）。`PLAYBACK_SPEEDS` の import（`:6`）を `@/lib/playback/domain/session` へ。既定速度の保存（`SET_SPEED` の dispatch `:352`）は現状維持（W-S4b で登録簿へ）。
+9. `contexts/AuthContext.tsx`: logout の `deleteAllAudio()`（`:9` の import と `:124` の呼出）を `clearOfflineAudio(createBrowserCacheStore())`（`@/lib/playback/infrastructure/offlineLibrary`。W-S2a2。導出 W-10）へ替える（ROOT は全層を import できる）。`Promise.all` の形と、失敗しても logout が完了する扱いは変えない。`usePlayback()` に依存しない（`AuthProvider` は `PlaybackProvider` の外側にある）。
 
 **resume の入力合成**（Q12=A）は Coordinator（W-S2a2）の 1 箇所だけにある。page・hook・Provider で合成しない。
 
 **暫定互換（owner: user）**
+- **TP-A4**（page が DTO を持ち、`QueueEntryInput` への写しを自分で行う）: 導入 W-S2b。削除 W-T3。
+- **TP-A5**（`PlaybackProvider` が音量の codec を持ち、既定速度を `useApp()` から読む）: 導入 W-S2b。削除 W-S4b。
 - TP-S2b-1 `AppContext.currentPodcast` / `SET_PODCAST`: 本 slice の後は、参照されない旧ファイルを除いて production から読み書きされない。導入: 既存。削除: W-S2c。
 - `AppContext.playbackSpeed` は「既定速度」の置き場として残す（settings が書き、`PlaybackProvider` が読む。`AudioPlayerBar` は読まない）。W-S4b で `PreferencesRegistry` へ。
 - `hooks/useStartPodcast.ts`・`contexts/AudioPlayerContext.tsx`・`hooks/useAudioPlayer.ts`・`lib/{playbackQueue,audioCache,resolvePlayback,playbackPosition}.ts`: 未参照のまま残す。削除: W-S2c。
@@ -86,7 +97,7 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 | PS-06（SG-X1） | 完聴時に server へ書く位置が 0 → **総時間**。順序 = 完聴の記録 → 総時間の位置 1 回。次の開始は応答を待たない | 完聴の記録 → 位置 0 | 同上 |
 | PS-08 | エピソードの開始ごとに、速度を既定速度に戻す。再生バーの速度変更は既定速度を書き換えない | バーの変更が `SET_SPEED` で既定速度を書き換え、次のエピソードへ持ち越す | `AudioPlayerBar.test.tsx`・`PlaybackProvider.queue.test.tsx` |
 | RS-03 / RS-04 / RS-05（SG-X2） | 合成した候補が「総時間 − 2」以上なら先頭から | server の位置をそのまま使う | W-S2a の `resume.test.ts` ＋ `PlaybackProvider.offline.test.tsx` |
-| —（SG-C53・SG-C67） | 一時停止したとき・別のエピソードへ切り替えたときに、位置を 1 回（local と server へ）書く。巻き戻した位置も、このときに保存される | 周期（最後に保存した位置から 10 秒進むごと）だけ。巻き戻した位置は、保存済みの位置を追い越すまで保存されない |
+| —（SG-C53・SG-C67） | 一時停止したとき・別のエピソードへ切り替えたときに、位置を 1 回（local と server へ）書く。巻き戻した位置も、このときに保存される | 周期（最後に保存した位置から 10 秒進むごと）だけ。巻き戻した位置は、保存済みの位置を追い越すまで保存されない | 規則は W-S2a2 の `lib/playback/application/positionReporter.test.ts`（CI-T8）。この order では入口の結線だけを確かめる |
 | —（SG-C69） | オフラインで未保存のエピソードを選ぶと、toast が「オフラインのため再生できません」になる | 「再生できませんでした」 | `PlaybackProvider.completion.test.tsx` |
 | —（SG-C63） | 「次へ」で、次が再生できないと分かったら、キューも再生も変えずに toast を出す | キューを先に進めてから取得し、失敗すると進んだまま残る | `PlaybackProvider.queue.test.tsx` |
 | —（導出 W-14） | 聴き終えた後に再生ボタンを押すと、再生元の解決からやり直して先頭から始まる | 読み込み済みの音源を先頭から再生する（取得しない） | `AudioPlayerBar.test.tsx` |
@@ -101,10 +112,12 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 - Provider が `components/` を import しない: `test -f contexts/PlaybackProvider.tsx && grep -c "@/components" contexts/PlaybackProvider.tsx` が 0（`test -f` を付ける。ファイルが無いと grep が 0 件で通ってしまう）。
 - toast を出すのは `components/PlaybackToasts.tsx` と page だけ: `grep -rn "showToast\|useToast" contexts/PlaybackProvider.tsx lib/playback lib/platform` が 0 件。
 - 上表の準拠テストが行 ID をテスト名に含み green。TP2 の T-T18 が green。
+- **`PlaybackState` を出さない**: `grep -rn "PlaybackState" app components hooks` が 0 件（型の import も含む）。`contexts/PlaybackProvider.tsx` の `JSON.` が音量の codec の 2 行だけ（`grep -c "JSON\." contexts/PlaybackProvider.tsx` が 2。TP-A5）。
+- **依存の向き**: TA-V1（`npm run lint`）・TA-V2・TA-V3 が green。許可リストの `removeBy: "W-S2b"` の行（`@/lib/audioCache` の 3 行）が 0 件で、ほかの行は増えていない（`grep -c '"removeBy": "W-S2b"' architecture/boundaries.allowlist.json` が 0）。
 
 ## 禁止事項 / scope 外
 - 上表以外の挙動を変えない（Queue 操作・表示要素・settings の既定速度保存・localStorage の key と値の形式・Cache 名 `audio-v1`）。
-- `lib/playback/*`・`lib/platform/*` を変えない（不足が見つかったら、実装を止めて報告する）。
+- `lib/playback/**`・`lib/platform/*`・`lib/catalog/**`・`lib/shared/**` を変えない（不足が見つかったら、実装を止めて報告する）。
 - 旧ファイル・`AppContext.currentPodcast`・`reorderUpNext` を削除・rename しない（W-S2c）。eslint ルールを追加しない（W-S2c）。
 - `Episode` の UI 展開（`PodcastCard` の props 分岐。PS-07）は W-S4a。`PreferencesRegistry` は W-S4b。主体別のキャッシュ名と `stopForSubjectLeave` は W-S5。
 - タブを閉じる・隠すときの位置の送信を入れない（共有仕様 §6.4 の web の保留）。
@@ -124,6 +137,6 @@ W-S2a・W-S2a1・W-S2a2 で新設した `lib/playback/*` を `contexts/PlaybackP
 `npm test`、`npm run test:e2e`（3 本）、上記 grep 4 種、`npm run build`。UV3（resume の再適用・読み込み後の速度・toast の表示）は e2e（Chromium）で観測し、結果を PR 説明に残す。
 
 ## 記録
-- 完了時、共有仕様 §4.4 の PS-01〜PS-08 の web の保留（解除条件 = W-S2b の完了。PS-07 は W-S4a）と、§6.4 の web の保留のうち「一時停止・停止への遷移時の即時 1 回」を解除できる旨を親 docs へ返す。
+- 完了時、共有仕様 §4.4 の PS-01〜PS-06・PS-08 の web の保留（解除条件 = W-S2b の完了。入口の挙動。PS-07・PS-07b は W-T2 と W-S4a、PS-12 の入口の挙動も本 slice）と、§6.4 の web の保留のうち「一時停止・停止への遷移時の即時 1 回」を解除できる旨を親 docs へ返す。
 - 共有仕様 §2.11 の「オフライン起因は『オフライン』と分かる文言にする」は、手動の開始について満たす（SG-C69）。自動で次へ進んだ後のオフライン起因は区別しないまま残る（共有仕様に保留として記載済み）。
 - UV3 の観測結果と、表と実装の差があれば `docs/trial-log/` へ。

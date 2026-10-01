@@ -1,30 +1,57 @@
 # web リファクタ計画（2026-09-16 設計レビュー反映）— takt 委譲用の指示書
 
-2026-09-16 の web 設計レビュー（`docs/research-reports/2026-09-16-code-design-review.md`）と user 承認済みの Implementation Spec（`docs/design/2026-09-16-implementation-spec-domain-model.md`）、および 2026-09-23 の主体離脱の決定（親 docs [ADR-104](../../../../docs/adr/104-subject-departure-and-subject-scoped-assets.md)）を、takt の `sdd-governed` ワークフローへ slice 単位で委譲するための指示書（order）一式。slice ID は親 docs の [実行計画](../../../../docs/plan/2026-09-16-design-review-refactor.md)（2026-09-23 再スライス版）の接頭辞付き ID `W-*` を正本とする。正本は Spec であり、本フォルダの各 order は Spec の該当 slice を takt の 1 タスクに切り出したもの。実装完了後、本フォルダは削除し、確定内容は親 docs の `design/web-design.md`（§12 target 節を現状記述へ書き換え）へ移す（`agent-rules/30` の plan ライフサイクル）。
+2026-09-16 の web 設計レビュー（`docs/research-reports/2026-09-16-code-design-review.md`）と user 承認済みの Implementation Spec（`docs/design/2026-09-16-implementation-spec-domain-model.md`）、および 2026-09-23 の主体離脱の決定（親 docs [ADR-104](../../../../docs/adr/104-subject-departure-and-subject-scoped-assets.md)）と、2026-09-30 の目標アーキテクチャ（親 docs [ADR-110](../../../../docs/adr/110-refactor-target-domain-centered-onion-cqrs.md)・新 Spec [`2026-09-30-implementation-spec-target-architecture.md`](../../design/2026-09-30-implementation-spec-target-architecture.md)。以下「新 Spec」）を、takt の `sdd-governed` ワークフローへ slice 単位で委譲するための指示書（order）一式。slice ID は親 docs の [実行計画](../../../../docs/plan/2026-09-16-design-review-refactor.md)（2026-09-23 再スライス版）の接頭辞付き ID `W-*` を正本とする。正本は Spec であり（構造・層・slice の全体は新 Spec §8、状態遷移と契約の詳細は 2026-09-16 の Spec）、本フォルダの各 order は Spec の該当 slice を takt の 1 タスクに切り出したもの。実装完了後、本フォルダは削除し、確定内容は親 docs の `design/web-design.md`（§12 target 節を現状記述へ書き換え）へ移す（`agent-rules/30` の plan ライフサイクル）。
 
-## slice と投入順
 
-| 順 | order | 内容 | 依存 | 検証する行 ID（web-design §12.5） | 切替方式 |
-|---|---|---|---|---|---|
-| 完了（PR #124） | [S0-constraint.md](S0-constraint.md)（W-S0） | BFF fail-closed・失効時 cleanup・admin gate | なし | SL-03・SL-05（骨格）。SL-01 / 02 / 04 は骨格のみ | 小ステップ |
-| 完了（PR #136） | [W-0-push-reregistration.md](W-0-push-reregistration.md) | Web Push の再登録と logout 時の購読解除（ADR-104 決定 18〜24）。`lib/pushBrowserPort.ts` の `getExistingSubscription` を `getRegistration()` 系へ（SG-C5）。**backend B-S5b の着手条件**。2026-09-23 の受入検査 blocked（C1 / SG-W0-1 / SG-W0-2）は SG-C5・C6 で解除済み → 再投入 | なし（他の web slice と対象ファイルが重ならない）。ただし W-S2b は W-0 の merge を待つ（同じ `AuthContext.logout` を編集） | — | 特性テスト → RED → 実装 |
-| 完了（PR #137・#138） | [W-S1-gateway.md](W-S1-gateway.md) | `ApiGateway`（`Result` / `ApiFailure`・deadline）と最小注入点（再生系 4 箇所） | S0 | CI-T12 / T13 | 旧 `ApiError` 互換 adapter（TP1）を暫定保持（削除は W-S4d3） |
-| 完了（PR #149） | [W-S1b-api-split.md](W-S1b-api-split.md) | `lib/api.ts` を backend リソース単位の 10 ファイルへ分割（横断関数 0 件・呼出側不変） | W-S1 | —（特性テストのみ） | 挙動不変（型・関数名不変） |
-| 完了（PR #146） | [W-S2a-playback-domain.md](W-S2a-playback-domain.md) | `lib/playback/*` ドメイン層の新設 その 1（port・Session・Queue gate・source・ResumeRule・platform adapter）。既存コードから呼ばない | W-S1（W-S1b とは対象ファイルが重ならず並行可） | RS-01〜RS-07（純関数・表駆動）。Q-01〜Q-32 を新モジュールでも。CI-T1〜T4・T9 | ① 新規コードのみ |
-| 2a1 | [W-S2a1-session-fail-entry.md](W-S2a1-session-fail-entry.md) | W-S2a の修正。`PlaybackSession` に遷移表の外の操作 `fail`（取得前・開始前の失敗。`errored` が id だけの参照を持てる）を足し、準拠テストに Q-33 を足す。2026-09-30 の前提点検で新設（SG-C52・SG-C50） | W-S2a | CI-T1f・Q-33 | 新規コードのみ（既存コードから呼ばない） |
-| 2'' | [W-S2a2-playback-coordination.md](W-S2a2-playback-coordination.md) | その 2（OfflineLibrary・Coordinator・PositionReporter）。2026-09-24 に規模（≈ 1,900 行）で W-S2a から分けた | W-S2a ＋ W-S2a1（W-S1b と並行可） | CI-T5〜T8・T10・T11（PS-01〜PS-08） | ① 新規コードのみ |
-| 3 | [W-S2b-playback-entry.md](W-S2b-playback-entry.md) | `PlaybackProvider` へ入口を差し替え。§2・Q-* は挙動不変。変わるのは列挙した行のみ | W-S2a ＋ W-S2a1 ＋ W-S2a2 ＋ W-S1b ＋ W-0 | PS-01〜PS-06・PS-08（port double で全行）。§6.4 送信条件（PS-05 / 05b）。SG-X1 / X2 / X4。T-T18（TP2） | ② 特性テスト 19＋e2e 3（不変）＋準拠テスト（変わる挙動の 9 行） |
-| 4 | [W-S2c-playback-cleanup.md](W-S2c-playback-cleanup.md) | 旧再生実装 7 ファイル・`AppContext.currentPodcast`・`reorderUpNext` の削除、依存方向 eslint | W-S2b | CI-T7b（ルール本体） | ③ 削除のみ（参照 0 件を grep で判定） |
-| 5 | [W-S3-gates.md](W-S3-gates.md) | CI に `typecheck:ts7`・独立 build・依存方向 eslint の実行 | W-S2c | CI-T7b（CI 実行） | — |
-| 5（学習サイクル） | [W-S4a-catalog.md](W-S4a-catalog.md) | Catalog: `Episode` の UI 展開・`error_message` 4 値の文言写像・`rate_limited.scope` の集約 | W-S2c ＋ **backend B-S0b の契約が main にあること**（`error_message` 4 値） | PS-07（`PlayableEpisode` の fail-closed）。CI-T11（UI 側） | 特性テスト → RED → 実装 |
-| 5（学習サイクル） | [W-S4b-prefs.md](W-S4b-prefs.md) | Preferences: `PreferencesRegistry`（主体依存の宣言 SG-A6）・`AppContext` 解体の完了・TP3 | W-S2c | CI-T17 | inline theme script の key 複製を pin テストで暫定保持（TP3） |
-| 5（学習サイクル） | [W-S4c-account.md](W-S4c-account.md) | Account: `PasswordPolicy` 12〜20 の単一化・`AuthSession` 判別共用体・`AuthProvider.tsx` | W-S2c ＋ backend S0c（完了）の契約 | CI-T15（全体）・CI-T16。SL-03 | 特性テスト → RED → 実装 |
-| 6（学習サイクル） | [W-S4d2a-tests-catalog.md](W-S4d2a-tests-catalog.md) | Catalog 系 page テスト 5 本を gateway double（`vi.mock('@/lib/api/gateway')` の fake `request`）へ移植。production 不変 | W-S1b ＋ W-S2c ＋ W-S4a | —（oracle 不変） | テストのみ |
-| 6（学習サイクル） | [W-S4d2b-tests-others.md](W-S4d2b-tests-others.md) | 残り 16 テストの移植と旧テスト 8 本の処遇表（`tests/lib/api.*.test.ts` 6 本は W-S4d3、`passkey.test` / `signup` は W-S4d1 で書き換えて残す） | W-S4d2a ＋ W-S4b ＋ W-S4c | —（oracle 不変） | テストのみ |
-| 7（学習サイクル） | [W-S4d1-context-gateway.md](W-S4d1-context-gateway.md) | `lib/api/<resource>` の `Result` 化・`lib/<context>/api.ts` 7 ファイルの export 集合・page 側 19 ファイルの注入点移行・`AuthProvider` ⊃ `ApiClientProvider` の固定。TP1 は残す | W-S4d2a ＋ W-S4d2b（＋ W-S1b・W-S4a〜c） | CI-T12（呼出側） | 機械的移行（1 PR。2 経路の併存を作らない） |
-| 8（学習サイクル） | [W-S4d3-tp1-removal.md](W-S4d3-tp1-removal.md) | TP1（`lib/api.ts`・`ApiError`・`createApiClient`）削除・`tests/lib/api.*.test.ts` の書き換え・HTTP status 数値分岐の eslint（`no-restricted-syntax`）・失効検知の一般化（`onUnauthorized`）・`app/layout.tsx` の Provider 順序確定 | W-S4d1 | CI-T15（検知点）。SL-05 | 削除＋配線 |
-| B-S5a 後 | [W-S5-subject-cache.md](W-S5-subject-cache.md) | 主体別音声キャッシュ `audio-v1-{user_id}`・起動時の回収・旧 `audio-v1` の初回全削除・主体依存 3 key の削除・主体離脱時の再生停止 `stopForSubjectLeave`（ADR-104 決定 27・SG-A1 / A2 / A6・SG-B3 / B6） | **backend B-S5a の契約が main にあること**（5 経路の応答に `user_id`）＋ **W-S2c**。W-S4b / c / d とは順序不定（order 内に両方の状態を記載）。旧 U-W5-1 は SG-C13 で確定済み（主体確定の契機 5 つ） | SL-01・SL-02・SL-04・SL-06・SL-07（再生停止・音声キャッシュ・端末設定の全事後条件） | 不可逆点（Cache 名前空間の変更） |
-| 保留 | （learning） | `lib/learning/` の 3 ルール・StreakContext の副作用移動 | 学習機能サイクル | — | order 未作成 |
+> **投入前の前提点検が必須（2026-10-01）。** どの order も、投入の直前に「着手前の前提点検」（order の中の表。無い order は「対象」「完了条件」が引用する実測値・行番号・件数・型名）を実コードで数え直し、値が違えば order を直してから投入する。order は書いた時点の実コードを引用しており、前の slice が入るたびに値が動く。点検をせずに投入しない。あわせて、親 docs [refactor plan](../../../../docs/plan/2026-09-16-design-review-refactor.md)「実装の停止と再開ゲート」が満たされるまで、どの slice も投入しない。
+>
+> **2026-10-01 の更新**: 新 Spec §8.2 の補完 slice W-T1〜W-T15 の order を作り、§8.3 の補正を未着手の order（W-S2a1・W-S2a2・W-S2b・W-S2c・W-S3・W-S4a・W-S4b・W-S4c・W-S4d1・W-S4d2a・W-S4d3・W-S5）へ反映した（各 order 冒頭の「2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正」節）。W-S4d2b は §8.3 で補正なし。user が 2026-10-01 に採用した決定: SG-D3（「習得」の語。J-W2 の (a)）・SG-D4（既定速度はサーバーを正本。J-W1 の (a)）・SG-D5（BFF が `Retry-After` を中継。J-W3 の (a)）。
+
+## slice と実行する順（新 Spec §8.1 の順。同じ submodule では 1 本ずつ投入する）
+
+| 順 | order | 内容 | 依存 | 状態 |
+|---|---|---|---|---|
+| — | [S0-constraint.md](S0-constraint.md)（W-S0） | BFF fail-closed・失効時 cleanup・admin gate | なし | 完了（PR #124） |
+| — | [W-0-push-reregistration.md](W-0-push-reregistration.md) | Web Push の再登録と logout 時の購読解除（ADR-104 決定 18〜24） | なし | 完了（PR #136） |
+| — | [W-S1-gateway.md](W-S1-gateway.md) | `ApiGateway`（`Result` / `ApiFailure`・deadline）と最小注入点 | W-S0 | 完了（PR #137・#138） |
+| — | [W-S1b-api-split.md](W-S1b-api-split.md) | `lib/api.ts` を資源別の 10 ファイルへ | W-S1 | 完了（PR #149） |
+| — | [W-S2a-playback-domain.md](W-S2a-playback-domain.md) | 再生の domain（port・Session・Queue・source・resume） | W-S1 | 完了（PR #146） |
+| 1 | [W-T1-layer-skeleton.md](W-T1-layer-skeleton.md) | 層の骨格・依存の向きの検査（許可リスト TP-A1）・Queue と Session の不変性 | W-S2a | 未着手（ready） |
+| 2 | [W-S2a1-session-fail-entry.md](W-S2a1-session-fail-entry.md) | Session に `fail` を足す・Q-33・PS-09・PS-10 | W-T1 | 未着手（ready。2026-10-01 補正） |
+| 3 | [W-T2-catalog-episode.md](W-T2-catalog-episode.md) | Catalog の `Episode`・`QueuedEpisode`・`displayTitle`・DTO からの変換（CI-T11・PS-07・PS-07b） | W-S2a1 | 未着手（ready） |
+| 4 | [W-S2a2-playback-coordination.md](W-S2a2-playback-coordination.md) | 再生の use case と adapter・リードモデル 6・command と query の分離（≈ 1,550 行。1 本のまま） | W-T2 | 未着手（ready。2026-10-01 補正） |
+| 5 | [W-S2b-playback-entry.md](W-S2b-playback-entry.md) | 入口を `PlaybackProvider` へ差し替え（変わる挙動は表の行だけ） | W-S2a2・W-S1b・W-0 | 未着手（ready。2026-10-01 補正） |
+| 6 | [W-S2c-playback-cleanup.md](W-S2c-playback-cleanup.md) | 旧再生実装の削除 | W-S2b | 未着手（ready。2026-10-01 補正） |
+| 7 | [W-S3-gates.md](W-S3-gates.md) | CI に `typecheck:ts7`・独立 build・境界の検査の実行確認 | W-S2c | 未着手（ready。2026-10-01 補正） |
+| 8 | [W-S4a-catalog.md](W-S4a-catalog.md) | `Episode` を画面へ・失敗の文言（3 値）・上限の種別・「一部失敗」を消す | W-S2c・W-T2・**B-S0b**（完了） | 未着手（ready。2026-10-01 補正） |
+| 9 | [W-S4b-prefs.md](W-S4b-prefs.md) | 設定の registry（domain ＋ infrastructure）と `AppContext` の解体・TP-A5 の削除 | W-S2c | 未着手（ready。2026-10-01 補正） |
+| 10 | [W-S4c-account.md](W-S4c-account.md) | パスワードの規則の一本化と `AuthSession` の 4 状態（純関数） | W-S2c | 未着手（ready。2026-10-01 補正） |
+| 11 | [W-S5-subject-cache.md](W-S5-subject-cache.md) | 主体別の音声キャッシュ・起動時の回収・離脱時の再生停止（SL-01・02・04・06〜10） | W-S2c・**B-S5a**（完了） | 未着手（ready。2026-10-01 補正） |
+| 12 | [W-S4d2a-tests-catalog.md](W-S4d2a-tests-catalog.md) | Catalog 系 page テストを gateway の double（`tests/helpers/gatewayDouble.ts`）へ | W-S4a | 未着手（ready。2026-10-01 補正） |
+| 13 | [W-S4d2b-tests-others.md](W-S4d2b-tests-others.md) | 残りの page テストを移す | W-S4d2a・W-S4b・W-S4c | 未着手（ready。補正なし。`fakeGateway` の名前は W-S4d2a の読み替えに従う） |
+| 14 | [W-S4d1-context-gateway.md](W-S4d1-context-gateway.md) | `lib/api/<resource>` の `Result` 化・`lib/<context>/infrastructure/api.ts`・page の gateway 化（TP-A6） | W-S4d2b | 未着手（ready。2026-10-01 補正） |
+| 15 | [W-S4d3-tp1-removal.md](W-S4d3-tp1-removal.md) | TP1 の削除・TA-D8 の eslint・失効の検知（事象 `expired`） | W-S4d1 | 未着手（ready。2026-10-01 補正） |
+| 16 | [W-T3-catalog-episodes-readmodels.md](W-T3-catalog-episodes-readmodels.md) | 一覧・詳細をリードモデルに・生成の完了の検知とポーリングの停止を 1 箇所に（UC-S1） | W-S4d3 | 未着手（ready） |
+| 17 | [W-T4-catalog-feed.md](W-T4-catalog-feed.md) | Feed の command と `FeedView` | W-S4d3 | 未着手（ready） |
+| 18 | [W-T5-catalog-sources-entry-gate.md](W-T5-catalog-sources-entry-gate.md) | 購読・onboarding・入口の判定 | W-S4d3 | 未着手（ready） |
+| 19 | [W-T6-account-management.md](W-T6-account-management.md) | account 管理の use case・`Subject`・`AuthView`（TP-A8 の削除） | W-S4d3・W-S5 | 未着手（ready） |
+| 20 | [W-T7a-preferences-server.md](W-T7a-preferences-server.md) | サーバー設定（難易度・週の目標）の command と query | W-S4d3・W-S4b | 未着手（ready） |
+| 21 | [W-T7b-default-speed-server.md](W-T7b-default-speed-server.md) | 既定の再生速度をサーバーを正本にして同期する（SG-D4） | W-T7a | **D-W7b-1（保存の失敗の扱い）が決まるまで投入しない** |
+| 22 | [W-T8-admin.md](W-T8-admin.md) | admin の 4 画面を command・query・リードモデルに | W-S4d3 | 未着手（ready） |
+| 23 | [W-T9-notifications-platform.md](W-T9-notifications-platform.md) | Notifications と、ブラウザの adapter の置き場 | W-S4d3 | 未着手（ready） |
+| 24 | [W-T10a-error-reporter.md](W-T10a-error-reporter.md) | エラー通報を gateway 経由に（UC-S3） | W-S4d3 | 未着手（ready） |
+| 25 | [W-T10b-bff-retry-after.md](W-T10b-bff-retry-after.md) | BFF が `Retry-After` を中継する（SG-D5。上限到達の文言に目安が付く） | — | 未着手（ready） |
+| 26 | [W-T11-learning-quiz-vocabulary.md](W-T11-learning-quiz-vocabulary.md) | クイズと語彙の登録を Learning へ | W-T3 | 未着手（ready） |
+| 27 | [W-T12-learning-vocabulary-test.md](W-T12-learning-vocabulary-test.md) | 単語テストの状態機械を domain へ | W-S4d3 | 未着手（ready） |
+| 28 | [W-T13-learning-dashboard-streak-sfx.md](W-T13-learning-dashboard-streak-sfx.md) | ダッシュボード・ストリーク・実績・効果音を Learning へ | W-S4d3・W-S4b | 未着手（ready） |
+| 29 | [W-T14-position-sync.md](W-T14-position-sync.md) | 位置同期のクライアント側（ADR-109 決定 7〜14） | W-S2c・**B-S7** | **B-S7 待ち（枠だけ。B-S7 の契約が main に入ってから本文を確定して投入）** |
+| 30 | [W-T15-allowlist-zero.md](W-T15-allowlist-zero.md) | 許可リストを 0 件に・一時経路（TP-A1・A2・A7）を外す | 全部 | 未着手。W-T7b（D-W7b-1）の後（全部に依存するので、判断待ちの W-T7b に推移的に依存する） |
+
+順序を問わない組（新 Spec §8.1）: W-T3〜W-T10a（page が重ならない。`settings/page.tsx` を触る W-T6・W-T7a・W-T7b・W-T13 は続けて置き、後から入る側が rebase）。W-T11〜W-T13。W-T10b は依存が無く、どこにでも置ける。W-T14 は依存が揃えば W-S2c の後のどこにでも置ける。W-S4b・W-S4c・W-S5 は認証 Provider・`settings/page.tsx`・`PlaybackProvider.tsx` が重なるので直列（順序不定）。
+
+**許可リスト（TP-A1）の持ち主**: 行ごとの `removeBy`（消す slice）は W-T1 の order の表が割り当てる。各 slice は自分の `removeBy` の行を 0 件にし、ほかの行を増やさない。例外として行を足す（または specifier を書き替える）のは、新 Spec §8.4 が一時経路として登録した W-S4a（TP-A4 の 2 行）と W-S4d1（TP-A6: `@/lib/api` の行を `@/lib/<context>/infrastructure/api` に書き替える）だけ。
+
+## 経緯（2026-09-23〜2026-09-30 の記録。現在の状態は上の表）
 
 依存の直列: **W-S1 → {W-S1b ∥ (W-S2a → W-S2a1 → W-S2a2)} → W-S2b → W-S2c → {W-S3 ∥ W-S4a ∥ (W-S4b・W-S4c・W-S5 は順序不定の直列)} → W-S4d2a → W-S4d2b → W-S4d1 → W-S4d3**。W-0 は独立（W-S2b の前に merge）。W-S5 はさらに backend B-S5a の後（B-S5a は依存なし。W-0 を待つのは B-S5b）。W-S4d2a は W-S4a の後なら W-S4b / W-S4c / W-S5 を待たずに投入できる。
 - 2026-09-23 の受入検査で返した未決 6 件は同日 user 判断で確定し各 order に反映済み（resume の入力合成 Q12=A（SG-B5）、`user_id` 欠落時は android 同型 Q13=A（SG-B6）、回収は主体確定時に 1 回 Q10=A（SG-B3）、TP1 本体削除は W-S4d3、SL-01 / SL-07 の再生停止は W-S5、W-S1b の 10 ファイル束ね方を採用）。親 plan・web-design §12.3 の W-S2c 行（「暫定互換 adapter」）と W-S1b 注記は router が修正する。
@@ -37,7 +64,7 @@
 - 共有仕様 1.1（§2.11・§4.3〜§4.4・§6.4〜§6.6）は news-listen-docs #133 で main 済み。準拠テストは行 ID（`PS-*` / `SL-*` / `RS-*` / `Q-*`）をテスト名に含める。
 - 一括切替（旧 S2・SG8）は 2026-09-23 に ①②③ の 3 段へ分割した（親 plan「一括切替を 3 段に割る」）。旧 `S2-playback.md`・`W-S4-catalog-prefs.md` は削除済み。
 
-## 投入順と release トリガ（wave 2 以降）
+## release トリガ（2026-09-24 版。W-S 系の組合せの記録。補完 slice を含む順と依存は上の表が正本）
 
 release の単位は「依存先の submodule PR ＋ 親リポのポインタ PR が両方 main に入った slice」（親 plan「wave の進め方」）。親で `git submodule status` を実行し `web` / `backend` 行に `+` が無いことを確認してから release する。
 
@@ -54,7 +81,7 @@ release の単位は「依存先の submodule PR ＋ 親リポのポインタ PR
 | 4（学習サイクル） | W-S4b | W-S2c の PR ＋ 親ポインタ | W-S3 / W-S4a / W-S4d2a。**W-S4c・W-S5 とは直列**（認証 Provider のファイル・`settings/page.tsx`・`PlaybackProvider.tsx` が重なる。順序不定、後から merge する側が rebase） |
 | 4（学習サイクル） | W-S4c | W-S2c の PR ＋ 親ポインタ | W-S3 / W-S4a / W-S4d2a。**W-S4b・W-S5 とは直列**（認証 Provider のファイルが重なる） |
 | 4 | W-S5 | W-S2c の PR ＋ 親ポインタ、かつ backend B-S5a の PR ＋ 親ポインタ | W-S3 / W-S4a / W-S4d2a。**W-S4b・W-S4c・W-S4d2b・W-S4d1・W-S4d3 とは直列**（認証 Provider・`settings/page.tsx`・`PlaybackProvider.tsx`・`AuthProvider.*.test.tsx` が重なる） |
-| 5（学習サイクル） | W-S4d2a | W-S1b・W-S2c・W-S4a の PR ＋ 親ポインタ | W-S3 / W-S4b / W-S4c / W-S5（テスト 5 本と `tests/helpers/fakeGateway.ts` だけを触る） |
+| 5（学習サイクル） | W-S4d2a | W-S1b・W-S2c・W-S4a の PR ＋ 親ポインタ | W-S3 / W-S4b / W-S4c / W-S5（テスト 5 本と `tests/helpers/gatewayDouble.ts` だけを触る） |
 | 6（学習サイクル） | W-S4d2b | W-S4d2a・W-S4b・W-S4c の PR ＋ 親ポインタ | W-S3 / W-S4a。W-S5 とは直列 |
 | 7（学習サイクル） | W-S4d1 | W-S4d2a・W-S4d2b の PR ＋ 親ポインタ（W-S1b・W-S4a〜c はその前提） | W-S3。W-S5 とは直列 |
 | 8（学習サイクル） | W-S4d3 | W-S4d1 の PR ＋ 親ポインタ | W-S3。W-S5 とは直列 |
@@ -65,7 +92,9 @@ release の単位は「依存先の submodule PR ＋ 親リポのポインタ PR
 
 ## unresolved
 
-**無し。** 2026-09-23 夜の user 決定で、W-0 の受入検査 blocked 3 件（C1 / SG-W0-1 / SG-W0-2 → SG-C5・SG-C6）と W-S5 の U-W5-1（→ SG-C13 = (A) 含める。主体確定の契機は `getMe` 成功・`getMe` 401・未確定後の login / register / passkey 成功の 5 つ）を閉じた。W-0 / W-S1b / W-S2a / W-S2a2 / W-S2b / W-S2c / W-S3 / W-S4a〜c / W-S4d1〜d3 / W-S5 に未決の選択は無い。親 plan `docs/plan/2026-09-16-design-review-refactor.md` W-0 行の「blocked → 再投入」表記は router が更新する。
+- **W-T7b の D-W7b-1**（設定画面での既定速度のサーバー保存が失敗したときの扱い）: SG-D4 は「サーバーを正本にし、ログイン時に端末へ写す」を決めたが、保存の失敗の扱いは新 Spec §8.2 の W-T7b 行（「J-W1 の結果による」）に無い。推奨は難易度と同じ規則（TA-R-PF-3）。決まるまで W-T7b を投入しない。
+- **W-T14** は backend B-S7 待ち（order は枠だけ。B-S7 の契約から request・応答・期待値を写して確定させる。SG-C79）。
+- 上記以外の order に未決の選択は無い（2026-09-23 夜の user 決定 SG-C5・C6・C13、2026-09-30 の SG-C50〜C79、2026-10-01 の SG-D3〜D5 で閉じた）。
 
 ## takt への投入手順（親リポ `news-listen` の作業ツリーで）
 
@@ -79,4 +108,4 @@ order はサブモジュール内の docs にあるが、takt のタスク単位
 
 ## 完了後
 - 各 slice の merge 後、`docs/trial-log/` に棄却・方針転換があれば追記（takt の record_trial_log が行う）。各 order の「記録」節にある親 docs への返却（共有仕様 §4.3 / §4.4 の保留解除・web-design §12 の書き換え）を router が行う。
-- 全 slice 完了で本フォルダを削除し、親 docs `design/web-design.md` §3〜§9 を target の内容へ書き換え、§12 を削除する。
+- W-T15 の完了（許可リスト 0 件）を含む全 slice 完了で本フォルダを削除し、親 docs `design/web-design.md` §3〜§9 を target の内容へ書き換え、§12 を削除する。
