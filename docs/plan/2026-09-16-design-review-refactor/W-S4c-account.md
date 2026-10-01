@@ -1,10 +1,16 @@
 ## web リファクタ W-S4c: Account — `PasswordPolicy` の単一化（12〜20）と `AuthSession` 判別共用体（学習機能サイクルで着手）
 
+> **2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正**（新 Spec = `docs/design/2026-09-30-implementation-spec-target-architecture.md`。§8.3 W-S4c の 3 項目を本文へ反映した）
+> - (1) パスワードの規則の置き場を `lib/account/domain/password.ts` に直した（旧 `lib/account/domain/password.ts`）。
+> - (2) `AuthSession` の遷移は `lib/account/domain/authSession.ts` の純関数 `reduce(session, event)` にし、`contexts/AuthProvider.tsx` は state を持って呼ぶだけにした。4 状態のテストは React なしで書く（W-28・TA-V8）。
+> - (3) `adminAccess` の入力は domain の `AuthSession`（`lib/account/domain/adminAccess.ts`。W-T1 が移した）。
+> - あわせて、完了条件に TA-V4 の TA-R-AC-3 の行（`removeBy: W-S4c`）が 0 件と、許可リストの `contexts/AuthContext.tsx` の行の `file` を `contexts/AuthProvider.tsx` に直すこと（`removeBy: W-T6` は変えない）を足した。
+
 ## 概要
-旧 W-S4 を context 境界で分けた 3 つ目。Account context の 2 項目: (1) パスワード規則を `lib/account/password.ts` の 1 実装（長さ **12〜20 文字**・文字種は現行 `countPasswordCharacterClasses`）に統一する、(2) `AuthSession` 判別共用体（`resolving` / `authenticated` / `anonymous` / `unavailable`）を導入し、`contexts/AuthContext.tsx` を `contexts/AuthProvider.tsx` へ揃える（CI-T15 の全体。W-S0 は cleanup 部分のみ先行済み）。旧 W-S4 order は (2) を落としていたが、親 docs web-design §12.1 Account 行・§12.2「名前」行（`AuthProvider.tsx` は W-S4）・§12.4（`AuthSession` は W-S4）と W-S5 order（「`AuthSession` union は W-S4」）が W-S4 の担当と定めているため、本 slice に含める（2026-09-23 点検で drift を修正）。正本は Implementation Spec §3.3（Account・SG7 注記）・§4 CI-T15・§5 CP7、[ADR-101](../../../../docs/adr/101-password-policy-cross-client-unification.md)、共有仕様 §6.5「失効の検知点」「失効時のトークン破棄は 401 のときだけ」・SL-03。**検証モード: 再設計しない**。新しい契約 ID は作らない。
+旧 W-S4 を context 境界で分けた 3 つ目。Account context の 2 項目: (1) パスワード規則を `lib/account/domain/password.ts` の 1 実装（長さ **12〜20 文字**・文字種は現行 `countPasswordCharacterClasses`）に統一する、(2) `AuthSession` 判別共用体（`resolving` / `authenticated` / `anonymous` / `unavailable`）を導入し、`contexts/AuthContext.tsx` を `contexts/AuthProvider.tsx` へ揃える（CI-T15 の全体。W-S0 は cleanup 部分のみ先行済み）。旧 W-S4 order は (2) を落としていたが、親 docs web-design §12.1 Account 行・§12.2「名前」行（`AuthProvider.tsx` は W-S4）・§12.4（`AuthSession` は W-S4）と W-S5 order（「`AuthSession` union は W-S4」）が W-S4 の担当と定めているため、本 slice に含める（2026-09-23 点検で drift を修正）。正本は Implementation Spec §3.3（Account・SG7 注記）・§4 CI-T15・§5 CP7、[ADR-101](../../../../docs/adr/101-password-policy-cross-client-unification.md)、共有仕様 §6.5「失効の検知点」「失効時のトークン破棄は 401 のときだけ」・SL-03。**検証モード: 再設計しない**。新しい契約 ID は作らない。
 
 ## 規模（見込み。根拠 = 2026-09-24 実測: `contexts/AuthContext.tsx` 157 行、`components/ui/AccountSection.tsx` 722 行、`app/signup/page.tsx` 265 行、`app/(app)/admin/users/page.tsx` 190 行、`useAuth()` の production 呼出 10 箇所、`tests/contexts/AuthContext.*.test.tsx` 3 ファイル 504 行）
-- production ≈ 200 行: `lib/account/password.ts` ≈ 40、3 画面の置換 ≈ 60、`AuthProvider.tsx`（改名＋ `AuthSession`）≈ 80、`app/page.tsx` の再試行導線 ≈ 15、`adminAccess.ts` ≈ 10。
+- production ≈ 200 行: `lib/account/domain/password.ts` ≈ 40、3 画面の置換 ≈ 60、`AuthProvider.tsx`（改名＋ `AuthSession`）≈ 80、`app/page.tsx` の再試行導線 ≈ 15、`adminAccess.ts` ≈ 10。
 - test ≈ 210 行: `password.test.ts` ≈ 40、`AuthProvider.*.test.tsx`（改名＋ `unavailable` 3 行）≈ 80、`adminAccess` / `AdminGate` ≈ 10、`tests/app/page.test.tsx`（160 行）の SL-03 ≈ 30、signup / AccountSection / admin users テストの境界値 ≈ 40、e2e の 21 文字 assertion ≈ 10。
 - 合計 ≈ 410 行。
 
@@ -18,25 +24,29 @@
 - `docs/trial-log/` を最初に読む。
 
 ## 対象（web サブモジュールのみ）
-1. **`lib/account/password.ts`（新規）**: `validatePassword(password) → ok | { reason: 'too_short' | 'too_long' | 'too_few_classes' }` の 1 実装。長さ 12〜20、文字種 3 種以上（現行 `countPasswordCharacterClasses` をここへ移す）。文言は呼出側。
-2. **3 箇所の置換**（量化する集合 = production でパスワード長を判定する箇所。2026-09-23 実測）: `app/(app)/admin/users/page.tsx:53`（現状 `< 8` → 12〜20 へ。挙動変更）、`app/signup/page.tsx:16-39`（`PASSWORD_MIN_LENGTH = 12`・`countPasswordCharacterClasses`。上限 20 を追加）、`components/ui/AccountSection.tsx:17-42`（同上）。各ファイルの局所実装・定数を削除し `lib/account/password.ts` を呼ぶ。ヒント文言（`signup:209`・`AccountSection:363`「12文字以上」）に上限 20 を足す。
-3. **`AuthSession` 判別共用体**（Spec §3.3、CP7）: `contexts/AuthContext.tsx` を `contexts/AuthProvider.tsx` に改名し、公開状態を `AuthStatus`（`'unknown' | 'authenticated' | 'unauthenticated'` の 3 値）から `AuthSession`（`resolving` / `authenticated(user)` / `anonymous` / `unavailable(failure)` の 4 状態）へ。`getMe` の `unauthorized` だけが `anonymous`（失効）、network / timeout / server / decode 失敗は `unavailable` に落としトークン（cookie）を保持、`retry()` で `resolving` へ戻る（SL-03）。既存の `useAuth()` の呼出側（`grep -rn "useAuth()" app components hooks contexts` で着手時に数え上げ）は `status` の 3 値を `session.kind` から導く互換 getter で受け、本 slice では呼出側を変えない（`unavailable` を `'unknown'` に写す）。`unavailable` のときの再試行導線は `app/page.tsx` の root gate（web-design §12.4 の 1 行目）に 1 箇所置く。失効 cleanup（W-S0 の `clearManagedServiceWorkerCaches()`。W-S5 後は `subjectCleanup`）の発火条件は変えない。
-4. **admin gate**: `lib/account/adminAccess.ts`（W-S0）の入力を `AuthSession` に替える（4 値 policy は不変。`AdminGate` は変更なし）。
+1. **`lib/account/domain/password.ts`（新規）**: `validatePassword(password) → ok | { reason: 'too_short' | 'too_long' | 'too_few_classes' }` の 1 実装。長さ 12〜20、文字種 3 種以上（現行 `countPasswordCharacterClasses` をここへ移す）。文言は呼出側。
+2. **3 箇所の置換**（量化する集合 = production でパスワード長を判定する箇所。2026-09-23 実測）: `app/(app)/admin/users/page.tsx:53`（現状 `< 8` → 12〜20 へ。挙動変更）、`app/signup/page.tsx:16-39`（`PASSWORD_MIN_LENGTH = 12`・`countPasswordCharacterClasses`。上限 20 を追加）、`components/ui/AccountSection.tsx:17-42`（同上）。各ファイルの局所実装・定数を削除し `lib/account/domain/password.ts` を呼ぶ。ヒント文言（`signup:209`・`AccountSection:363`「12文字以上」）に上限 20 を足す。
+3. **`AuthSession` 判別共用体**（Spec §3.3、CP7）: `contexts/AuthContext.tsx` を `contexts/AuthProvider.tsx` に改名し、公開状態を `AuthStatus`（`'unknown' | 'authenticated' | 'unauthenticated'` の 3 値）から `AuthSession`（`resolving` / `authenticated(user)` / `anonymous` / `unavailable(failure)` の 4 状態）へ。`getMe` の `unauthorized` だけが `anonymous`（失効）、network / timeout / server / decode 失敗は `unavailable` に落としトークン（cookie）を保持、`retry()` で `resolving` へ戻る（SL-03）。既存の `useAuth()` の呼出側（`grep -rn "useAuth()" app components hooks contexts` で着手時に数え上げ）は `status` の 3 値を `session.kind` から導く互換 getter で受け、本 slice では呼出側を変えない（`unavailable` を `'unknown'` に写す）。状態と遷移（`resolving` → `authenticated` / `anonymous` / `unavailable`、`retry` → `resolving`、`logout` → `anonymous`。既存 Spec §3.3 の表のうち本 slice が扱う分）は `lib/account/domain/authSession.ts` の純関数 `reduce(session, event)` が持ち、`AuthProvider.tsx` は `useState` で値を持って `reduce` を呼ぶだけにする（W-28。遷移②の事象 `expired` は W-S4d3 が足す）。`unavailable` のときの再試行導線は `app/page.tsx` の root gate（web-design §12.4 の 1 行目）に 1 箇所置く。失効 cleanup（W-S0 の `clearManagedServiceWorkerCaches()`。W-S5 後は `subjectCleanup`）の発火条件は変えない。
+4. **admin gate**: `lib/account/domain/adminAccess.ts`（W-S0。W-T1 が移した）の入力を domain の `AuthSession` に替える（4 値 policy は不変。`AdminGate` は変更なし）。
 
 ## 契約（RED テストの対応）
 | CI | 内容 | RED テスト |
 |---|---|---|
 | CI-T15 | `AuthSession` は 4 状態のみ。`getMe` の `unauthorized` 以外は `unavailable`。`authenticated → anonymous` の事後に `shell-*` / `api-*` が空。消去失敗は `CleanupIncomplete` として観測可能 | T-T15: `tests/contexts/AuthProvider.{test,expiry,passkey}.test.tsx`（既存 `AuthContext.*` を改名して移植）に `unavailable`（network / 5xx / decode）→ トークン保持・cleanup 不発火・`retry()` で再解決、の 3 行を追加。テスト名に `SL-03` を含める |
-| — | パスワード規則 | `tests/lib/account/password.test.ts`（11 / 12 / 20 / 21 文字の境界 4 行 ＋ 文字種 2 種 / 3 種の 2 行） |
+| CI-T15（遷移の純関数） | `AuthSession` の 4 状態と遷移 | `tests/lib/account/domain/authSession.test.ts`（React なし。状態 × 事象の表。`SL-03` をテスト名に含める行を持つ） |
+| — | パスワード規則 | `tests/lib/account/domain/password.test.ts`（11 / 12 / 20 / 21 文字の境界 4 行 ＋ 文字種 2 種 / 3 種の 2 行） |
 | CI-T16 | `AdminAccess` 4 値（不変） | 既存 `tests/lib/account/adminAccess.test.ts`・`tests/components/AdminGate.test.tsx` が入力型の変更以外は不変で green |
 
 ## 完了条件
 - `npm test` / `npm run lint` / `npm run typecheck` / `npm run typecheck:ts7` / `npm run build` 成功。e2e `main-flow` / `signup-flow` green（変更してよいのは 21 文字以上を拒否する assertion の追加だけ）。
 - T-T15 が `verifies: CI-T15` と `SL-03` をテスト名またはコメントに持つ。
-- **パスワード長の判定が 1 実装**（量化する集合 = `app/` `components/` `hooks/` `lib/` の `.ts` / `.tsx`）: `grep -rn "[pP]assword\.length\|PASSWORD_MIN_LENGTH\|PASSWORD_MAX_LENGTH\|countPasswordCharacterClasses" app components hooks lib` の出現が `lib/account/password.ts` だけ（2026-09-24 点検: 起票時の `length < ` は `app/(app)/vocabulary-test/page.tsx:20` の `choices.length < 2` を誤検出するため識別子で限定した）。
+- **パスワード長の判定が 1 実装**（量化する集合 = `app/` `components/` `hooks/` `lib/` の `.ts` / `.tsx`）: `grep -rn "[pP]assword\.length\|PASSWORD_MIN_LENGTH\|PASSWORD_MAX_LENGTH\|countPasswordCharacterClasses" app components hooks lib` の出現が `lib/account/domain/password.ts` だけ（2026-09-24 点検: 起票時の `length < ` は `app/(app)/vocabulary-test/page.tsx:20` の `choices.length < 2` を誤検出するため識別子で限定した）。
 - 12 文字未満・21 文字以上が `admin/users`・`AccountSection`・`signup` の 3 画面すべてで backend を呼ぶ前に拒否され、12〜20 文字は通る（各画面のテストで pin）。backend の境界（ADR-101）と一致することを着手時の確認結果として PR 説明に書く。
-- `contexts/AuthContext.tsx` が存在せず `contexts/AuthProvider.tsx` がある。`grep -rn "AuthContext" app components hooks contexts lib tests e2e` が 0 件（除外なし。コメントも含む: 2026-09-24 実測で `components/ui/LoginModal.tsx:19`・`lib/passkey.ts:11,54`・`lib/account/adminAccess.ts:4`・`tests/contexts/AuthContext.{passkey,expiry}.test.tsx` の説明文が該当し、`AuthProvider` に読み替える。`AuthProvider.tsx` 内の `createContext` 変数は `AuthSessionContext` に改名する。`useAuth` / `AuthProvider` の名は不変）。
+- `contexts/AuthContext.tsx` が存在せず `contexts/AuthProvider.tsx` がある。`grep -rn "AuthContext" app components hooks contexts lib tests e2e` が 0 件（除外なし。コメントも含む: 2026-09-24 実測で `components/ui/LoginModal.tsx:19`・`lib/passkey.ts:11,54`・`lib/account/domain/adminAccess.ts:4`・`tests/contexts/AuthContext.{passkey,expiry}.test.tsx` の説明文が該当し、`AuthProvider` に読み替える。`AuthProvider.tsx` 内の `createContext` 変数は `AuthSessionContext` に改名する。`useAuth` / `AuthProvider` の名は不変）。
+- **規則の置き場**: 許可リストの `removeBy: "W-S4c"` の行（TA-V4 の TA-R-AC-3: `admin/users/page.tsx:53`・`signup`・`AccountSection`）が 0 件。`contexts/AuthContext.tsx` の TA-D4 の行は `file` を `contexts/AuthProvider.tsx` に直す（行数と `removeBy: W-T6` は変えない）。TA-V1〜V4 が green。
+- **遷移の置き場**（集合 = `contexts/AuthProvider.tsx`）: `grep -n "'resolving'\|'unavailable'\|'anonymous'" contexts/AuthProvider.tsx` の出現が `reduce` の呼出と型の参照だけ（状態を直接書く `setSession({ kind: …})` が 0 件。PR 説明に列挙）。`lib/account/domain/authSession.ts` が `react` を import しない。
 - 起動時の `getMe` が network error のとき `unauthenticated` へ落ちず、ログインモーダルが出ず、再試行導線が出る（SL-03。`tests/app/page.test.tsx` で pin）。401 のときは従来どおり `anonymous` ＋ cleanup（W-S0 の挙動不変）。
+- **公開面**（NFR-10・AQ-6。2026-10-01 追加: 新しい domain の型を作る slice は、公開面の検査の対象にその型を足す。Spec §7 TA-V5・TA-V6）: `lib/account/domain/password.ts` の検査の結果の型と、`AuthSession`（判別共用体。`authenticated` が持つ `user` の入れ子を含む）を、TA-V5（静的。`tests/architecture/publicTypes.test.ts` の対象で、export する型の property と配列が `readonly`。違反は 0）と TA-V6（実行時。`tests/architecture/immutability.<context>.test.ts` に「渡した入力・返した値（入れ子を含む）を後から書き換えても、次の読みと不変条件が変わらない」の場合を 1 つ以上）に足す。
 
 ## 禁止事項 / scope 外
 - パスワード長を **8〜20 文字**にしない（Spec 本文の旧値。SG7 は 12〜20 が正）。文字種規則を変えない。

@@ -1,10 +1,15 @@
 ## web リファクタ W-S4d3: TP1 本体削除・HTTP status 分岐の eslint・失効検知の一般化（学習機能サイクルで着手）
 
+> **2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正**（新 Spec = `docs/design/2026-09-30-implementation-spec-target-architecture.md`。§8.3 W-S4d3 の 2 項目を本文へ反映した）
+> - (1) 遷移②は domain の事象 `expired` で表し（`lib/account/domain/authSession.ts` の `reduce(session, { type: 'expired' })`。W-S4c が置いた純関数に事象を足す）、`expire()` はそれを送るだけにした（W-28）。
+> - (2) eslint の規則（TA-D8: HTTP status の数値による分岐の禁止）は `eslint.config.mjs` に直接書かず、`architecture/eslint-boundaries.mjs`（W-T1）に足す。除外は新 Spec TA-D8 の 3 つ（`lib/api/gateway.ts`・`lib/platform/cacheStore.ts`・`app/api/**`）に揃えた（`cacheStore.ts` は `switch (status)` を持つ）。
+> - あわせて、helper の名前を `tests/helpers/gatewayDouble.ts`（`createGatewayDouble`）に直した（W-S4d2a の補正と同じ）。
+
 ## 概要
-旧 W-S4d を 4 PR に分けた最後（2026-09-24）。W-S4d1 で production の呼出が 0 になった `createApiClient()`・`ApiError`・`lib/api.ts`（TP1）を削除し、それらを検証していた `tests/lib/api.*.test.ts` 6 本を `lib/api/<resource>` 向けに書き換え（W-S4d2b の処遇表）、Spec §4 冒頭「呼出側が `kind` 以外（数値 status）で分岐することを eslint で禁止」を `eslint.config.mjs` に入れ、失効の検知点を「`getMe` だけ」から「任意 API の `unauthorized`」へ一般化する（共有仕様 §6.5）。正本は Implementation Spec §2・§4 冒頭・§6 S1 行（TP1 の削除条件）、共有仕様 §6.5「失効の検知点」・§4.4 SL-05。**検証モード: 再設計しない**。新しい契約 ID は作らない。
+旧 W-S4d を 4 PR に分けた最後（2026-09-24）。W-S4d1 で production の呼出が 0 になった `createApiClient()`・`ApiError`・`lib/api.ts`（TP1）を削除し、それらを検証していた `tests/lib/api.*.test.ts` 6 本を `lib/api/<resource>` 向けに書き換え（W-S4d2b の処遇表）、Spec §4 冒頭「呼出側が `kind` 以外（数値 status）で分岐することを eslint で禁止」を `architecture/eslint-boundaries.mjs` に入れ、失効の検知点を「`getMe` だけ」から「任意 API の `unauthorized`」へ一般化する（共有仕様 §6.5）。正本は Implementation Spec §2・§4 冒頭・§6 S1 行（TP1 の削除条件）、共有仕様 §6.5「失効の検知点」・§4.4 SL-05。**検証モード: 再設計しない**。新しい契約 ID は作らない。
 
 ## 規模（見込み。根拠 = 2026-09-24 実測）
-- production ≈ 130 行（うち削除 ≈ 100）: `lib/api.ts` 削除（W-S1b 後は合成点 ≈ 80 行）、`lib/api/legacyRequest.ts` 削除（W-S1b が置いた場合 ≈ 40 行）、`eslint.config.mjs` ≈ 25、`ApiClientProvider` の `onUnauthorized` ≈ 20、`contexts/AuthProvider.tsx` の `expire` と配線 ≈ 15。
+- production ≈ 130 行（うち削除 ≈ 100）: `lib/api.ts` 削除（W-S1b 後は合成点 ≈ 80 行）、`lib/api/legacyRequest.ts` 削除（W-S1b が置いた場合 ≈ 40 行）、`architecture/eslint-boundaries.mjs` ≈ 25、`lib/account/domain/authSession.ts` の事象 ≈ 10、`ApiClientProvider` の `onUnauthorized` ≈ 20、`contexts/AuthProvider.tsx` の `expire` と配線 ≈ 15。
 - test ≈ 450 行: `tests/lib/api.*.test.ts` 6 本の書き換え ≈ 370（`client.` / `createApiClient` / `ApiError` に触れる行の実測: `api.test.ts` 298・`api.auth.test.ts` 29・`api.passkey.test.ts` 17・`api.invites.test.ts` 14・`api.sessions.test.ts` 8・`api.starred.test.ts` 4）、`tests/contexts/AuthProvider.expiry.test.tsx` に 2 件 ≈ 40、`ApiClientProvider` の `onUnauthorized` 単体 ≈ 40。
 - 合計 ≈ 580 行。
 
@@ -17,18 +22,19 @@
 
 ## 対象（web サブモジュールのみ）
 1. **TP1 の削除**: `lib/api.ts`（`ApiError`・`createApiClient()`・wrap 関数）と `lib/api/legacyRequest.ts`（存在すれば）を削除する。`lib/api/` に残るのは `gateway.ts` と 10 リソースファイルだけ。
-2. **`tests/lib/api.*.test.ts` 6 本の書き換え**（W-S4d2b 処遇表の実施）: import を `@/lib/api/<resource>`、呼出を `fn(fakeGateway, ...args)`（`tests/helpers/fakeGateway.ts`）に替え、oracle を「request の形（method ＋ path ＋ body ＋ header）と `Result` の変換」にする。`fetch` mock で HTTP 応答を組んでいる行のうち gateway の `request` 自体の検証（W-S1 の T-T12 / T-T13。W-S1 が同じ 6 ファイルに置いた場合は `tests/lib/api/gateway.test.ts` へ分離して残し、別ファイルに置いた場合はそのまま）と重複する部分を削り、resource 関数の責務（path・method・body・応答の型）だけを残す。`describe` の関数名は不変。件数は減ってよい（減った分を担うテストを PR 説明に対応表で示す）。
+2. **`tests/lib/api.*.test.ts` 6 本の書き換え**（W-S4d2b 処遇表の実施）: import を `@/lib/api/<resource>`、呼出を `fn(double, ...args)`（`tests/helpers/gatewayDouble.ts` の `createGatewayDouble()`）に替え、oracle を「request の形（method ＋ path ＋ body ＋ header）と `Result` の変換」にする。`fetch` mock で HTTP 応答を組んでいる行のうち gateway の `request` 自体の検証（W-S1 の T-T12 / T-T13。W-S1 が同じ 6 ファイルに置いた場合は `tests/lib/api/gateway.test.ts` へ分離して残し、別ファイルに置いた場合はそのまま）と重複する部分を削り、resource 関数の責務（path・method・body・応答の型）だけを残す。`describe` の関数名は不変。件数は減ってよい（減った分を担うテストを PR 説明に対応表で示す）。
 3. **失効検知の一般化**（共有仕様 §6.5・SL-05。確定した形）:
    - `ApiClientProvider` に省略可能な prop `onUnauthorized: () => void` を加える。Provider は受け取った gateway の `request` を包み、戻り値が `{ ok: false, failure: { kind: 'unauthorized' } }` のとき `onUnauthorized()` を呼んでから `Result` をそのまま返す（`Result` を書き換えない。呼出側の文言写像は不変）。
-   - `contexts/AuthProvider.tsx` は `expire()` を 1 つ持つ: `session.kind === 'authenticated'` のときだけ遷移②（`authenticated → anonymous`）と後始末（W-S5 後は `subjectCleanup(A)`、前は W-S0 の cleanup）を 1 回走らせ、それ以外（`resolving` / `anonymous` / `unavailable`）では何もしない。`refreshMe` の `getMe` が `unauthorized` を返す既存経路も `expire()` を呼ぶ形に寄せる（遷移②を起こす関数が `expire` の 1 つになる。入口は `getMe` と Provider 経由の任意 API の 2 つ）。
+   - `lib/account/domain/authSession.ts` に事象 `expired` を足す: `authenticated` で受けたら `anonymous`、それ以外の状態では状態を変えない（純関数。React なしのテスト）。
+   - `contexts/AuthProvider.tsx` は `expire()` を 1 つ持つ: `reduce(session, { type: 'expired' })` を送り、結果が `authenticated → anonymous` の遷移だったときだけ後始末（W-S5 後は `subjectCleanup(A)`、前は W-S0 の cleanup）を 1 回走らせ、それ以外（`resolving` / `anonymous` / `unavailable`）では何もしない。`refreshMe` の `getMe` が `unauthorized` を返す既存経路も `expire()` を呼ぶ形に寄せる（遷移②を起こす関数が `expire` の 1 つになる。入口は `getMe` と Provider 経由の任意 API の 2 つ）。
    - `AuthProvider` は W-S4d1 で描画している `<ApiClientProvider gateway={gateway}>` に `onUnauthorized={expire}` を渡す。`AuthProvider` 自身の呼出（`login` / `register` / passkey）は包まれていない raw gateway を使うため、ログイン失敗の 401 は `onUnauthorized` を通らず、かつ `expire` は `authenticated` でなければ no-op（SL-05 の二重の担保）。
    - 同じ画面で複数の API が同時に `unauthorized` を返しても、最初の `expire()` で `anonymous` になった後は no-op なので後始末は 1 回（完了条件で pin）。
    - **`app/layout.tsx` の Provider 順序（本 slice 完了時点。上から）**: `PreferencesProvider`（W-S4b。W-S4b 前は `AppProvider`）→ `AuthProvider`（内部で `ApiClientProvider gateway onUnauthorized` を描画）→ `ToastProvider` → `PlaybackProvider`（`useApiClient()` で gateway を取る）→ `{children}` `PushRegistrar` `ClientErrorReporter`。`ApiClientProvider` は layout に直接書かない。
-4. **eslint（Spec §4 冒頭）**: `eslint.config.mjs` に次の block を加える（`no-restricted-properties` は識別子名で縛るため `podcast.status` を巻き込む。数値 Literal との比較だけを縛る `no-restricted-syntax` にする）。
+4. **eslint（Spec §4 冒頭・新 Spec TA-D8）**: `architecture/eslint-boundaries.mjs`（W-T1。`eslint.config.mjs` が読み込む）に次の block を加える（`no-restricted-properties` は識別子名で縛るため `podcast.status` を巻き込む。数値 Literal との比較だけを縛る `no-restricted-syntax` にする）。
    ```js
    {
      files: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "hooks/**/*.{ts,tsx}", "contexts/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
-     ignores: ["lib/api/gateway.ts", "app/api/backend/**"],
+     ignores: ["lib/api/gateway.ts", "lib/platform/cacheStore.ts", "app/api/**"],  // 新 Spec TA-D8 の「書いてよい」3 つ
      rules: {
        "no-restricted-syntax": ["error",
          { selector: "BinaryExpression[operator=/^(===|!==|==|!=|<|<=|>|>=)$/][left.type='MemberExpression'][left.property.name='status'][right.type='Literal'][right.raw=/^[0-9]+$/]",
@@ -56,7 +62,8 @@
 - `lib/api.ts`・`lib/api/legacyRequest.ts` が存在しない。`ls lib/api/` が `gateway.ts` ＋ 10 リソースファイルの 11 件。
 - **`createApiClient` / `ApiError` の出現 0 件**（量化する集合 = `app/` `components/` `hooks/` `contexts/` `lib/` `tests/` `e2e/`。除外なし。コメントも含めて 0）。
 - eslint: 負例 `res.status === 401` と `switch (err.status) { case 400: }` を `app/` の一時ファイルに置いた `npm run lint` が非ゼロ終了し、正例 `podcast.status === 'completed'` では終了 0 であることを確認済み（確認後に一時ファイルを削除）。`lib/api/gateway.ts` の `=== 204` が lint で指摘されない。
-- 失効検知: 上表 2 件が green。`grep -rn "expire()" contexts/AuthProvider.tsx` の呼出元が `refreshMe` と `onUnauthorized` の 2 箇所、`setSession(.*anonymous` 相当の遷移②を書く箇所が `expire` の中 1 箇所（PR 説明に列挙）。
+- 失効検知: 上表 2 件が green。`grep -rn "expire()" contexts/AuthProvider.tsx` の呼出元が `refreshMe` と `onUnauthorized` の 2 箇所、遷移②は `lib/account/domain/authSession.ts` の `expired` の 1 箇所だけ（`grep -n "'anonymous'" contexts/AuthProvider.tsx` に状態を直接書く行が 0 件。PR 説明に列挙）。`tests/lib/account/domain/authSession.test.ts` に `expired` の行（4 状態 × 1 事象。`SL-05` をテスト名に含める）。
+- **許可リスト**: TA-D8 の行が 0 件（W-S4d1 で 0 になっている。本 slice で増えない）。`eslint.config.mjs` に TA-D8 の block を直接書いていない（`grep -n "no-restricted-syntax" eslint.config.mjs` が 0 件で、`architecture/eslint-boundaries.mjs` に 1 件以上）。
 - `app/layout.tsx` の Provider 順序が対象 3 の並びと一致し、`ApiClientProvider` が layout に無い。
 - `tests/lib/api.*.test.ts` 6 本が `@/lib/api/<resource>` だけを import し（`grep -n "from '@/lib/api'" tests/lib/api.*.test.ts` が 0 件）、削った件数の対応表が PR 説明にある。
 

@@ -1,5 +1,9 @@
 ## web リファクタ W-S2c: 旧再生実装の削除（削除のみ）
 
+> **2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正**（新 Spec = `docs/design/2026-09-30-implementation-spec-target-architecture.md`）
+> - (1) eslint の 2 つの規則（`currentPodcast`・`contexts → components`）は `eslint.config.mjs` に直接書かず、W-T1 が置いた `architecture/eslint-boundaries.mjs` に足す（新 Spec §7 TA-V1）。
+> - (2) 完了条件に「許可リスト `architecture/boundaries.allowlist.json` の、`removeBy` が W-S2c の行が 0 件」を足した（W-T1 が割り当てた 4 行: `contexts/AudioPlayerContext.tsx` の TA-D4・TA-D6、`hooks/useAudioPlayer.ts` の TA-D11・TA-D5（`@/lib/config`））。
+
 ## 概要
 W-S2b で未参照になった旧再生実装と `AppContext.currentPodcast` を削除し、`reorderUpNext` → `moveUpNext` の rename を完結させ、依存方向の eslint ルール（RF19・T-T7b）で再発を防ぐ。3 段分割の ③。本 slice は**削除と、削除の再発防止ルールの追加だけ**を行い、新しい挙動を入れない。正本は Implementation Spec §3.1（`AppContext.currentPodcast` 削除・rename 独立コミット）・§4 CI-T7・§5 naming_decisions / dependency_direction、親 docs web-design §12.2「`AppContext` の解体」行。**検証モード: 再設計しない**。
 
@@ -29,7 +33,8 @@ W-S2b で未参照になった旧再生実装と `AppContext.currentPodcast` を
 18. `reorderUpNext` の最終出現: 4・11・12 の削除と `tests/components/AudioPlayerBar.test.tsx:439` のコメント修正を **1 つの独立コミット**にする（Spec naming_decisions「挙動不変の独立コミット」。他の削除と混ぜない）。**コミット順**: 旧 `lib/playbackQueue.ts` を import する `contexts/AudioPlayerContext.tsx`（`:12,188`）の削除（対象 1）を先のコミットに置き、rename コミットは 4・11・12・`AudioPlayerBar.test.tsx:439` の 4 ファイルに閉じたまま typecheck が通る状態で切る（各コミットで `npm run typecheck` green）。
 
 **追加（再発防止ルールのみ。`eslint.config.mjs`）**
-19. `no-restricted-properties`: `currentPodcast` の参照を禁止。`no-restricted-imports`: `contexts/**` から `@/components/*` の import を禁止（T-T7b。CI での実行担保は W-S3）。
+19. `architecture/eslint-boundaries.mjs`（W-T1）に足す: `no-restricted-properties` で `currentPodcast` の参照を禁止。TA-D6（`contexts/**` から `@/components/*` の import を禁止。T-T7b）は W-T1 が規則を置き、`AudioPlayerContext.tsx:6` を許可リストに載せている。本 slice はファイルの削除でその行を消す（規則の重複を足さない。W-T1 の規則が無い場合に限り、ここで足す）。`eslint.config.mjs` には書かない。CI での実行担保は W-S3。
+20. `architecture/boundaries.allowlist.json`: `removeBy: "W-S2c"` の 4 行を消す（削除したファイルの行）。
 
 ## 完了条件
 - `npm test` / `npm run lint` / `npm run typecheck` / `npm run typecheck:ts7` / `npm run build` 成功。e2e 3 本 green（変更なし）。テスト件数 = 着手前 − 削除分（削除 10 ファイルの件数 ＋ `tests/contexts/AppContext.test.tsx` の 2 件。内訳を PR 説明に記録）。
@@ -42,6 +47,7 @@ W-S2b で未参照になった旧再生実装と `AppContext.currentPodcast` を
   - 再生系からの TP1 参照: `grep -rln "ApiError" contexts/PlaybackProvider.tsx lib/playback lib/platform` が 0 件（`app/` `components/` `contexts/AuthContext.tsx` の `ApiError` import は W-S4d1 まで残る。本 slice の判定対象に含めない）。
   - `contexts/` → `components/`: `grep -rn "from '@/components" contexts` が 0 件、かつ eslint の `no-restricted-imports` が有効。
 - rename の独立コミットが PR 内に 1 つあり、その diff が対象 18 の 4 ファイルに閉じている。
+- **許可リスト**: `grep -c '"removeBy": "W-S2c"' architecture/boundaries.allowlist.json` が 0。TA-V1（`npm run lint`）・TA-V2（`tests/architecture/boundaries.test.ts`）が green（実測した違反の集合 = 許可リスト）。ほかの行は増減しない。
 - eslint ルール 2 件を意図的に違反させたローカル検証で `npm run lint` が非ゼロ終了することを確認済み（確認後に混入コードを削除）。
 
 ## 禁止事項 / scope 外

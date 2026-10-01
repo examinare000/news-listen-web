@@ -1,5 +1,8 @@
 ## web リファクタ W-S3: CI ゲート追加（typecheck:ts7・独立 build・依存方向 eslint）
 
+> **2026-10-01 目標アーキテクチャ（ADR-110・Spec §8.3）による補正**（新 Spec = `docs/design/2026-09-30-implementation-spec-target-architecture.md`）
+> - 完了条件に「`tests/architecture/**` が `npm test` で、境界の規則（`architecture/eslint-boundaries.mjs`）が `npm run lint` で、CI の `lint-test` ジョブの中で走る」を足した。`.github/workflows/ci.yml:24-27` は既に `lint`・`typecheck`・`test` を実行しているので、W-T1 の時点から CI で走る。本 slice は確認だけ（新 Spec §7・§8.3 W-S3）。
+
 ## 概要
 CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマンドを組み込み、依存方向違反（`contexts/` → `components/`、`currentPodcast` 直接参照）を機械検査できるようにする。正本は user 承認済みの Implementation Spec `docs/design/2026-09-16-implementation-spec-domain-model.md`（§4 CI-T7b・§6 S3 行・§7 R8）。本タスクは**承認済み指示書に従う実装**であり、analyze_order は検証モード（新規設計をしない）。generate_spec の spec.md は Spec の該当契約（CI-T7b）の抜粋で足りる。
 
@@ -39,10 +42,11 @@ CI（`.github/workflows/ci.yml`）に既に手元で実行済みの検証コマ�
 - `npm audit` が `ci.yml` に追加されていない。
 - `no-restricted-properties`（`currentPodcast`）・`no-restricted-imports`（`contexts/` → `components/`）のルール違反を意図的に混入させたローカル検証で `npm run lint` が非ゼロ終了することを確認済み（確認後は混入コードを削除する）。
 - CI 定義の差分がレビュー対象であり、意図しないジョブ順序変更・ステップ削除がない。
+- **目標アーキテクチャの検査が CI で走る**（量化する集合 = `tests/architecture/*.test.ts` の全ファイル・`architecture/eslint-boundaries.mjs` の全規則）: `lint-test` ジョブの `npm run test` のログに `tests/architecture/` の全ファイルが出る（`ls tests/architecture/*.test.ts` の一覧と突き合わせ、PR 説明に貼る）。`eslint.config.mjs` が `architecture/eslint-boundaries.mjs` を読み込んでいる（`grep -n "eslint-boundaries" eslint.config.mjs` が 1 件以上）。`architecture/eslint-boundaries.mjs` の規則を 1 つ意図的に破ったローカル検証で `npm run lint` が非ゼロ終了する（確認後に混入コードを削除）。
 
 ## 禁止事項 / scope 外
 - `npm audit` の追加はしない（Q8）。
-- eslint ルール本体の新規設計・追加はしない（W-S2c の作業範囲。本 slice は CI 実行の担保のみ）。
+- eslint ルール本体の新規設計・追加はしない（W-T1・W-S2c の作業範囲。本 slice は CI 実行の担保のみ）。`architecture/**`・`tests/architecture/**` を変えない。
 - `e2e` ジョブ・`secret-scan` ジョブの変更はしない。
 - 仕様にない業務条件を足さない。
 
