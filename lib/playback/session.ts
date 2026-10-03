@@ -1,6 +1,6 @@
 // 再生セッション: 1 つの AudioElement を駆動する状態機械。
 // 状態変化は 13 遷移と、表の外のリセット stop() だけ。表にない入力は no-op（throw しない）。
-// 契約の正本は docs/design/2026-09-16-implementation-spec-domain-model.md §3.1。
+// 契約の正本は docs/design/modules/web/2026-09-16-implementation-spec-domain-model.md §3.1。
 import type { ApiFailure } from '@/lib/api/gateway'
 import type { Podcast, DifficultyLevel } from '@/types'
 import type { AudioElement } from './ports'
