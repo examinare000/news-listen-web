@@ -1,9 +1,10 @@
 // 再生セッション: 1 つの AudioElement を駆動する状態機械。
 // 状態変化は 13 遷移と、表の外のリセット stop() だけ。表にない入力は no-op（throw しない）。
 // 契約の正本は docs/design/modules/web/2026-09-16-implementation-spec-domain-model.md §3.1。
-import type { ApiFailure } from '@/lib/api/gateway'
-import type { Podcast, DifficultyLevel } from '@/types'
-import type { AudioElement } from './ports'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
+import type { Podcast } from '@/types'
+import type { AudioElement } from './audioElement'
 
 /** 8 段の再生速度。 */
 export const PLAYBACK_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5] as const
@@ -105,6 +106,35 @@ function isAutoplayBlocked(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'name' in error && error.name === 'NotAllowedError'
 }
 
+/** 呼出側の値を共有しないよう、plain object と配列だけを全深さで複製する。release 口の audioHandle は同一参照のまま。 */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false
+  const proto: unknown = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+function cloneDeep<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v: unknown) => cloneDeep(v)) as T
+  if (isPlainObject(value)) {
+    const copy: Record<string, unknown> = {}
+    for (const [key, v] of Object.entries(value)) copy[key] = key === 'audioHandle' ? v : cloneDeep(v)
+    return copy as T
+  }
+  return value
+}
+
+function freezeDeep<T>(value: T): T {
+  if (typeof value !== 'object' || value === null) return value
+  if (Array.isArray(value)) {
+    for (const v of value as unknown[]) freezeDeep(v)
+  } else if (isPlainObject(value)) {
+    for (const [key, v] of Object.entries(value)) if (key !== 'audioHandle') freezeDeep(v)
+  } else {
+    return value
+  }
+  return Object.freeze(value)
+}
+
 function handleOf(state: PlaybackState): AudioHandle | undefined {
   return state.status === 'idle' ? undefined : state.episode.audioHandle
 }
@@ -118,7 +148,9 @@ export function createPlaybackSession(audio: AudioElement): PlaybackSession {
   const emit = (event: PlaybackEvent): void => {
     for (const listener of [...listeners]) listener(event)
   }
+  // 状態に入る episode は start が作った凍結済みの写しだけなので辿らない（W-S2a1 で reason.failure を足すときは見直す）。
   const assign = (next: PlaybackState): void => {
+    if (next.status === 'errored') freezeDeep(next.reason)
     state = Object.freeze(next)
   }
   const commit = (next: PlaybackState): void => {
@@ -207,7 +239,8 @@ export function createPlaybackSession(audio: AudioElement): PlaybackSession {
   return {
     state: () => state,
 
-    start(episode, resumePosition, speed) {
+    start(given, resumePosition, speed) {
+      const episode = freezeDeep(cloneDeep(given))
       const previousHandle = handleOf(state)
       token += 1
       const s = state

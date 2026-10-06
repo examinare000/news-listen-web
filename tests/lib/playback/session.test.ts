@@ -1,7 +1,7 @@
-// PlaybackSession（lib/playback/session）の契約テスト。
+// PlaybackSession（lib/playback/domain/session）の契約テスト。
 // verifies: CI-T1, CI-T1b, CI-T2, CI-T3, CI-T4, CI-P08, CI-C03
 //
-// RED 理由: `@/lib/playback/session`・`@/lib/playback/resume` がまだ存在しない。
+// RED 理由: `@/lib/playback/domain/session`・`@/lib/playback/domain/resume` がまだ存在しない。
 //
 // 公開 API（このテストが固定する形）:
 //   createPlaybackSession(audio: AudioElement): PlaybackSession
@@ -17,15 +17,15 @@
 // AudioElement への呼出回数は assert しない（handle の release 回数は契約そのものなので例外）。
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
-import { createPlaybackSession, PLAYBACK_SPEEDS } from '@/lib/playback/session'
+import { createPlaybackSession, PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type {
   AudioHandle,
   PlayableEpisode,
   PlaybackEvent,
   PlaybackSession,
   PlaybackSpeed,
-} from '@/lib/playback/session'
-import { resolveResumePosition } from '@/lib/playback/resume'
+} from '@/lib/playback/domain/session'
+import { resolveResumePosition } from '@/lib/playback/domain/resume'
 import { MockAudio } from '../../helpers/mockAudio'
 
 // ---------------------------------------------------------------------------

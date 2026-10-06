@@ -1,4 +1,4 @@
-import type { UserRole } from '@/types/index'
+import type { UserRole } from './role'
 
 // admin 4 ページで重複していた gating 判定を集約する単一 policy（CI-T16）。
 // lib → contexts への逆依存を避けるため、AuthContext の型を import せず構造的に定義する
@@ -7,8 +7,8 @@ import type { UserRole } from '@/types/index'
 export type AdminAccess = 'loading' | 'login_required' | 'denied' | 'granted'
 
 export interface AdminAccessSession {
-  status: 'unknown' | 'authenticated' | 'unauthenticated'
-  user: { role: UserRole } | null
+  readonly status: 'unknown' | 'authenticated' | 'unauthenticated'
+  readonly user: { readonly role: UserRole } | null
 }
 
 export function adminAccess(session: AdminAccessSession): AdminAccess {

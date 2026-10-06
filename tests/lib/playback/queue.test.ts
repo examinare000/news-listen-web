@@ -1,9 +1,9 @@
-// 新モジュール lib/playback/queue の契約テスト。
+// 新モジュール lib/playback/domain/queue の契約テスト。
 // - 「playbackQueue」describe: 旧 tests/lib/playbackQueue.test.ts の全ケース（reorderUpNext → moveUpNext の読み替えのみ）。
 // - それ以降: 出力 gate の網羅列挙・入力 gate（不変条件を破る q の入力）・正規化・no-op の同一参照・export 面。
 // verifies: CI-T9
 //
-// RED 理由: `@/lib/playback/queue` がまだ存在しない。
+// RED 理由: `@/lib/playback/domain/queue` がまだ存在しない。
 import { describe, test, expect } from 'vitest'
 import {
   emptyQueue,
@@ -17,8 +17,8 @@ import {
   advance,
   remove,
   moveUpNext,
-} from '@/lib/playback/queue'
-import type { QueueState } from '@/lib/playback/queue'
+} from '@/lib/playback/domain/queue'
+import type { QueueState } from '@/lib/playback/domain/queue'
 import type { Podcast } from '@/types'
 
 // issue #81: 再生キューの純粋ロジック（自動次再生・空キュー停止・並べ替え等）。
@@ -39,7 +39,7 @@ function pod(id: string): Podcast {
   }
 }
 
-const ids = (q: { items: Podcast[] }) => q.items.map((p) => p.id)
+const ids = (q: { items: ReadonlyArray<Podcast> }) => q.items.map((p) => p.id)
 
 describe('playbackQueue', () => {
   test('advance moves to next then stops at end', () => {
@@ -132,9 +132,9 @@ describe('playbackQueue', () => {
 // ---------------------------------------------------------------------------
 // 出力 gate の網羅: 公開操作の全戻り値が不変条件 1〜3 を満たす（決定的な列挙。乱数を使わない）
 // ---------------------------------------------------------------------------
-type Q = QueueState
+type Q = QueueState<Podcast>
 
-function assertInvariants(q: QueueState, trail: string) {
+function assertInvariants(q: QueueState<Podcast>, trail: string) {
   const idList = q.items.map((p) => p.id)
   expect(new Set(idList).size, `ids unique after ${trail}`).toBe(idList.length)
   if (q.items.length === 0) {
@@ -193,7 +193,7 @@ describe('CI-T9 出力 gate（公開操作の全戻り値が不変条件 1〜3 �
       }
     }
     // expect を 18,278 ステップ × 数回呼ぶと遅いため、列挙中は述語だけで判定し、違反時に詳細を出す。
-    const assertInvariantsFast = (q: QueueState) => {
+    const assertInvariantsFast = (q: QueueState<Podcast>) => {
       const idList = q.items.map((p) => p.id)
       const ok =
         new Set(idList).size === idList.length &&
@@ -339,7 +339,7 @@ describe('CI-T9 no-op 経路は入力 q を同一参照で返す', () => {
 
 describe('CI-T9 export 面（公開 11 操作だけ）', () => {
   test('create と reorderUpNext を export せず、11 操作と一致する', async () => {
-    const Q = await import('@/lib/playback/queue')
+    const Q = await import('@/lib/playback/domain/queue')
     expect(Object.keys(Q).sort()).toEqual(
       [
         'add',

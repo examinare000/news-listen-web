@@ -7,9 +7,9 @@
 
 export interface ResolvePlaybackInput {
   /** キャッシュ済み音声が存在するか。 */
-  hasCached: boolean
+  readonly hasCached: boolean
   /** オンライン状態か（navigator.onLine 等）。 */
-  isOnline: boolean
+  readonly isOnline: boolean
 }
 
 export type PlaybackSource = 'cached' | 'network' | 'unavailable'

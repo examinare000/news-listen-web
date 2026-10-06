@@ -5,16 +5,43 @@
 // 不変条件: (1) items の id は一意 (2) currentIndex は null か 0..len-1 の整数 (3) 空なら null。
 // QueueState を返す全経路は create を通り、状態を受け取る操作は入口でも検査する（違反は呼出側のバグとして throw）。
 
-import type { Podcast } from '@/types'
+type Identified = { readonly id: string }
 
-export interface QueueState {
+export interface QueueState<T extends Identified> {
   /** キュー全体（再生済み + 現在 + 待機）。 */
-  readonly items: Podcast[]
+  readonly items: ReadonlyArray<T>
   /** 現在再生中の位置。未再生・空のときは null。 */
   readonly currentIndex: number | null
 }
 
-function create(items: Podcast[], currentIndex: number | null): QueueState {
+// Queue が複製・凍結した要素の記録。記録にある要素は同じ参照のまま使い、無ければ複製して凍結する。
+// 記録に入るのはここで作った写しだけで、呼出側の値は入らない。
+const owned = new WeakSet<object>()
+
+function isPlain(value: unknown): value is object {
+  if (typeof value !== 'object' || value === null) return false
+  if (Array.isArray(value)) return true
+  const proto: unknown = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
+function cloneFrozen(value: unknown): unknown {
+  if (!isPlain(value)) return value
+  const copy: unknown = Array.isArray(value)
+    ? value.map((v: unknown) => cloneFrozen(v))
+    : Object.fromEntries(Object.entries(value).map(([k, v]) => [k, cloneFrozen(v)]))
+  return Object.freeze(copy)
+}
+
+function own<T>(item: T): T {
+  if (!isPlain(item) || owned.has(item)) return item
+  const copy = cloneFrozen(item) as T & object
+  owned.add(copy)
+  return copy
+}
+
+function assertValid<T extends Identified>(q: QueueState<T>): void {
+  const { items, currentIndex } = q
   if (new Set(items.map((p) => p.id)).size !== items.length) {
     throw new Error('QueueState の不変条件違反: podcast id が重複している')
   }
@@ -25,39 +52,38 @@ function create(items: Podcast[], currentIndex: number | null): QueueState {
       throw new Error('QueueState の不変条件違反: currentIndex が範囲外')
     }
   }
-  return { items, currentIndex }
 }
 
-/** 入力の q が不変条件を満たすことを、処理の前に確かめる。 */
-function assertValid(q: QueueState): void {
-  create(q.items, q.currentIndex)
+function create<T extends Identified>(items: ReadonlyArray<T>, currentIndex: number | null): QueueState<T> {
+  assertValid({ items, currentIndex })
+  return Object.freeze({ items: Object.freeze(items.map(own)), currentIndex })
 }
 
-const emptyItems: Podcast[] = []
-Object.freeze(emptyItems)
+const emptyItems: ReadonlyArray<never> = Object.freeze([])
 
 /** 空のキュー。 */
-export const emptyQueue: QueueState = Object.freeze({ items: emptyItems, currentIndex: null })
+export const emptyQueue: QueueState<never> = Object.freeze({ items: emptyItems, currentIndex: null })
 
-/** 現在再生中の Podcast（なければ null）。 */
-export function current(q: QueueState): Podcast | null {
+/** 現在再生中の要素（なければ null）。 */
+export function current<T extends Identified>(q: QueueState<T>): T | null {
   if (q.currentIndex === null) return null
-  return q.items[q.currentIndex] ?? null
+  const item = q.items[q.currentIndex] as T | undefined
+  return item === undefined ? null : own(item)
 }
 
 /** 再生待ち（現在より後ろ）。 */
-export function upNext(q: QueueState): Podcast[] {
-  if (q.currentIndex === null) return [...q.items]
-  return q.items.slice(q.currentIndex + 1)
+export function upNext<T extends Identified>(q: QueueState<T>): ReadonlyArray<T> {
+  const rest = q.currentIndex === null ? q.items : q.items.slice(q.currentIndex + 1)
+  return Object.freeze(rest.map(own))
 }
 
 /** 単一エピソードで開始する（既存キューを置き換える）。 */
-export function start(_q: QueueState, podcast: Podcast): QueueState {
+export function start<T extends Identified>(_q: QueueState<T>, podcast: T): QueueState<T> {
   return create([podcast], 0)
 }
 
 /** 一覧を指定位置から再生する。重複 id は先勝ち、startAt の NaN は 0・小数は切り捨て。 */
-export function setQueue(items: Podcast[], startAt: number): QueueState {
+export function setQueue<T extends Identified>(items: ReadonlyArray<T>, startAt: number): QueueState<T> {
   if (items.length === 0) return emptyQueue
   const requested = Number.isNaN(startAt) ? 0 : Math.trunc(startAt)
   const startId = items[Math.max(0, Math.min(requested, items.length - 1))].id
@@ -71,14 +97,14 @@ export function setQueue(items: Podcast[], startAt: number): QueueState {
 }
 
 /** 末尾に追加する（既に含まれていれば無視＝重複防止）。 */
-export function add(q: QueueState, podcast: Podcast): QueueState {
+export function add<T extends Identified>(q: QueueState<T>, podcast: T): QueueState<T> {
   assertValid(q)
   if (q.items.some((p) => p.id === podcast.id)) return q
   return create([...q.items, podcast], q.currentIndex)
 }
 
 /** 現在の次に挿入する（「次に再生」）。既存の重複（現在再生中を除く）は取り除いてから挿入する。 */
-export function playNext(q: QueueState, podcast: Podcast): QueueState {
+export function playNext<T extends Identified>(q: QueueState<T>, podcast: T): QueueState<T> {
   assertValid(q)
   const currentId = current(q)?.id
   if (podcast.id === currentId) return q
@@ -92,27 +118,34 @@ export function playNext(q: QueueState, podcast: Podcast): QueueState {
 }
 
 /** 指定 id が既にキューにあればそれを現在位置にする（見つかれば found=true）。 */
-export function jump(q: QueueState, id: string): { queue: QueueState; found: boolean } {
+export function jump<T extends Identified>(
+  q: QueueState<T>,
+  id: string,
+): { readonly queue: QueueState<T>; readonly found: boolean } {
   assertValid(q)
   const idx = q.items.findIndex((p) => p.id === id)
-  if (idx < 0) return { queue: q, found: false }
-  return { queue: create(q.items, idx), found: true }
+  if (idx < 0) return Object.freeze({ queue: q, found: false })
+  return Object.freeze({ queue: create(q.items, idx), found: true })
 }
 
 /** 次のエピソードへ進む。次があれば currentIndex を進めて返す。無ければ next=null（停止）。 */
-export function advance(q: QueueState): { queue: QueueState; next: Podcast | null } {
+export function advance<T extends Identified>(
+  q: QueueState<T>,
+): { readonly queue: QueueState<T>; readonly next: T | null } {
   assertValid(q)
   if (q.currentIndex === null) {
-    if (q.items.length === 0) return { queue: q, next: null }
-    return { queue: create(q.items, 0), next: q.items[0] }
+    if (q.items.length === 0) return Object.freeze({ queue: q, next: null })
+    const queue = create(q.items, 0)
+    return Object.freeze({ queue, next: queue.items[0] })
   }
   const nextIndex = q.currentIndex + 1
-  if (nextIndex >= q.items.length) return { queue: q, next: null } // 末尾 → 停止
-  return { queue: create(q.items, nextIndex), next: q.items[nextIndex] }
+  if (nextIndex >= q.items.length) return Object.freeze({ queue: q, next: null }) // 末尾 → 停止
+  const queue = create(q.items, nextIndex)
+  return Object.freeze({ queue, next: queue.items[nextIndex] })
 }
 
 /** 指定 id をキューから削除する。currentIndex は現在のアイテムを追従して調整する。 */
-export function remove(q: QueueState, id: string): QueueState {
+export function remove<T extends Identified>(q: QueueState<T>, id: string): QueueState<T> {
   assertValid(q)
   const idx = q.items.findIndex((p) => p.id === id)
   if (idx < 0) return q
@@ -131,7 +164,11 @@ export function remove(q: QueueState, id: string): QueueState {
  * 範囲外・非整数・NaN は無変更（同一参照）。
  * @see docs/design/shared-playback-spec.md §2.7 moveUpNext
  */
-export function moveUpNext(q: QueueState, fromIndex: number, toOffset: number): QueueState {
+export function moveUpNext<T extends Identified>(
+  q: QueueState<T>,
+  fromIndex: number,
+  toOffset: number,
+): QueueState<T> {
   assertValid(q)
   const base = q.currentIndex === null ? 0 : q.currentIndex + 1
   const up = q.items.slice(base)
