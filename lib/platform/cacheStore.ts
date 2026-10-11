@@ -1,5 +1,24 @@
-import type { ApiFailure } from '@/lib/api/gateway'
-import type { CacheStore, CacheWriteFailure } from '@/lib/playback/ports'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
+
+export interface CacheBucket {
+  put(key: string, response: Response): Promise<void>
+  match(key: string): Promise<Response | undefined>
+  delete(key: string): Promise<boolean>
+  keys(): Promise<ReadonlyArray<{ readonly url: string }>>
+}
+
+export type CacheWriteFailure =
+  | { kind: 'download_failed'; failure: ApiFailure }
+  | { kind: 'storage_full' }
+
+export interface CacheStore {
+  open(cacheName: string): Promise<CacheBucket>
+  delete(cacheName: string): Promise<boolean>
+  has(cacheName: string): Promise<boolean>
+  keys(): Promise<ReadonlyArray<string>>
+  /** URL の応答を取得し、成功時のみ key で格納する。失敗は reject せず Result で返す。 */
+  putFromUrl(cacheName: string, key: string, url: string): Promise<Result<void, CacheWriteFailure>>
+}
 
 // gateway の statusToFailure と同じ表。gateway は音声 URL（署名付きストレージ）の
 // エラー本文契約を持たないため detail は読まず、Retry-After も解釈しない。

@@ -3,7 +3,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
-import { adminAccess } from '@/lib/account/adminAccess'
+import { adminAccess } from '@/lib/account/domain/adminAccess'
 import { LoginModal } from '@/components/ui/LoginModal'
 
 interface AdminGateProps {

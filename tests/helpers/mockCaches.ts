@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { CacheStore, CacheWriteFailure } from '@/lib/playback/ports'
+import type { CacheStore, CacheWriteFailure } from '@/lib/platform/cacheStore'
 import type { Result } from '@/lib/api/gateway'
 
 /**

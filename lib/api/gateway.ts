@@ -6,22 +6,10 @@
  * （CI-T12-7 leakage guard）。
  */
 import { readCookie } from '@/lib/cookie'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
+import type { Result } from '@/lib/shared/result'
 
-export type Result<T, E> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly failure: E }
-
-export type ApiFailure =
-  | { kind: 'network' }
-  | { kind: 'timeout' }
-  | { kind: 'unauthorized' }
-  | { kind: 'forbidden' }
-  | { kind: 'not_found'; subject?: string }
-  | { kind: 'conflict' }
-  | { kind: 'rate_limited'; retryAfterSeconds: number | undefined; scope: 'monthly' | 'daily' | 'unknown' }
-  | { kind: 'validation'; detail: string }
-  | { kind: 'server'; status: number }
-  | { kind: 'unknown'; status: number }
+export type { ApiFailure, Result }
 
 export const REQUEST_DEADLINE_MS = 30_000
 
