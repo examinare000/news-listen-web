@@ -1,4 +1,8 @@
-import type { KeyValueStore } from '@/lib/playback/ports'
+export interface KeyValueStore {
+  get(key: string): string | null
+  set(key: string, value: string): boolean
+  remove(key: string): void
+}
 
 // private mode 等で Web Storage が例外を投げても呼出側へ漏らさない。
 export function createBrowserKeyValueStore(): KeyValueStore {

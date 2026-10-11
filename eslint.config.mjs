@@ -2,6 +2,7 @@ import next from "@next/eslint-plugin-next";
 import eslintReact from "@eslint-react/eslint-plugin";
 import reactHooks from "eslint-plugin-react-hooks";
 import tseslint from "typescript-eslint";
+import { createBoundaryConfigs } from "./architecture/eslint-boundaries.mjs";
 
 export default tseslint.config(
   { ignores: [".next/**", "next-env.d.ts"] },
@@ -62,6 +63,8 @@ export default tseslint.config(
       "@eslint-react/exhaustive-deps": "off",
     },
   },
+  // 層の依存の向き（許可リストの行だけ外す）。
+  ...createBoundaryConfigs(),
   // JS/設定ファイルは tsconfig の型情報対象外のため型認識ルールを無効化する。
   {
     files: ["**/*.{js,mjs,cjs}"],

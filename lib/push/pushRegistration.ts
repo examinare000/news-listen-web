@@ -8,7 +8,7 @@ import type { PushSubscriptionJSON } from '@/types/index'
  * 必要な 3 メソッドだけを満たせばよい。
  */
 export interface PushRegistrationApiClient {
-  getVapidPublicKey(): Promise<{ public_key: string }>
+  getVapidPublicKey(): Promise<{ readonly public_key: string }>
   subscribePush(subscription: PushSubscriptionJSON): Promise<unknown>
   unsubscribePush(endpoint: string): Promise<unknown>
 }

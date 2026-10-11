@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { AudioElement } from '@/lib/playback/ports'
+import type { AudioElement } from '@/lib/playback/domain/audioElement'
 
 type EventListener = (event: Event) => void
 

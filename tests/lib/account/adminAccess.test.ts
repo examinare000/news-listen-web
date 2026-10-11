@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { adminAccess, type AdminAccessSession } from '@/lib/account/adminAccess'
+import { adminAccess, type AdminAccessSession } from '@/lib/account/domain/adminAccess'
 
 // CI-T16: admin 4 ページの重複 gating を集約する単一 policy。純関数（副作用なし・全入力に
 // 対して total）。入力型は構造的に定義し、@/contexts/AuthContext を import しない
