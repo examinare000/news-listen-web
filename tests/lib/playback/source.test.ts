@@ -1,7 +1,7 @@
 // 旧 tests/lib/resolvePlayback.test.ts の複製（対象 import だけが違う）。挙動は旧 lib/resolvePlayback.ts と同一。
-// RED 理由: `@/lib/playback/source` がまだ存在しない。
+// RED 理由: `@/lib/playback/domain/source` がまだ存在しない。
 import { describe, test, expect } from 'vitest'
-import { resolvePlaybackSource } from '@/lib/playback/source'
+import { resolvePlaybackSource } from '@/lib/playback/domain/source'
 
 // ==========================================================
 // resolvePlaybackSource — オフライン再生の分岐（issue #167）

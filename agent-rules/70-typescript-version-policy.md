@@ -28,7 +28,7 @@ typescript-eslint が TypeScript v7 に対応した時点で、次の手順で�
 - **Dependabot の TypeScript メジャーバンプ PR はマージしない** — Issue #92 追跡中。このポリシーが撤去されるまでは自動スキップが望ましい
 
 ## 参考資料
-- 経緯の詳細: [`docs/trial-log/typescript7-eslint-coexistence.md`](../docs/trial-log/typescript7-eslint-coexistence.md)
+- 経緯の詳細: [`docs/trial-log/web-typescript7-eslint-coexistence.md`](../../docs/trial-log/web-typescript7-eslint-coexistence.md)
 
 ---
 **適用優先度**: 🟠 高
