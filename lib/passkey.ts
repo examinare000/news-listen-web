@@ -16,7 +16,7 @@ import type { LoginResponse, PasskeyOptionsResponse } from '@/types/index'
 /** passkey.ts が依存する API クライアントの最小インターフェース */
 export interface PasskeyClient {
   getPasskeyRegisterOptions(): Promise<PasskeyOptionsResponse>
-  verifyPasskeyRegistration(challenge_id: string, credential: unknown): Promise<{ status: string }>
+  verifyPasskeyRegistration(challenge_id: string, credential: unknown): Promise<{ readonly status: string }>
   getPasskeyLoginOptions(): Promise<PasskeyOptionsResponse>
   verifyPasskeyLogin(challenge_id: string, credential: unknown): Promise<LoginResponse>
 }

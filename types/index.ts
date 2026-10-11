@@ -1,12 +1,8 @@
 // Domain types shared across the frontend
+import type { UserRole } from '@/lib/account/domain/role'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
-export type DifficultyLevel =
-  | 'toeic_600'
-  | 'toeic_900'
-  | 'ielts_55'
-  | 'ielts_7'
-  | 'eiken_2'
-  | 'eiken_p1'
+export type { DifficultyLevel, UserRole }
 
 // 統一デフォルト難易度（issue #163・docs/design/shared-playback-spec.md 正本）。
 // 設定画面の初期値/フォールバックと、記事単位star省略時の想定値を一箇所に集約する。
@@ -146,7 +142,6 @@ export interface OnboardingStatusResponse {
 }
 
 // ── 認証・ユーザー管理 ────────────────────────────────────────────
-export type UserRole = 'admin' | 'user'
 
 /** ログインユーザーの公開情報（GET /auth/me 等）。password_hash は含まれない。 */
 export interface AuthUser {
