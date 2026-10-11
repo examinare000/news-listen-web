@@ -2,9 +2,9 @@
 // 正本: docs/design/shared-playback-spec.md §4.3 RS-01〜RS-07（末尾 2 秒窓）。
 // verifies: RS-01, RS-02, RS-03, RS-04, RS-05, RS-06, RS-07
 //
-// RED 理由: `@/lib/playback/resume` がまだ存在しない。
+// RED 理由: `@/lib/playback/domain/resume` がまだ存在しない。
 import { describe, test, expect } from 'vitest'
-import { resolveResumePosition } from '@/lib/playback/resume'
+import { resolveResumePosition } from '@/lib/playback/domain/resume'
 
 describe('resolveResumePosition (shared-playback-spec §4.3)', () => {
   const rows: Array<[string, number, number, number, string]> = [

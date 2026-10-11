@@ -3,7 +3,7 @@
 // テスト名先頭の行 ID で機械的・目視双方に照合可能な形で実装する。
 //
 // moveUpNext(from, toOffset) は正本では「削除前オフセット」方式（SwiftUI onMove 規約）。
-// 新モジュール lib/playback/queue は正本と同じ名前 moveUpNext で export する（アダプタ変換はしない）。
+// 新モジュール lib/playback/domain/queue は正本と同じ名前 moveUpNext で export する（アダプタ変換はしない）。
 // 本ファイルは旧 tests/lib/playbackQueue.conformance.test.ts の複製で、対象 import だけが違う。
 // verifies: CI-T9（Q-01〜Q-32）
 import { describe, test, expect } from 'vitest'
@@ -19,7 +19,7 @@ import {
   advance,
   remove,
   moveUpNext,
-} from '@/lib/playback/queue'
+} from '@/lib/playback/domain/queue'
 import type { Podcast } from '@/types'
 
 function pod(id: string): Podcast {
@@ -38,7 +38,7 @@ function pod(id: string): Podcast {
   }
 }
 
-const ids = (q: { items: Podcast[] }) => q.items.map((p) => p.id)
+const ids = (q: { items: ReadonlyArray<Podcast> }) => q.items.map((p) => p.id)
 const upNextIds = (q: Parameters<typeof upNext>[0]) => upNext(q).map((p) => p.id)
 
 describe('playback/queue conformance (docs/design/shared-playback-spec.md §4.1)', () => {

@@ -1,5 +1,5 @@
 // port の型と test double（MockAudio・MockCacheStorage）の適合・deferred-put の契約テスト。
-// RED 理由: `@/lib/playback/ports` がまだ存在せず（型検査で検出）、MockAudio に defaultPlaybackRate、
+// RED 理由: `@/lib/playback/domain/audioElement` がまだ存在せず（型検査で検出）、MockAudio に defaultPlaybackRate、
 // MockCacheStorage に putFromUrl / respondTo / failUrl、MockCache に deferPuts / flushPuts がまだ無い。
 //
 // helper の API（このテストが固定する形）:
@@ -8,7 +8,8 @@
 //   MockCache#deferPuts(): 以後の put は返す promise と store への反映の両方を保留する
 //   MockCache#flushPuts(): 同期。保留中の put を反映して promise を解決し、以後の保留を解除する
 import { describe, test, expect } from 'vitest'
-import type { AudioElement, CacheStore } from '@/lib/playback/ports'
+import type { AudioElement } from '@/lib/playback/domain/audioElement'
+import type { CacheStore } from '@/lib/platform/cacheStore'
 import { MockAudio } from '../../helpers/mockAudio'
 import { MockCacheStorage } from '../../helpers/mockCaches'
 
@@ -26,7 +27,7 @@ describe('ports の型と helper の適合', () => {
   })
 
   test('ports は型だけを export する（値の export が無い）', async () => {
-    const ports = await import('@/lib/playback/ports')
+    const ports = await import('@/lib/playback/domain/audioElement')
     expect(Object.keys(ports)).toEqual([])
   })
 })

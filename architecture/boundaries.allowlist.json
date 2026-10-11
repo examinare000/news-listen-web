@@ -1,0 +1,793 @@
+[
+  {
+    "rule": "TA-D1",
+    "file": "lib/playback/domain/session.ts",
+    "specifier": "@/types",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T2"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "app/(app)/dashboard/page.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "components/ui/ThemeToggle.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "contexts/AppContext.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "hooks/useAudioPlayer.ts",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "hooks/useLocalStorage.ts",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D11",
+    "file": "lib/sfx.ts",
+    "specifier": "localStorage",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D2",
+    "file": "lib/passkey.ts",
+    "specifier": "@/lib/webauthnBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D2",
+    "file": "lib/passkey.ts",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D2",
+    "file": "lib/push/pushRegistration.ts",
+    "specifier": "@/lib/pushBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D2",
+    "file": "lib/push/pushRegistration.ts",
+    "specifier": "@/lib/webpush",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D2",
+    "file": "lib/push/pushRegistration.ts",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D3",
+    "file": "lib/passkey.ts",
+    "specifier": "JSON.parse",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/admin/featured-sites/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/admin/invites/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/admin/metrics/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/admin/users/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/dashboard/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T4"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/podcast/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/subscriptions/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T5"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T12"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/ArticleCard.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T4"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/PodcastCard.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/ui/DifficultyBadge.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/ui/OnboardingSourcesModal.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T5"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "components/ui/StatusBadge.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "contexts/AppContext.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "contexts/AudioPlayerContext.tsx",
+    "specifier": "@/types",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "contexts/AuthContext.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "contexts/StreakContext.tsx",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "hooks/useWebPushSubscription.ts",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/audioCache.ts",
+    "specifier": "@/types",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/format.ts",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T15"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/passkey.ts",
+    "specifier": "LoginResponse",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/passkey.ts",
+    "specifier": "PasskeyOptionsResponse",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/playback/domain/session.ts",
+    "specifier": "Podcast",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T2"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/playbackQueue.ts",
+    "specifier": "@/types",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/push/pushRegistration.ts",
+    "specifier": "PushSubscriptionJSON",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D4",
+    "file": "lib/pushBrowserPort.ts",
+    "specifier": "@/types/index",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/admin/featured-sites/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/admin/invites/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/admin/metrics/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/admin/users/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/dashboard/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/dashboard/page.tsx",
+    "specifier": "@/lib/sfx",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T4"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": "@/lib/sfx",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/lib/audioCache",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2b"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/lib/sfx",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/podcast/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/podcast/page.tsx",
+    "specifier": "@/lib/audioCache",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2b"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T7a"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/lib/audioCache",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2b"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/lib/config",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/subscriptions/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T5"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T12"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "@/lib/sfx",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/global-error.tsx",
+    "specifier": "@/lib/reportClientError",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T10a"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T5"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "app/signup/page.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ClientErrorReporter.tsx",
+    "specifier": "@/lib/reportClientError",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T10a"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ErrorFallback.tsx",
+    "specifier": "@/lib/reportClientError",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T10a"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/PushNotificationSection.tsx",
+    "specifier": "@/lib/pushBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "@/lib/webauthnBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/LoginModal.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/LoginModal.tsx",
+    "specifier": "@/lib/webauthnBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/OnboardingSourcesModal.tsx",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T5"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "components/ui/ThemeToggle.tsx",
+    "specifier": "@/lib/config",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "hooks/useAudioPlayer.ts",
+    "specifier": "@/lib/config",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "hooks/useWebPushSubscription.ts",
+    "specifier": "@/lib/api",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D5",
+    "file": "hooks/useWebPushSubscription.ts",
+    "specifier": "@/lib/pushBrowserPort",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D6",
+    "file": "contexts/AudioPlayerContext.tsx",
+    "specifier": "@/components/ui/Toast",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-D7",
+    "file": "lib/api/gateway.ts",
+    "specifier": "@/lib/cookie",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T9"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "app/(app)/admin/metrics/page.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "app/(app)/subscriptions/page.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "components/ui/LoginModal.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "components/ui/OnboardingSourcesModal.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "contexts/AuthContext.tsx",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d1"
+  },
+  {
+    "rule": "TA-D8",
+    "file": "lib/api/legacyRequest.ts",
+    "specifier": ".status と数値の比較",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4d3"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "app/(app)/admin/users/page.tsx",
+    "specifier": "password.length",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "app/signup/page.tsx",
+    "specifier": "PASSWORD_MIN_LENGTH",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "app/signup/page.tsx",
+    "specifier": "countPasswordCharacterClasses",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "app/signup/page.tsx",
+    "specifier": "password.length",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "PASSWORD_MIN_LENGTH",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "countPasswordCharacterClasses",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-3",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "password.length",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4c"
+  },
+  {
+    "rule": "TA-R-AC-6",
+    "file": "app/(app)/admin/users/page.tsx",
+    "specifier": "role === 'admin'",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T8"
+  },
+  {
+    "rule": "TA-R-AC-6",
+    "file": "components/NavigationBar.tsx",
+    "specifier": "role === 'admin'",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-R-AC-6",
+    "file": "components/ui/AccountSection.tsx",
+    "specifier": "role === 'admin'",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T6"
+  },
+  {
+    "rule": "TA-R-CT-2",
+    "file": "lib/podcastTitle.ts",
+    "specifier": "intro_text.slice(",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-R-CT-3",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": "/monthly/i",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4a"
+  },
+  {
+    "rule": "TA-R-CT-3",
+    "file": "app/(app)/feed/page.tsx",
+    "specifier": "86400",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4a"
+  },
+  {
+    "rule": "TA-R-CT-6",
+    "file": "app/(app)/podcast/page.tsx",
+    "specifier": "!== 'completed' && … === 'completed'",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-R-CT-6",
+    "file": "hooks/usePodcastListPolling.ts",
+    "specifier": "POLL_TIMEOUT_MS",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-R-CT-6",
+    "file": "lib/podcastPolling.ts",
+    "specifier": "POLL_TIMEOUT_MS",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T3"
+  },
+  {
+    "rule": "TA-R-LN-1",
+    "file": "contexts/StreakContext.tsx",
+    "specifier": "5 * 60 * 1000",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T13"
+  },
+  {
+    "rule": "TA-R-LN-2",
+    "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": ">= 0.5",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T11"
+  },
+  {
+    "rule": "TA-R-LN-3",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "retest_correct",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T12"
+  },
+  {
+    "rule": "TA-R-LN-3",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "slice(0, 10)",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T12"
+  },
+  {
+    "rule": "TA-R-LN-3",
+    "file": "app/(app)/vocabulary-test/page.tsx",
+    "specifier": "slice(0, 3)",
+    "introducedBy": "W-T1",
+    "removeBy": "W-T12"
+  },
+  {
+    "rule": "TA-R-PB-2",
+    "file": "hooks/useAudioPlayer.ts",
+    "specifier": "速度の配列",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S2c"
+  },
+  {
+    "rule": "TA-R-PF-1",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "[3, 5, 7, 10]",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  },
+  {
+    "rule": "TA-R-PF-1",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "難易度の値の配列",
+    "introducedBy": "W-T1",
+    "removeBy": "W-S4b"
+  }
+]
