@@ -7,10 +7,13 @@
 import { describe, expect, test } from 'vitest'
 import { add, advance, current, jump, upNext } from '@/lib/playback/domain/queue'
 import type { PlaybackState } from '@/lib/playback/domain/session'
+import type { PlayableEpisode, QueuedEpisode } from '@/lib/catalog/domain/episode'
 
 declare const q: Parameters<typeof upNext>[0]
 declare const x: Parameters<typeof add>[1]
 declare const s: PlaybackState
+declare const ep: PlayableEpisode
+declare const qe: QueuedEpisode
 
 /** 呼ばない。型検査だけが読む。 */
 function typeProbes(): void {
@@ -40,6 +43,18 @@ function typeProbes(): void {
   // 回帰を固定する行（TA-V5 (a)。変更前から型エラー。PlayableEpisode.title は既に readonly）
   // @ts-expect-error TA-V5(a) 変更前から型エラー: title は readonly
   if (s.status !== 'idle') s.episode.title = 'x'
+
+  // Catalog の値の readonly（TA-V5 (a)。入れ子の配列・要素・label も書き込めない）
+  // @ts-expect-error TA-V5(a) transcript は ReadonlyArray: push が無い
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- 型エラーの行を lint が any と解釈する（push が無い）
+  ep.transcript!.push({ speaker: 'a', text: 'b' })
+  // @ts-expect-error TA-V5(a) quiz の options は ReadonlyArray: push が無い
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- 型エラーの行を lint が any と解釈する（push が無い）
+  ep.quiz![0].options.push('x')
+  // @ts-expect-error TA-V5(a) sources の要素の field は readonly
+  ep.sources![0].showsShareAlikeNotice = true
+  // @ts-expect-error TA-V5(a) label の field は readonly
+  qe.label.title = 'x'
 }
 
 describe('TA-V5 (a) 外へ渡した値は型で書き換えられない', () => {
