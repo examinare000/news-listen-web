@@ -20,7 +20,7 @@ import {
   upNext,
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
-import { createPlaybackSession } from '@/lib/playback/domain/session'
+import { createPlaybackSession, isPlayableEpisode } from '@/lib/playback/domain/session'
 import type { PlayableEpisode, PlaybackEvent, PlaybackSession, PlaybackState } from '@/lib/playback/domain/session'
 import type { Podcast } from '@/types'
 import { MockAudio } from '../helpers/mockAudio'
@@ -351,7 +351,8 @@ function makeEpisode(id: string): MutableEpisode {
   }
 }
 
-const episodeOf = (state: PlaybackState): PlayableEpisode | undefined => (state.status === 'idle' ? undefined : state.episode)
+const episodeOf = (state: PlaybackState): PlayableEpisode | undefined =>
+  state.status === 'idle' || !isPlayableEpisode(state.episode) ? undefined : state.episode
 
 let audio: MockAudio
 let session: PlaybackSession
@@ -516,5 +517,35 @@ describe('TA-V6 4(d) Session の state() と stateChanged の値は、すべて�
     expect(episodeOf(emitted[1])).toBe(copy2)
     expect(copy2).not.toBe(copy1)
     emitted.forEach((s) => expectDeeplyFrozen(s.status, s))
+  })
+})
+
+describe('TA-V6 4(d) Session の fail は ref と reason の写しを深く凍結して保持し、呼出側の値は凍結しない', () => {
+  test('fail の後で渡した ref を書き換えても state().episode は変わらず、保持された episode は凍結済み、ref は凍結されない', () => {
+    const ref = { id: 'a' }
+
+    session.fail(ref, { kind: 'source_unavailable' })
+    ref.id = 'changed'
+
+    const state = session.state()
+    const held = state.status === 'errored' ? state.episode : undefined
+    expect(held?.id).toBe('a')
+    expectDeeplyFrozen('state()', state)
+    expect(Object.isFrozen(ref)).toBe(false)
+  })
+
+  test('fail の後で渡した reason.failure を書き換えても state().reason は変わらず、保持された reason は凍結済み、reason と failure は凍結されない', () => {
+    const failure = { kind: 'validation' as const, detail: 'd' }
+    const reason = { kind: 'fetch_failed' as const, failure }
+
+    session.fail({ id: 'a' }, reason)
+    failure.detail = 'changed'
+
+    const state = session.state()
+    const held = state.status === 'errored' ? state.reason : undefined
+    expect(held).toEqual({ kind: 'fetch_failed', failure: { kind: 'validation', detail: 'd' } })
+    expectDeeplyFrozen('state()', state)
+    expect(Object.isFrozen(reason)).toBe(false)
+    expect(Object.isFrozen(failure)).toBe(false)
   })
 })

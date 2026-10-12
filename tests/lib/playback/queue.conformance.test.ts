@@ -1,11 +1,11 @@
 // 正本仕様準拠テスト（issue #138）。
-// docs/design/shared-playback-spec.md §4.1 正本テストケース表（Q-01〜Q-32）の全行を、
+// docs/design/shared-playback-spec.md §4.1 正本テストケース表（Q-01〜Q-33）の全行を、
 // テスト名先頭の行 ID で機械的・目視双方に照合可能な形で実装する。
 //
 // moveUpNext(from, toOffset) は正本では「削除前オフセット」方式（SwiftUI onMove 規約）。
 // 新モジュール lib/playback/domain/queue は正本と同じ名前 moveUpNext で export する（アダプタ変換はしない）。
 // 本ファイルは旧 tests/lib/playbackQueue.conformance.test.ts の複製で、対象 import だけが違う。
-// verifies: CI-T9（Q-01〜Q-32）
+// verifies: CI-T9（Q-01〜Q-33）
 import { describe, test, expect } from 'vitest'
 import {
   emptyQueue,
@@ -274,5 +274,12 @@ describe('playback/queue conformance (docs/design/shared-playback-spec.md §4.1)
     expect(upNextIds(r)).toEqual(['b', 'a', 'c'])
     expect(ids(r)).toEqual(['b', 'a', 'c'])
     expect(r.currentIndex).toBeNull()
+  })
+
+  test('Q-33: [a,b,a,c] setQueue(items, 2) → items=[a,b,c], current=a, upNext=[b,c]（重複する id は 1 件にまとめ、current の位置を保つ）', () => {
+    const q = setQueue([pod('a'), pod('b'), pod('a'), pod('c')], 2)
+    expect(ids(q)).toEqual(['a', 'b', 'c'])
+    expect(current(q)?.id).toBe('a')
+    expect(upNextIds(q)).toEqual(['b', 'c'])
   })
 })
