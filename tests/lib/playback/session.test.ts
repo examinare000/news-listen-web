@@ -1,25 +1,28 @@
 // PlaybackSession（lib/playback/domain/session）の契約テスト。
-// verifies: CI-T1, CI-T1b, CI-T2, CI-T3, CI-T4, CI-P08, CI-C03
+// verifies: CI-T1, CI-T1b, CI-T1f, CI-T2, CI-T3, CI-T4, CI-P08, CI-C03
 //
-// RED 理由: `@/lib/playback/domain/session`・`@/lib/playback/domain/resume` がまだ存在しない。
+// RED 理由: `fail`・`isPlayableEpisode` がまだ存在しない。
 //
 // 公開 API（このテストが固定する形）:
 //   createPlaybackSession(audio: AudioElement): PlaybackSession
 //   PlaybackSession = { state(); start(episode, resumePosition, speed); play(): Promise<void>; pause();
-//     seek(t); seekRelative(d); setSpeed(s); setVolume(v); stop(); subscribe(listener): () => void }
+//     seek(t); seekRelative(d); setSpeed(s); setVolume(v); stop(); fail(ref, reason); subscribe(listener): () => void }
+//   fail(ref: { id }, reason: source_unavailable | fetch_failed): どの状態からでも errored にする（13 遷移の外）
+//   isPlayableEpisode(e: PlayableEpisode | { id }): e is PlayableEpisode
 //   PlaybackEvent は判別共用体（type で判別）:
 //     { type: 'stateChanged'; state } | { type: 'positionChanged'; episodeId; seconds } | { type: 'listenCompleted'; episodeId }
 //   PlayableEpisode: id/title/audioUrl/durationSeconds/difficulty/createdAt/serverPositionSeconds ＋ 任意の audioHandle?: { release(): void }
 //   状態: idle / loading{episode,resumePosition,speed} / paused・playing{episode,position,duration,speed} /
-//         ended{episode,duration} / errored{episode,position,speed,reason:{kind}}
+//         ended{episode,duration} / errored{episode: PlayableEpisode | {id},position,speed,reason:{kind}}
 //
 // oracle は state()・MockAudio のフィールド・購読した事象・handle double に限る。
 // AudioElement への呼出回数は assert しない（handle の release 回数は契約そのものなので例外）。
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
-import { createPlaybackSession, PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
+import { createPlaybackSession, isPlayableEpisode, PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type {
   AudioHandle,
+  EpisodeRef,
   PlayableEpisode,
   PlaybackEvent,
   PlaybackSession,
@@ -35,7 +38,7 @@ import { MockAudio } from '../../helpers/mockAudio'
 /** union の各状態のフィールドへ絞り込みなしで触れるための緩い見取り図（値の検証は個別の expect で行う）。 */
 interface LooseState {
   status: string
-  episode?: PlayableEpisode
+  episode?: PlayableEpisode | EpisodeRef
   resumePosition?: number
   position?: number
   duration?: number
@@ -918,4 +921,296 @@ describe('CI-C03・CI-T1 release の例外は捕捉せず伝え、状態と Audi
     expect(catchError(() => session.stop())).toBeUndefined()
     expect(h1.release).toHaveBeenCalledTimes(1)
   })
+})
+
+// ---------------------------------------------------------------------------
+// CI-T1f: fail(ref, reason)（遷移表の外の操作。13 遷移には数えない）
+// ---------------------------------------------------------------------------
+type FailReason = Parameters<PlaybackSession['fail']>[1]
+
+const FETCH_FAILED: FailReason = { kind: 'fetch_failed', failure: { kind: 'network' } }
+const SOURCE_UNAVAILABLE: FailReason = { kind: 'source_unavailable' }
+const FAIL_REASONS: ReadonlyArray<readonly [string, FailReason]> = [
+  ['fetch_failed', FETCH_FAILED],
+  ['source_unavailable', SOURCE_UNAVAILABLE],
+]
+const ALL_STATUSES: ReadonlyArray<'idle' | DrivenStatus> = ['idle', ...NON_IDLE]
+
+/** idle は初期状態のまま、それ以外は drive で指定 status へ駆動する。 */
+async function driveFrom(
+  status: 'idle' | DrivenStatus,
+  episode: PlayableEpisode,
+  resume = 30,
+  speed: PlaybackSpeed = 1.5,
+): Promise<void> {
+  if (status !== 'idle') await drive(status, episode, resume, speed)
+}
+
+/** 呼ばない。型検査だけが読む（使われない @ts-expect-error は TS2578 で typecheck が落ちる）。 */
+function failTypeProbes(s: PlaybackSession): void {
+  // @ts-expect-error CI-T1f media は fail で作れない
+  s.fail({ id: 'a' }, { kind: 'media' })
+  // @ts-expect-error CI-T1f autoplay_blocked は fail で作れない
+  s.fail({ id: 'a' }, { kind: 'autoplay_blocked' })
+}
+
+describe('CI-T1f fail()', () => {
+  for (const status of ALL_STATUSES) {
+    for (const [name, reason] of FAIL_REASONS) {
+      test(`${status} から fail({id}, ${name}) すると errored（episode は id だけ・position 0・渡した reason）になり、speed は直前の値（idle/ended は 1.0）`, async () => {
+        await driveFrom(status, makeEpisode('a'))
+
+        session.fail({ id: 'x' }, reason)
+
+        const expectedSpeed = status === 'idle' || status === 'ended' ? 1 : 1.5
+        expect(session.state()).toEqual({
+          status: 'errored',
+          episode: { id: 'x' },
+          position: 0,
+          speed: expectedSpeed,
+          reason,
+        })
+      })
+    }
+  }
+
+  for (const status of NON_IDLE) {
+    test(`${status} から fail すると AudioElement は一時停止し src が空になる`, async () => {
+      await drive(status, makeEpisode('a'))
+      session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+      expect(audio.paused).toBe(true)
+      expect(audio.src).toBe('')
+    })
+  }
+
+  test('初期の idle から fail しても AudioElement の状態は変わらない', () => {
+    audio.currentTime = 12
+    audio.volume = 0.4
+    const before = fields(audio)
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+    expect(fields(audio)).toEqual(before)
+  })
+
+  for (const status of NON_IDLE) {
+    test(`${status} から fail すると前状態の handle が 1 回 release され、その時点の audio.src は空`, async () => {
+      const log: string[] = []
+      const h = makeHandle(audio, log)
+      await drive(status, makeEpisode('a', { audioHandle: h }))
+
+      session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+
+      expect(h.release).toHaveBeenCalledTimes(1)
+      expect(log).toEqual([''])
+    })
+  }
+
+  test('fail の後の stop・start・fail は同じ handle を再び release しない', async () => {
+    const log: string[] = []
+    const h1 = makeHandle(audio, log)
+    await drive('playing', makeEpisode('1', { audioHandle: h1 }))
+
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+    session.stop()
+    session.start(makeEpisode('2'), 0, 1)
+    session.fail({ id: 'y' }, SOURCE_UNAVAILABLE)
+
+    expect(h1.release).toHaveBeenCalledTimes(1)
+  })
+
+  test('fail より前に始まった play() が後で NotAllowedError で reject されても、状態は fail の結果のまま', async () => {
+    await drive('paused', makeEpisode('a'), 30, 1.5)
+    const d = deferred()
+    vi.spyOn(audio, 'play').mockImplementation(() => d.promise)
+    const p = session.play()
+    const events = recordEvents()
+
+    session.fail({ id: 'x' }, FETCH_FAILED)
+    d.reject(notAllowed())
+    await p
+
+    expect(session.state()).toEqual({
+      status: 'errored',
+      episode: { id: 'x' },
+      position: 0,
+      speed: 1.5,
+      reason: FETCH_FAILED,
+    })
+    expect(stateChangedStatuses(events)).toEqual(['errored'])
+  })
+
+  for (const status of ALL_STATUSES) {
+    test(`${status} から fail すると stateChanged(errored) をちょうど 1 回だけ出し、positionChanged・listenCompleted は出さない`, async () => {
+      await driveFrom(status, makeEpisode('a'))
+      const events = recordEvents()
+
+      session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+
+      expect(stateChangedStatuses(events)).toEqual(['errored'])
+      expect(events.filter((e) => e.type === 'positionChanged' || e.type === 'listenCompleted')).toEqual([])
+    })
+  }
+
+  test('id だけの errored で play() しても何もしない（状態は同一参照・AudioElement 不変・事象なし）', async () => {
+    await drive('playing', makeEpisode('a'))
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+    const before = session.state()
+    const audioBefore = fields(audio)
+    const events = recordEvents()
+
+    await session.play()
+
+    expect(session.state()).toBe(before)
+    expect(fields(audio)).toEqual(audioBefore)
+    expect(events).toEqual([])
+  })
+
+  test('fail の後の start は通常どおり loading に進み、src は新しい episode の audioUrl', async () => {
+    await drive('playing', makeEpisode('a'))
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+    const ep = makeEpisode('b')
+
+    session.start(ep, 0, 1)
+
+    expect(st().status).toBe('loading')
+    expect(st().episode?.id).toBe('b')
+    expect(audio.src).toBe(ep.audioUrl)
+  })
+
+  test('release が throw しても同じ例外が伝わり、状態・AudioElement・事象は事後条件を満たし、続く stop() は再 release しない', async () => {
+    const log: string[] = []
+    const err = new Error('release failed')
+    const h = makeThrowingHandle(audio, log, err)
+    await drive('playing', makeEpisode('a', { audioHandle: h }))
+    const events = recordEvents()
+
+    const caught = catchError(() => session.fail({ id: 'x' }, SOURCE_UNAVAILABLE))
+
+    expect(caught).toBe(err)
+    expect(st().status).toBe('errored')
+    expect(audio.paused).toBe(true)
+    expect(audio.src).toBe('')
+    expect(log).toEqual([''])
+    expect(stateChangedStatuses(events)).toContain('errored')
+    expect(catchError(() => session.stop())).toBeUndefined()
+    expect(h.release).toHaveBeenCalledTimes(1)
+  })
+
+  test('isPlayableEpisode は start が保持した episode に true、fail が保持した id だけの参照に false を返す', () => {
+    session.start(makeEpisode('a'), 0, 1)
+    const loading = session.state()
+    if (loading.status === 'idle') throw new Error('unexpected idle')
+    expect(isPlayableEpisode(loading.episode)).toBe(true)
+
+    session.fail({ id: 'a' }, SOURCE_UNAVAILABLE)
+    const errored = session.state()
+    if (errored.status === 'idle') throw new Error('unexpected idle')
+    expect(isPlayableEpisode(errored.episode)).toBe(false)
+  })
+
+  test('idle から PlayableEpisode（handle 付き）を渡しても id だけを保持し、play() は何もせず、その handle は release しない', async () => {
+    const log: string[] = []
+    const h = makeHandle(audio, log)
+    const ep = makeEpisode('a', { audioHandle: h })
+    const ref: EpisodeRef = ep
+
+    session.fail(ref, SOURCE_UNAVAILABLE)
+    const afterFail = session.state()
+    const audioBefore = fields(audio)
+    await session.play()
+    const afterPlay = session.state()
+    session.stop()
+
+    expect(afterFail).toEqual({ status: 'errored', episode: { id: 'a' }, position: 0, speed: 1, reason: SOURCE_UNAVAILABLE })
+    expect(afterPlay).toBe(afterFail)
+    expect(fields(audio)).toEqual(audioBefore)
+    expect(h.release).not.toHaveBeenCalled()
+  })
+
+  test('playing の handle は fail の時点で 1 回だけ release され、渡した PlayableEpisode の play()・stop() でも増えない', async () => {
+    const log: string[] = []
+    const h = makeHandle(audio, log)
+    const ep = makeEpisode('a', { audioHandle: h })
+    await drive('playing', ep)
+
+    session.fail(ep, SOURCE_UNAVAILABLE)
+    expect(h.release).toHaveBeenCalledTimes(1)
+    expect(log).toEqual([''])
+
+    await session.play()
+    expect(st().status).toBe('errored')
+    session.stop()
+
+    expect(h.release).toHaveBeenCalledTimes(1)
+  })
+
+  test('fail が作った errored から同じ引数で再び fail すると、内容は同じ別の参照で、stateChanged はその呼出でちょうど 1 回', () => {
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+    const first = session.state()
+    const events = recordEvents()
+
+    session.fail({ id: 'x' }, SOURCE_UNAVAILABLE)
+
+    expect(session.state()).toEqual(first)
+    expect(session.state()).not.toBe(first)
+    expect(stateChangedStatuses(events)).toEqual(['errored'])
+  })
+
+  test('media 由来の errored から fail しても no-op にならず、渡した値で errored を作り直す', async () => {
+    await drive('errored', makeEpisode('a'), 30, 1.5)
+    const events = recordEvents()
+
+    session.fail({ id: 'x' }, FETCH_FAILED)
+
+    expect(st().reason).toEqual(FETCH_FAILED)
+    expect(st().episode).toEqual({ id: 'x' })
+    expect(stateChangedStatuses(events)).toEqual(['errored'])
+  })
+
+  test('reason は media・autoplay_blocked を型で受け付けない（検査は npm run typecheck）', () => {
+    expect(typeof failTypeProbes).toBe('function')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 共有仕様の行 ID: PS-09（停止）・PS-10（失敗にする）
+// ---------------------------------------------------------------------------
+describe('PS-09 停止', () => {
+  for (const status of NON_IDLE) {
+    test(`PS-09: ${status} で stop() すると idle になり、AudioElement は一時停止して src が空`, async () => {
+      await drive(status, makeEpisode('a'))
+      session.stop()
+      expect(st().status).toBe('idle')
+      expect(audio.paused).toBe(true)
+      expect(audio.src).toBe('')
+    })
+  }
+
+  test('PS-09: 初期の idle で stop() しても AudioElement は変わらず事象も出ない', () => {
+    audio.currentTime = 12
+    audio.volume = 0.4
+    const before = fields(audio)
+    const events = recordEvents()
+    session.stop()
+    expect(fields(audio)).toEqual(before)
+    expect(events).toEqual([])
+  })
+})
+
+describe('PS-10 失敗にする', () => {
+  for (const status of ALL_STATUSES) {
+    test(`PS-10: ${status} で fail({id}, fetch_failed) すると、渡した理由つきの errored（episode は id だけ）になる`, async () => {
+      await driveFrom(status, makeEpisode('a'))
+
+      session.fail({ id: 'x' }, FETCH_FAILED)
+
+      const s = st()
+      expect(s.status).toBe('errored')
+      expect(s.episode).toEqual({ id: 'x' })
+      expect(s.reason).toEqual(FETCH_FAILED)
+      if (status !== 'idle') {
+        expect(audio.paused).toBe(true)
+        expect(audio.src).toBe('')
+      }
+    })
+  }
 })

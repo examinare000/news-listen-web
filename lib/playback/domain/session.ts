@@ -1,5 +1,5 @@
 // 再生セッション: 1 つの AudioElement を駆動する状態機械。
-// 状態変化は 13 遷移と、表の外のリセット stop() だけ。表にない入力は no-op（throw しない）。
+// 状態変化は 13 遷移と、表の外の操作 stop()・fail() だけ。表にない入力は no-op（throw しない）。
 // 契約の正本は docs/design/modules/web/2026-09-16-implementation-spec-domain-model.md §3.1。
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
@@ -32,6 +32,13 @@ export interface PlayableEpisode {
   readonly audioHandle?: AudioHandle
 }
 
+/** 取得前・開始前の失敗で、再生できるエピソードが無いときに errored が持つ参照。 */
+export type EpisodeRef = { readonly id: string }
+
+export function isPlayableEpisode(e: PlayableEpisode | EpisodeRef): e is PlayableEpisode {
+  return 'audioUrl' in e
+}
+
 export type PlaybackErrorReason =
   | { readonly kind: 'media' }
   | { readonly kind: 'autoplay_blocked' }
@@ -57,7 +64,7 @@ export type PlaybackState =
   | { readonly status: 'ended'; readonly episode: PlayableEpisode; readonly duration: number }
   | {
       readonly status: 'errored'
-      readonly episode: PlayableEpisode
+      readonly episode: PlayableEpisode | EpisodeRef
       readonly position: number
       readonly speed: PlaybackSpeed
       readonly reason: PlaybackErrorReason
@@ -79,6 +86,8 @@ export interface PlaybackSession {
   setVolume(volume: number): void
   /** どの状態からでも idle へ戻し、音源を外す。13 遷移の外のリセット。 */
   stop(): void
+  /** どの状態からでも errored にし、idle 以外なら音源を外す。13 遷移の外。media・autoplay_blocked は音声要素の事象からだけ生まれる。 */
+  fail(ref: EpisodeRef, reason: Extract<PlaybackErrorReason, { readonly kind: 'source_unavailable' | 'fetch_failed' }>): void
   subscribe(listener: (event: PlaybackEvent) => void): () => void
 }
 
@@ -136,19 +145,21 @@ function freezeDeep<T>(value: T): T {
 }
 
 function handleOf(state: PlaybackState): AudioHandle | undefined {
-  return state.status === 'idle' ? undefined : state.episode.audioHandle
+  if (state.status === 'idle') return undefined
+  return isPlayableEpisode(state.episode) ? state.episode.audioHandle : undefined
 }
 
 export function createPlaybackSession(audio: AudioElement): PlaybackSession {
   let state: PlaybackState = Object.freeze({ status: 'idle' })
-  // play() の遅延 reject が、その後の pause / play / start / stop を上書きしないための世代。
+  // play() の遅延 reject が、その後の pause / play / start / stop / fail を上書きしないための世代。
   let token = 0
   const listeners = new Set<(event: PlaybackEvent) => void>()
 
   const emit = (event: PlaybackEvent): void => {
     for (const listener of [...listeners]) listener(event)
   }
-  // 状態に入る episode は start が作った凍結済みの写しだけなので辿らない（W-S2a1 で reason.failure を足すときは見直す）。
+  // 状態に入る episode は start と fail が作った凍結済みの写しだけなので辿らない。reason は fail が複製してから渡し、
+  // 事象由来の reason は session 内のリテラルなので、ここで凍結するのは呼出側と共有しない値だけ。
   const assign = (next: PlaybackState): void => {
     if (next.status === 'errored') freezeDeep(next.reason)
     state = Object.freeze(next)
@@ -259,7 +270,8 @@ export function createPlaybackSession(audio: AudioElement): PlaybackSession {
     play() {
       const s = state
       if (s.status === 'errored') {
-        loadSource(s.episode, s.position, s.speed)
+        // id だけの参照は音源を持たない。再試行は Coordinator が再生元の解決からやり直して start を呼ぶ。
+        if (isPlayableEpisode(s.episode)) loadSource(s.episode, s.position, s.speed)
         return Promise.resolve()
       }
       if (s.status !== 'paused') return Promise.resolve()
@@ -322,6 +334,25 @@ export function createPlaybackSession(audio: AudioElement): PlaybackSession {
       token += 1
       detachSource()
       commit({ status: 'idle' })
+      // release は最後の 1 手: src を外した後でなければ再生中の URL を失う。
+      handle?.release()
+    },
+
+    fail(ref, reason) {
+      const s = state
+      const handle = handleOf(s)
+      // ref が full episode でも id だけを写す。ref の audioHandle を保持・release しない。
+      const episode = freezeDeep({ id: ref.id })
+      const copiedReason = freezeDeep(cloneDeep(reason))
+      token += 1
+      if (s.status !== 'idle') detachSource()
+      commit({
+        status: 'errored',
+        episode,
+        position: 0,
+        speed: 'speed' in s ? s.speed : DEFAULT_SPEED,
+        reason: copiedReason,
+      })
       // release は最後の 1 手: src を外した後でなければ再生中の URL を失う。
       handle?.release()
     },
