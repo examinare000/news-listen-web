@@ -40,12 +40,12 @@ describe('TA-V3 データモデルの漏れ: 実測 ＝ 許可リスト（多く
     expect(rowKeys(measured)).toEqual(rowKeys(expected))
   })
 
-  test('TA-D4 (b): DOMAIN の export する宣言に DTO の型名が現れるのは lib/playback/domain/session.ts の Podcast だけ（TP-A3）', () => {
+  test('TA-D4 (b): DOMAIN の export する宣言に DTO の型名が 0 件（TP-A3 解消）', () => {
     const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('types/index.ts'))
     const measured = scanFiles
       .filter((f) => /^lib\/[^/]+\/domain\//.test(f))
       .flatMap((f) => detectDomainTypeReferenceRows(f, readSource(f), dtoTypeNames))
-    expect(rowKeys(measured)).toEqual(['TA-D4 | lib/playback/domain/session.ts | Podcast'])
+    expect(rowKeys(measured)).toEqual([])
   })
 
   test('TA-D11 の実測の集合 ＝ 許可リストの rule TA-D11 の行。TP3 の除外は実在する（1 箇所）', () => {
@@ -115,6 +115,30 @@ describe('TA-V3 検出器の自己点検: TA-D4 (b)（DOMAIN・APP の export �
     expect(rows('lib/playback/domain/s.ts', 'export function f(): number { const p: Podcast | null = null; return p === null ? 0 : 1 }')).toEqual([])
     expect(rows('components/X.tsx', 'export interface E { p: Podcast }')).toEqual([])
     expect(rows('lib/playback/domain/s.ts', 'export interface E { readonly p: ApiFailure }')).toEqual([])
+  })
+
+  test('SG-W-T2-1: そのファイル自身が同名の型を宣言していれば DTO の型名として数えない（export の有無を問わない）。@/types から import した同名は数える', () => {
+    const own = new Set(['QuizQuestion'])
+    const ownRows = (file: string, source: string): string[] => rowKeys(detectDomainTypeReferenceRows(file, source, own))
+
+    // 正方向対照: 宣言が無く、@/types から取った名前は漏れとして数える
+    expect(
+      ownRows('lib/catalog/domain/s.ts', "import type { QuizQuestion } from '@/types'; export interface E { q: QuizQuestion }"),
+    ).toEqual(['TA-D4 | lib/catalog/domain/s.ts | QuizQuestion'])
+    // export した自前の宣言
+    expect(
+      ownRows(
+        'lib/catalog/domain/s.ts',
+        'export interface QuizQuestion { readonly question: string }; export interface E { readonly q: QuizQuestion }',
+      ),
+    ).toEqual([])
+    // export しない自前の宣言
+    expect(
+      ownRows(
+        'lib/catalog/domain/s.ts',
+        'interface QuizQuestion { readonly question: string }; export interface E { readonly q: QuizQuestion }',
+      ),
+    ).toEqual([])
   })
 })
 

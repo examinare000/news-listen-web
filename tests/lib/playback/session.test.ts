@@ -48,6 +48,7 @@ interface LooseState {
 
 function makeEpisode(id: string, over: Partial<PlayableEpisode> = {}): PlayableEpisode {
   return {
+    kind: 'playable',
     id,
     title: `title ${id}`,
     audioUrl: `https://example.com/${id}.mp3`,

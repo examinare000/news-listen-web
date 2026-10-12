@@ -108,9 +108,9 @@ describe('TP-A1 許可リスト architecture/boundaries.allowlist.json の形', 
     expect(readAllowlistText()).toBe(`${JSON.stringify(canonical, null, 2)}\n`)
   })
 
-  test('removeBy が W-T2 の行はちょうど 2 件（W-T2 の order が grep で数える）', () => {
+  test('removeBy が W-T2 の行は 0 件（W-T2 で消した）', () => {
     const rows = readAllowlistRowsStrict()
-    expect(rows.filter((r) => r.removeBy === 'W-T2')).toHaveLength(2)
+    expect(rows.filter((r) => r.removeBy === 'W-T2')).toHaveLength(0)
   })
 })
 
@@ -173,12 +173,12 @@ describe('TA-V2 依存の向きの実測は許可リストと一致する（多�
     expect(rowKeys(measured.filter((r) => (TA_V2_RULES as readonly string[]).includes(r.rule)))).toEqual(rowKeys(expected))
   })
 
-  test('DOMAIN の禁止 import の実測は lib/playback/domain/session.ts の @/types の 1 行だけ（TP-A3）', () => {
+  test('DOMAIN の禁止 import（TA-D1・TA-D12）の実測は 0 件', () => {
     const measured = scanFiles
       .filter((f) => layerOf(f) === 'DOMAIN')
       .flatMap((f) => detectImportRows(f, readSource(f)))
       .filter((r) => r.rule === 'TA-D1' || r.rule === 'TA-D12')
-    expect(rowKeys(measured)).toEqual(['TA-D1 | lib/playback/domain/session.ts | @/types'])
+    expect(rowKeys(measured)).toEqual([])
   })
 })
 

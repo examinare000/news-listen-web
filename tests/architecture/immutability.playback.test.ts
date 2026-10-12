@@ -331,10 +331,19 @@ describe('TA-V6 4(c) 状態を変える操作は新旧の items が別の配列�
 // ---------------------------------------------------------------------------
 // TA-V6 4(d): Session
 // ---------------------------------------------------------------------------
-type MutableEpisode = { -readonly [K in keyof PlayableEpisode]: PlayableEpisode[K] }
+// 呼出側が入れ子を書き換える状況を作るため、readonly を全深さで外す（関数は辿らない）
+type DeepMutable<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends ReadonlyArray<infer U>
+    ? DeepMutable<U>[]
+    : T extends object
+      ? { -readonly [K in keyof T]: DeepMutable<T[K]> }
+      : T
+type MutableEpisode = DeepMutable<PlayableEpisode>
 
 function makeEpisode(id: string): MutableEpisode {
   return {
+    kind: 'playable',
     id,
     title: `title ${id}`,
     audioUrl: `https://example.com/${id}.mp3`,
@@ -343,10 +352,11 @@ function makeEpisode(id: string): MutableEpisode {
     createdAt: '2026-05-31T06:00:00Z',
     serverPositionSeconds: 0,
     transcript: [{ speaker: 'A', text: `hello ${id}` }],
-    vocabulary: [{ term: 'term', meaning_ja: '語', example: 'ex' }],
+    vocabulary: [{ term: 'term', meaningJa: '語', example: 'ex' }],
     quiz: [{ question: 'q?', options: ['a', 'b'] }],
-    sources: [{ article_id: `art-${id}`, title: 't', url: 'https://example.com', source: 's' }],
-    sourceKind: 'featured',
+    sources: [
+      { articleId: `art-${id}`, title: 't', url: 'https://example.com', siteName: 's', showsShareAlikeNotice: true },
+    ],
     audioHandle: { release: vi.fn() },
   }
 }

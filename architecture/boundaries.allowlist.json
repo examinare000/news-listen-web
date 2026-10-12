@@ -1,12 +1,5 @@
 [
   {
-    "rule": "TA-D1",
-    "file": "lib/playback/domain/session.ts",
-    "specifier": "@/types",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T2"
-  },
-  {
     "rule": "TA-D11",
     "file": "app/(app)/dashboard/page.tsx",
     "specifier": "localStorage",
@@ -271,13 +264,6 @@
     "specifier": "PasskeyOptionsResponse",
     "introducedBy": "W-T1",
     "removeBy": "W-T6"
-  },
-  {
-    "rule": "TA-D4",
-    "file": "lib/playback/domain/session.ts",
-    "specifier": "Podcast",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T2"
   },
   {
     "rule": "TA-D4",

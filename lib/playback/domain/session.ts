@@ -1,36 +1,16 @@
 // 再生セッション: 1 つの AudioElement を駆動する状態機械。
 // 状態変化は 13 遷移と、表の外の操作 stop()・fail() だけ。表にない入力は no-op（throw しない）。
 // 契約の正本は docs/design/modules/web/2026-09-16-implementation-spec-domain-model.md §3.1。
+import type { AudioHandle, PlayableEpisode } from '@/lib/catalog/domain/episode'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
-import type { DifficultyLevel } from '@/lib/shared/difficulty'
-import type { Podcast } from '@/types'
 import type { AudioElement } from './audioElement'
+
+// 型の定義は Catalog が持つ（TA-D12: Playback → Catalog の向き）。既存の import path を保つため再 export する。
+export type { AudioHandle, PlayableEpisode }
 
 /** 8 段の再生速度。 */
 export const PLAYBACK_SPEEDS = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5] as const
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number]
-
-/** オフライン再生用に発行された音源の解放口。中身（blob URL 等）は露出しない。 */
-export interface AudioHandle {
-  release(): void
-}
-
-export interface PlayableEpisode {
-  readonly id: string
-  readonly title: string
-  readonly audioUrl: string
-  readonly durationSeconds: number
-  readonly difficulty: DifficultyLevel
-  readonly createdAt: string
-  readonly serverPositionSeconds: number
-  readonly transcript?: Podcast['segments']
-  readonly vocabulary?: Podcast['vocabulary']
-  readonly quiz?: Podcast['quiz']
-  readonly sources?: Podcast['source_articles']
-  readonly sourceKind?: Podcast['source_kind']
-  /** handle を持つとき audioUrl はその handle だけが包む URL であること（呼出側の責務）。 */
-  readonly audioHandle?: AudioHandle
-}
 
 /** 取得前・開始前の失敗で、再生できるエピソードが無いときに errored が持つ参照。 */
 export type EpisodeRef = { readonly id: string }

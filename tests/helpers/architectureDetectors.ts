@@ -260,18 +260,40 @@ function exportedDeclarations(sf: ts.SourceFile): ts.Node[] {
   return out
 }
 
-/** TA-D4 (b): DOMAIN・APP の export する宣言の中に、`types/index.ts` が自分で宣言した型名が型参照として現れる。 */
+/** 最上位の文が宣言する interface・type alias・class・enum の名前（export の有無を問わない）。 */
+function topLevelTypeDeclarationNames(sf: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  for (const statement of sf.statements) {
+    if (
+      (ts.isInterfaceDeclaration(statement) ||
+        ts.isTypeAliasDeclaration(statement) ||
+        ts.isEnumDeclaration(statement) ||
+        ts.isClassDeclaration(statement)) &&
+      statement.name !== undefined
+    ) {
+      names.add(statement.name.text)
+    }
+  }
+  return names
+}
+
+/**
+ * TA-D4 (b): DOMAIN・APP の export する宣言の中に、`types/index.ts` が自分で宣言した型名が型参照として現れる。
+ * そのファイル自身が同名の型を宣言しているとき、参照はその型に解決されるので DTO の漏れではなく、数えない。
+ */
 export function detectDomainTypeReferenceRows(file: string, source: string, dtoTypeNames: ReadonlySet<string>): Row[] {
   const layer = layerOf(file)
   if (layer !== 'DOMAIN' && layer !== 'APP') return []
   const sf = parseSource(file, source)
+  const own = topLevelTypeDeclarationNames(sf)
+  const isDtoReference = (name: string): boolean => dtoTypeNames.has(name) && !own.has(name)
   const rows: Row[] = []
   const add = (name: string): void => void rows.push({ rule: 'TA-D4', file, specifier: name })
   const visit = (node: ts.Node): void => {
-    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && dtoTypeNames.has(node.typeName.text)) {
+    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && isDtoReference(node.typeName.text)) {
       add(node.typeName.text)
     }
-    if (ts.isExpressionWithTypeArguments(node) && ts.isIdentifier(node.expression) && dtoTypeNames.has(node.expression.text)) {
+    if (ts.isExpressionWithTypeArguments(node) && ts.isIdentifier(node.expression) && isDtoReference(node.expression.text)) {
       add(node.expression.text)
     }
     ts.forEachChild(node, visit)
