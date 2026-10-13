@@ -29,7 +29,7 @@ function pod(id: string): Podcast {
   }
 }
 
-// T-W13: contexts/AudioPlayerContext.tsx に互換 adapter（TP1）を指す文字列（コメント含む）が無い。
+// T-W13: contexts/AudioPlayerContext.tsx に互換 adapter（web-temp-01）を指す文字列（コメント含む）が無い。
 test('T-W13: AudioPlayerContext.tsx contains no compat-adapter references', () => {
   const filePath = path.join(process.cwd(), 'contexts', 'AudioPlayerContext.tsx')
   const source = fs.readFileSync(filePath, 'utf8')

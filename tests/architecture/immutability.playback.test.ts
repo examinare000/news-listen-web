@@ -1,7 +1,7 @@
 // @vitest-environment node
-// Queue と Session の不変性（TA-V6 の観点 4 (a)〜(d)）。外へ渡す値と外から受けた値を凍結した写しにする。
-// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 TA-V6、§5.0（生成関数は入力を複製して深く凍結する）。
-// 観点 1〜3 の一般形と 4 (e) は W-S2a2（リードモデル）の範囲。本テストは state() の同一参照（既存テスト）を変えない。
+// Queue と Session の不変性（web-check-06 の観点 4 (a)〜(d)）。外へ渡す値と外から受けた値を凍結した写しにする。
+// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-06、§5.0（生成関数は入力を複製して深く凍結する）。
+// 観点 1〜3 の一般形と 4 (e) は web-slice-playback-03（リードモデル）の範囲。本テストは state() の同一参照（既存テスト）を変えない。
 //
 // RED 理由（実装前）: `@/lib/playback/domain/*` が無い（module not found）。移した後も、返す値が凍結されていない・
 // 受けた値の写しを作らないので落ちる。
@@ -54,7 +54,7 @@ function expectDeeplyFrozen(label: string, value: unknown): void {
   expect(unfrozenNodes(value, label), `${label} に凍結されていない node がある`).toEqual([])
 }
 
-describe('TA-V6 helper の自己点検: 深い凍結の判定', () => {
+describe('web-check-06 helper の自己点検: 深い凍結の判定', () => {
   test('完全に凍結した値は 0 件、凍結していない node は path つきで拾う', () => {
     expect(unfrozenNodes(Object.freeze({ a: Object.freeze([Object.freeze({ b: 1 })]) }))).toEqual([])
     expect(unfrozenNodes({ a: 1 })).toEqual(['$'])
@@ -113,9 +113,9 @@ function handBuilt(items: Podcast[], currentIndex: number | null): QueueState<Po
 }
 
 // ---------------------------------------------------------------------------
-// TA-V6 4(a): 戻り値の凍結
+// web-check-06 4(a): 戻り値の凍結
 // ---------------------------------------------------------------------------
-describe('TA-V6 4(a) Queue の 11 操作の全戻り値は深く凍結済み', () => {
+describe('web-check-06 4(a) Queue の 11 操作の全戻り値は深く凍結済み', () => {
   test.each(VARIANTS)('emptyQueue から到達した状態（%s）: 状態・items・各要素（入れ子の全深さ）と、upNext の配列・jump/advance の結果と next', (_name, make) => {
     const q = setQueue([make('a'), make('b'), make('c')], 1)
     expectDeeplyFrozen('setQueue', q)
@@ -212,9 +212,9 @@ describe('TA-V6 4(a) Queue の 11 操作の全戻り値は深く凍結済み', (
 })
 
 // ---------------------------------------------------------------------------
-// TA-V6 4(b): 入力からの隔離
+// web-check-06 4(b): 入力からの隔離
 // ---------------------------------------------------------------------------
-describe('TA-V6 4(b) 渡した配列・要素を後で書き換えても状態は変わらない', () => {
+describe('web-check-06 4(b) 渡した配列・要素を後で書き換えても状態は変わらない', () => {
   test.each(VARIANTS)('setQueue（%s）: 入力の配列の push・要素の差し替え・要素の field と入れ子の書き換えが current・upNext に届かない', (_name, make) => {
     const input = [make('a'), make('b')]
     const q = setQueue(input, 0)
@@ -294,9 +294,9 @@ describe('TA-V6 4(b) 渡した配列・要素を後で書き換えても状態�
 })
 
 // ---------------------------------------------------------------------------
-// TA-V6 4(c): 新旧の分離と no-op の同一参照
+// web-check-06 4(c): 新旧の分離と no-op の同一参照
 // ---------------------------------------------------------------------------
-describe('TA-V6 4(c) 状態を変える操作は新旧の items が別の配列で、no-op は同じ参照を返す', () => {
+describe('web-check-06 4(c) 状態を変える操作は新旧の items が別の配列で、no-op は同じ参照を返す', () => {
   test('jump(found)・advance(次あり)・add・playNext・remove・moveUpNext・setQueue・start は入力と別の items を返し、入力は変わらない', () => {
     const q = setQueue([pod('a'), pod('b'), pod('c')], 0)
     const beforeIds = ids(q)
@@ -329,7 +329,7 @@ describe('TA-V6 4(c) 状態を変える操作は新旧の items が別の配列�
 })
 
 // ---------------------------------------------------------------------------
-// TA-V6 4(d): Session
+// web-check-06 4(d): Session
 // ---------------------------------------------------------------------------
 // 呼出側が入れ子を書き換える状況を作るため、readonly を全深さで外す（関数は辿らない）
 type DeepMutable<T> = T extends (...args: never[]) => unknown
@@ -388,7 +388,7 @@ function startAndGetCopy(ep: PlayableEpisode, resume = 0): PlayableEpisode {
   return copy
 }
 
-describe('TA-V6 4(d) Session の start は episode の写しを深く凍結して保持する', () => {
+describe('web-check-06 4(d) Session の start は episode の写しを深く凍結して保持する', () => {
   test.each([
     ['凍結されていない episode', (ep: MutableEpisode): PlayableEpisode => ep],
     ['浅く凍結した episode', (ep: MutableEpisode): PlayableEpisode => Object.freeze(ep)],
@@ -447,7 +447,7 @@ describe('TA-V6 4(d) Session の start は episode の写しを深く凍結し�
   })
 })
 
-describe('TA-V6 4(d) Session の state() と stateChanged の値は、すべての状態で深く凍結済み', () => {
+describe('web-check-06 4(d) Session の state() と stateChanged の値は、すべての状態で深く凍結済み', () => {
   async function driveThroughAllStatuses(ep: PlayableEpisode): Promise<PlaybackState[]> {
     const seen: PlaybackState[] = [session.state()]
     const record = (): void => void seen.push(session.state())
@@ -530,7 +530,7 @@ describe('TA-V6 4(d) Session の state() と stateChanged の値は、すべて�
   })
 })
 
-describe('TA-V6 4(d) Session の fail は ref と reason の写しを深く凍結して保持し、呼出側の値は凍結しない', () => {
+describe('web-check-06 4(d) Session の fail は ref と reason の写しを深く凍結して保持し、呼出側の値は凍結しない', () => {
   test('fail の後で渡した ref を書き換えても state().episode は変わらず、保持された episode は凍結済み、ref は凍結されない', () => {
     const ref = { id: 'a' }
 

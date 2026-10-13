@@ -1,7 +1,7 @@
 // @vitest-environment node
-// テストの隔離の検査（TA-V8）。DOMAIN・APP を対象にするテストが `@/lib/api`・`@/lib/platform` を import せず、
+// テストの隔離の検査（web-check-08）。DOMAIN・APP を対象にするテストが `@/lib/api`・`@/lib/platform` を import せず、
 // `vi.mock('@/lib/api…')` も含まない。対象 = `@/` の import がすべて domain・application・shared で、domain か application を含むテスト。
-// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 TA-V8。
+// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-08。
 //
 // 限界（記録）: `@/types` を import する Queue のテスト・APP の 2 ファイルを対象にするテストは対象に入らない。
 import { readdirSync } from 'node:fs'
@@ -26,7 +26,7 @@ function listTestFiles(dir: string): string[] {
   })
 }
 
-describe('TA-V8 DOMAIN・APP を対象にするテストの隔離', () => {
+describe('web-check-08 DOMAIN・APP を対象にするテストの隔離', () => {
   const testFiles = listTestFiles('tests/lib')
   const targets = testFiles.filter((f) => isDomainIsolationTarget(f, readSource(f)))
 
@@ -40,7 +40,7 @@ describe('TA-V8 DOMAIN・APP を対象にするテストの隔離', () => {
   })
 })
 
-describe('TA-V8 検出器の自己点検: 正例を拾い、負例を拾わない', () => {
+describe('web-check-08 検出器の自己点検: 正例を拾い、負例を拾わない', () => {
   const F = 'tests/lib/x.test.ts'
 
   test('対象の選び方: domain・application・shared だけを import するテストは対象。相対 path とパッケージは数えない', () => {

@@ -6,7 +6,7 @@
  * - Validates BACKEND_BASE_URL scheme (http/https only) to prevent SSRF
  * - Injects the API key from env (not from request headers)
  * - Fail-closed: any config problem (missing BASE_URL, missing API_KEY, non-root BASE_URL path/query/hash,
- *   invalid scheme) returns a generic 500 with no env names or URL values in the body (CI-T14)
+ *   invalid scheme) returns a generic 500 with no env names or URL values in the body (web-contract-17)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -24,7 +24,7 @@ interface BackendConfig {
 }
 
 // fail-closed: 欠落・不正のいずれも同じ null（= 呼び出し側で generic 500）に潰し、
-// どの経路で設定不正になったかを応答本文から推測できないようにする（CI-T14）。
+// どの経路で設定不正になったかを応答本文から推測できないようにする（web-contract-17）。
 function resolveBackendConfig(): BackendConfig | null {
   const baseUrl = process.env.BACKEND_BASE_URL
   const apiKey = process.env.BACKEND_API_KEY
@@ -58,7 +58,7 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
   const backendConfig = resolveBackendConfig()
 
   if (!backendConfig) {
-    // 本文は経路によらず固定（env 名・URL 値を含めない）。fail-closed（CI-T14）。
+    // 本文は経路によらず固定（env 名・URL 値を含めない）。fail-closed（web-contract-17）。
     return NextResponse.json({ detail: 'Server misconfiguration' }, { status: 500 })
   }
 

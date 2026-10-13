@@ -29,7 +29,7 @@ function pod(id: string, overrides: Partial<Podcast> = {}): Podcast {
   }
 }
 
-// lib/audioCache は lib/api を import しない（W-S1 完了条件）。取得関数は引数で渡す。
+// lib/audioCache は lib/api を import しない（web-slice-gateway-01 完了条件）。取得関数は引数で渡す。
 const fetchPodcast = vi.fn((id: string) => Promise.resolve(pod(id)))
 
 // audio-cache 専用の cache 名。sw.js の shell 系キャッシュとは別名前空間にして

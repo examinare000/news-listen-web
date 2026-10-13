@@ -1,7 +1,7 @@
 import { describe, test, expect } from 'vitest'
 import { adminAccess, type AdminAccessSession } from '@/lib/account/domain/adminAccess'
 
-// CI-T16: admin 4 ページの重複 gating を集約する単一 policy。純関数（副作用なし・全入力に
+// web-contract-19: admin 4 ページの重複 gating を集約する単一 policy。純関数（副作用なし・全入力に
 // 対して total）。入力型は構造的に定義し、@/contexts/AuthContext を import しない
 // （Spec §2 依存方向。useAuth() の値はこの型に構造的に代入可能）。
 
@@ -12,8 +12,8 @@ function session(
   return { status, user }
 }
 
-describe('adminAccess (verifies: CI-T16)', () => {
-  describe('status: unknown → loading (verifies: CI-T16-1)', () => {
+describe('adminAccess (verifies: web-contract-19)', () => {
+  describe('status: unknown → loading (verifies: web-contract-19-1)', () => {
     test('user is null', () => {
       expect(adminAccess(session('unknown', null))).toBe('loading')
     })
@@ -25,7 +25,7 @@ describe('adminAccess (verifies: CI-T16)', () => {
     })
   })
 
-  describe('status: unauthenticated → login_required (verifies: CI-T16-1)', () => {
+  describe('status: unauthenticated → login_required (verifies: web-contract-19-1)', () => {
     test('user is null', () => {
       expect(adminAccess(session('unauthenticated', null))).toBe('login_required')
     })
@@ -34,7 +34,7 @@ describe('adminAccess (verifies: CI-T16)', () => {
     })
   })
 
-  describe('status: authenticated, non-admin → denied (verifies: CI-T16-1)', () => {
+  describe('status: authenticated, non-admin → denied (verifies: web-contract-19-1)', () => {
     test('user is null', () => {
       expect(adminAccess(session('authenticated', null))).toBe('denied')
     })
@@ -43,13 +43,13 @@ describe('adminAccess (verifies: CI-T16)', () => {
     })
   })
 
-  describe('status: authenticated, admin → granted (verifies: CI-T16-1)', () => {
+  describe('status: authenticated, admin → granted (verifies: web-contract-19-1)', () => {
     test('user role is admin', () => {
       expect(adminAccess(session('authenticated', { role: 'admin' }))).toBe('granted')
     })
   })
 
-  test('is a pure function: identical input yields identical output across repeated calls (verifies: CI-T16-2)', () => {
+  test('is a pure function: identical input yields identical output across repeated calls (verifies: web-contract-19-2)', () => {
     const input = session('authenticated', { role: 'admin' })
     expect(adminAccess(input)).toBe(adminAccess(input))
   })

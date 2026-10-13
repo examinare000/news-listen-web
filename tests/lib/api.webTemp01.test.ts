@@ -1,11 +1,11 @@
-// TP1（createApiClient 互換 adapter）のピン。
+// web-temp-01（createApiClient 互換 adapter）のピン。
 // 対応: reports/plan.md G0-1・A3-1、reports/spec.md T-W6・T-W7・T-W20。
-// T-W7・T-W20 は公開形（SG-W11）・TP1 の経路（SG-W12）・名前（SG-W13）に依存しない、
-// 現行コード（lib/api.ts の request()）で green のピン。A3（TP1 の gateway 化）の後も
+// T-W7・T-W20 は公開形（SG-W11）・web-temp-01 の経路（SG-W12）・名前（SG-W13）に依存しない、
+// 現行コード（lib/api.ts の request()）で green のピン。A3（web-temp-01 の gateway 化）の後も
 // 無変更で green のままであることが SR-5（204 の逆変換）・SR-6（body の二重エンコード）の
 // 回帰検出になる（spec.md §3.4 の注記）。
-// T-W6（verifies: [CI-W6, CI-T13]）は現行コードに deadline が無いため RED（A3-1・SR-7）。
-// GREEN にするのは implement（A3-2）で TP1 を gateway 経由の deadline 付きに置き換えたとき。
+// T-W6（verifies: [CI-W6, web-contract-16]）は現行コードに deadline が無いため RED（A3-1・SR-7）。
+// GREEN にするのは implement（A3-2）で web-temp-01 を gateway 経由の deadline 付きに置き換えたとき。
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createApiClient, ApiError } from '@/lib/api'
 
@@ -17,7 +17,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('TP1 pin: verifies: [CI-W6, CI-T13]', () => {
+describe('web-temp-01 pin: verifies: [CI-W6, web-contract-16]', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -43,7 +43,7 @@ describe('TP1 pin: verifies: [CI-W6, CI-T13]', () => {
   })
 })
 
-describe('TP1 pin: verifies: [CI-W7]', () => {
+describe('web-temp-01 pin: verifies: [CI-W7]', () => {
   test('200 で本文が JSON として読めない場合は parse エラーで reject する（ApiError ではない）', async () => {
     const parseError = new SyntaxError('Unexpected token in JSON')
     vi.stubGlobal(
@@ -76,7 +76,7 @@ describe('TP1 pin: verifies: [CI-W7]', () => {
   })
 })
 
-describe('TP1 pin: verifies: [CI-W20]', () => {
+describe('web-temp-01 pin: verifies: [CI-W20]', () => {
   test('body ありの操作は JSON 文字列 1 回だけエンコードして fetch に渡す（二重エンコードしない）', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

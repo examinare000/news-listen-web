@@ -5,7 +5,7 @@ import { createGateway } from '@/lib/api/gateway'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 // SG5「最小注入点」: 1 つの gateway インスタンスを保持し、context/hook から取得させる。
-// リソース別の分割（Playback / Catalog / Account …）は W-S1 では作らない（rejected_overdesign）。
+// リソース別の分割（Playback / Catalog / Account …）は web-slice-gateway-01 では作らない（rejected_overdesign）。
 const ApiClientContext = createContext<ApiGateway | null>(null)
 
 export function ApiClientProvider({

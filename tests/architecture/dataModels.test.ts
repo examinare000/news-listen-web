@@ -1,6 +1,6 @@
 // @vitest-environment node
-// データモデルの漏れの検査（TA-V3）。TA-D4 (a)(b) と TA-D11（localStorage）の実測 ＝ 許可リスト。
-// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 TA-D4・TA-D11、§7 TA-V3。
+// データモデルの漏れの検査（web-check-03）。web-dep-04 (a)(b) と web-dep-11（localStorage）の実測 ＝ 許可リスト。
+// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 web-dep-04・web-dep-11、§7 web-check-03。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
 import { beforeAll, describe, expect, test } from 'vitest'
@@ -20,7 +20,7 @@ import {
 
 const KEY_VALUE_STORE = 'lib/platform/keyValueStore.ts'
 
-/** TP3: app/layout.tsx の inline の theme script（文字列の中の localStorage）。TA-D11 の規則そのものが除外する（TP3）。 */
+/** web-temp-03: app/layout.tsx の inline の theme script（文字列の中の localStorage）。web-dep-11 の規則そのものが除外する（web-temp-03）。 */
 const TP3_THEME_SCRIPT = { file: 'app/layout.tsx', stringOccurrences: 1 } as const
 
 let scanFiles: string[]
@@ -29,18 +29,18 @@ beforeAll(() => {
   scanFiles = listScanFiles()
 })
 
-describe('TA-V3 データモデルの漏れ: 実測 ＝ 許可リスト（多くても少なくても落ちる）', () => {
-  test('TA-D4 (a)(b) の実測の集合 ＝ 許可リストの rule TA-D4 の行（(a) は層外の lib/*.ts を含める）', () => {
+describe('web-check-03 データモデルの漏れ: 実測 ＝ 許可リスト（多くても少なくても落ちる）', () => {
+  test('web-dep-04 (a)(b) の実測の集合 ＝ 許可リストの rule web-dep-04 の行（(a) は層外の lib/*.ts を含める）', () => {
     const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('types/index.ts'))
     const measured: Row[] = scanFiles.flatMap((file) => {
       const source = readSource(file)
       return [...detectTypesImportRows(file, source), ...detectDomainTypeReferenceRows(file, source, dtoTypeNames)]
     })
-    const expected = readAllowlistRowsStrict().filter((r) => r.rule === 'TA-D4')
+    const expected = readAllowlistRowsStrict().filter((r) => r.rule === 'web-dep-04')
     expect(rowKeys(measured)).toEqual(rowKeys(expected))
   })
 
-  test('TA-D4 (b): DOMAIN の export する宣言に DTO の型名が 0 件（TP-A3 解消）', () => {
+  test('web-dep-04 (b): DOMAIN の export する宣言に DTO の型名が 0 件（web-temp-06 解消）', () => {
     const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('types/index.ts'))
     const measured = scanFiles
       .filter((f) => /^lib\/[^/]+\/domain\//.test(f))
@@ -48,11 +48,11 @@ describe('TA-V3 データモデルの漏れ: 実測 ＝ 許可リスト（多く
     expect(rowKeys(measured)).toEqual([])
   })
 
-  test('TA-D11 の実測の集合 ＝ 許可リストの rule TA-D11 の行。TP3 の除外は実在する（1 箇所）', () => {
+  test('web-dep-11 の実測の集合 ＝ 許可リストの rule web-dep-11 の行。web-temp-03 の除外は実在する（1 箇所）', () => {
     const layoutOccurrences = findLocalStorageOccurrences(TP3_THEME_SCRIPT.file, readSource(TP3_THEME_SCRIPT.file))
     expect(
       layoutOccurrences.filter((o) => o.kind === 'string'),
-      'TP3 の除外の対象（inline script の文字列の中の localStorage）が実在しない',
+      'web-temp-03 の除外の対象（inline script の文字列の中の localStorage）が実在しない',
     ).toHaveLength(TP3_THEME_SCRIPT.stringOccurrences)
 
     const measured: Row[] = []
@@ -61,23 +61,23 @@ describe('TA-V3 データモデルの漏れ: 実測 ＝ 許可リスト（多く
       const occurrences = findLocalStorageOccurrences(file, readSource(file)).filter(
         (o) => !(file === TP3_THEME_SCRIPT.file && o.kind === 'string'),
       )
-      if (occurrences.length > 0) measured.push({ rule: 'TA-D11', file, specifier: 'localStorage' })
+      if (occurrences.length > 0) measured.push({ rule: 'web-dep-11', file, specifier: 'localStorage' })
     }
-    const expected = readAllowlistRowsStrict().filter((r) => r.rule === 'TA-D11')
+    const expected = readAllowlistRowsStrict().filter((r) => r.rule === 'web-dep-11')
     expect(rowKeys(measured)).toEqual(rowKeys(expected))
   })
 })
 
-describe('TA-V3 検出器の自己点検: TA-D4 (a)（INFRA・DOMAIN・APP 以外の @/types の import）', () => {
+describe('web-check-03 検出器の自己点検: web-dep-04 (a)（INFRA・DOMAIN・APP 以外の @/types の import）', () => {
   const rows = (file: string, source: string): string[] => rowKeys(detectTypesImportRows(file, source))
 
   test('正例: PRES・ROOT・層外の lib/*.ts が @/types を import する（import type を含む）', () => {
-    expect(rows('components/X.tsx', "import type { Podcast } from '@/types/index'")).toEqual(['TA-D4 | components/X.tsx | @/types/index'])
-    expect(rows('contexts/AudioPlayerContext.tsx', "import { a } from '@/types'")).toEqual(['TA-D4 | contexts/AudioPlayerContext.tsx | @/types'])
-    expect(rows('lib/audioCache.ts', "import type { Podcast } from '@/types'")).toEqual(['TA-D4 | lib/audioCache.ts | @/types'])
+    expect(rows('components/X.tsx', "import type { Podcast } from '@/types/index'")).toEqual(['web-dep-04 | components/X.tsx | @/types/index'])
+    expect(rows('contexts/AudioPlayerContext.tsx', "import { a } from '@/types'")).toEqual(['web-dep-04 | contexts/AudioPlayerContext.tsx | @/types'])
+    expect(rows('lib/audioCache.ts', "import type { Podcast } from '@/types'")).toEqual(['web-dep-04 | lib/audioCache.ts | @/types'])
   })
 
-  test('負例: INFRA・DOMAIN・APP（TA-D1・TA-D2 の行に載せる）・@/types でない import・コメント', () => {
+  test('負例: INFRA・DOMAIN・APP（web-dep-01・web-dep-02 の行に載せる）・@/types でない import・コメント', () => {
     expect(rows('lib/api/gateway.ts', "import type { Podcast } from '@/types/index'")).toEqual([])
     expect(rows('lib/playback/domain/session.ts', "import type { Podcast } from '@/types'")).toEqual([])
     expect(rows('lib/passkey.ts', "import type { LoginResponse } from '@/types/index'")).toEqual([])
@@ -86,7 +86,7 @@ describe('TA-V3 検出器の自己点検: TA-D4 (a)（INFRA・DOMAIN・APP 以�
   })
 })
 
-describe('TA-V3 検出器の自己点検: TA-D4 (b)（DOMAIN・APP の export する宣言に現れる DTO の型名）', () => {
+describe('web-check-03 検出器の自己点検: web-dep-04 (b)（DOMAIN・APP の export する宣言に現れる DTO の型名）', () => {
   const dto = new Set(['Podcast', 'LoginResponse'])
   const rows = (file: string, source: string): string[] => rowKeys(detectDomainTypeReferenceRows(file, source, dto))
 
@@ -104,10 +104,10 @@ describe('TA-V3 検出器の自己点検: TA-D4 (b)（DOMAIN・APP の export �
   })
 
   test('正例: export する interface・type alias・関数の署名・indexed access の中の型参照', () => {
-    expect(rows('lib/playback/domain/s.ts', "export interface E { readonly s: Podcast['segments'] }")).toEqual(['TA-D4 | lib/playback/domain/s.ts | Podcast'])
-    expect(rows('lib/playback/domain/s.ts', 'export type T = ReadonlyArray<Podcast>')).toEqual(['TA-D4 | lib/playback/domain/s.ts | Podcast'])
-    expect(rows('lib/passkey.ts', 'export function f(p: Podcast): void {}')).toEqual(['TA-D4 | lib/passkey.ts | Podcast'])
-    expect(rows('lib/passkey.ts', 'export interface C { get(): Promise<LoginResponse> }')).toEqual(['TA-D4 | lib/passkey.ts | LoginResponse'])
+    expect(rows('lib/playback/domain/s.ts', "export interface E { readonly s: Podcast['segments'] }")).toEqual(['web-dep-04 | lib/playback/domain/s.ts | Podcast'])
+    expect(rows('lib/playback/domain/s.ts', 'export type T = ReadonlyArray<Podcast>')).toEqual(['web-dep-04 | lib/playback/domain/s.ts | Podcast'])
+    expect(rows('lib/passkey.ts', 'export function f(p: Podcast): void {}')).toEqual(['web-dep-04 | lib/passkey.ts | Podcast'])
+    expect(rows('lib/passkey.ts', 'export interface C { get(): Promise<LoginResponse> }')).toEqual(['web-dep-04 | lib/passkey.ts | LoginResponse'])
   })
 
   test('負例: export しない宣言・関数の本体の中・DOMAIN と APP 以外のファイル・DTO でない型名', () => {
@@ -117,14 +117,14 @@ describe('TA-V3 検出器の自己点検: TA-D4 (b)（DOMAIN・APP の export �
     expect(rows('lib/playback/domain/s.ts', 'export interface E { readonly p: ApiFailure }')).toEqual([])
   })
 
-  test('SG-W-T2-1: そのファイル自身が同名の型を宣言していれば DTO の型名として数えない（export の有無を問わない）。@/types から import した同名は数える', () => {
+  test('web-dec-18: そのファイル自身が同名の型を宣言していれば DTO の型名として数えない（export の有無を問わない）。@/types から import した同名は数える', () => {
     const own = new Set(['QuizQuestion'])
     const ownRows = (file: string, source: string): string[] => rowKeys(detectDomainTypeReferenceRows(file, source, own))
 
     // 正方向対照: 宣言が無く、@/types から取った名前は漏れとして数える
     expect(
       ownRows('lib/catalog/domain/s.ts', "import type { QuizQuestion } from '@/types'; export interface E { q: QuizQuestion }"),
-    ).toEqual(['TA-D4 | lib/catalog/domain/s.ts | QuizQuestion'])
+    ).toEqual(['web-dep-04 | lib/catalog/domain/s.ts | QuizQuestion'])
     // export した自前の宣言
     expect(
       ownRows(
@@ -142,7 +142,7 @@ describe('TA-V3 検出器の自己点検: TA-D4 (b)（DOMAIN・APP の export �
   })
 })
 
-describe('TA-V3 検出器の自己点検: TA-D11（localStorage）', () => {
+describe('web-check-03 検出器の自己点検: web-dep-11（localStorage）', () => {
   const kinds = (source: string): string[] => findLocalStorageOccurrences('hooks/x.ts', source).map((o) => o.kind)
 
   test('正例: 識別子・property 名・文字列・テンプレートの中の localStorage', () => {

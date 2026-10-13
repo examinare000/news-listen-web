@@ -1,6 +1,6 @@
 // @vitest-environment node
-// export する型の可変性の検査（TA-V5 (b)）。DOMAIN・APP・shared の export する型に、readonly でない property・配列が 0 件。
-// 判定は構文だけ（型の解決はしない）。正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 TA-D9・§7 TA-V5。
+// export する型の可変性の検査（web-check-05 (b)）。DOMAIN・APP・shared の export する型に、readonly でない property・配列が 0 件。
+// 判定は構文だけ（型の解決はしない）。正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 web-dep-09・§7 web-check-05。
 //
 // RED 理由（実装前）: lib/shared/** と lib/playback/domain/** が無い（走査した型名が揃わない）。
 // lib/passkey.ts・lib/push/pushRegistration.ts の Promise<{ status: string }> 等・QueueState.items 等が readonly でない。
@@ -36,7 +36,7 @@ beforeAll(() => {
   })
 })
 
-describe('TA-V5 (b) DOMAIN・APP・shared の export する型は readonly（構文で判定）', () => {
+describe('web-check-05 (b) DOMAIN・APP・shared の export する型は readonly（構文で判定）', () => {
   test('readonly でない property と配列型（T[]・Array<T>）が 0 件。除外は AudioElement だけで、その型が DOMAIN に実在する', () => {
     const scans = targetFiles.map((f) => ({ file: f, scan: scanPublicTypes(f, readSource(f), EXCLUDED_PORT_TYPES) }))
     expect(scans.flatMap((s) => s.scan.violations)).toEqual([])
@@ -59,7 +59,7 @@ describe('TA-V5 (b) DOMAIN・APP・shared の export する型は readonly（構
   })
 })
 
-describe('TA-V5 (b) 検出器の自己点検: 正例を拾い、負例を拾わない', () => {
+describe('web-check-05 (b) 検出器の自己点検: 正例を拾い、負例を拾わない', () => {
   const scan = (source: string, excluded: readonly string[] = []): string[] =>
     scanPublicTypes('lib/playback/domain/x.ts', source, excluded).violations.map((v) => v.replace('lib/playback/domain/x.ts: ', ''))
 

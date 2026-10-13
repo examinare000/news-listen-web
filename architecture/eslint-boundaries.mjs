@@ -1,4 +1,4 @@
-// 層の依存の向きを eslint で検査する設定（新 Spec §4 の TA-D1・D2・D3・D5・D6・D7・D12）。
+// 層の依存の向きを eslint で検査する設定（新 Spec §4 の web-dep-01・D2・D3・D5・D6・D7・D12）。
 // 現状の違反は architecture/boundaries.allowlist.json に固定してあり、その行の specifier だけを
 // ファイルごとの block で規則から外す（eslint-disable コメントは使わない）。
 // 相対 path の別 context の import は lint が拾わず、tests/architecture/boundaries.test.ts が拾う。
@@ -7,10 +7,10 @@ import path from 'node:path'
 import tseslint from 'typescript-eslint'
 
 const ROOT = path.resolve(import.meta.dirname, '..')
-const IMPORT_RULES = new Set(['TA-D1', 'TA-D2', 'TA-D5', 'TA-D6', 'TA-D7', 'TA-D12'])
+const IMPORT_RULES = new Set(['web-dep-01', 'web-dep-02', 'web-dep-05', 'web-dep-06', 'web-dep-07', 'web-dep-12'])
 const BOUNDARY_RULE = '@typescript-eslint/no-restricted-imports'
 
-/** 新 Spec §4 TA-D12 が許す context 間の向き（from → to）。 */
+/** 新 Spec §4 web-dep-12 が許す context 間の向き（from → to）。 */
 const ALLOWED_CROSS_CONTEXT = [
   ['playback', 'catalog'],
   ['learning', 'catalog'],
@@ -72,8 +72,8 @@ function domainSpec(context) {
     match: (file) => file.startsWith(`lib/${context}/domain/`),
     files: [`lib/${context}/domain/**/*.{ts,tsx}`],
     importPatterns: (exempt) => [
-      regexPattern(body, exempt, 'DOMAIN は lib/shared と同じ context の domain（と許された context の domain）だけを import する（TA-D1・TA-D12）'),
-      { group: FRAMEWORK_GROUP, message: 'DOMAIN は framework を import しない（TA-D1）' },
+      regexPattern(body, exempt, 'DOMAIN は lib/shared と同じ context の domain（と許された context の domain）だけを import する（web-dep-01・web-dep-12）'),
+      { group: FRAMEWORK_GROUP, message: 'DOMAIN は framework を import しない（web-dep-01）' },
     ],
     externalWorld: true,
   }
@@ -85,8 +85,8 @@ function appSpec({ name, context, files, match }) {
     match,
     files,
     importPatterns: (exempt) => [
-      regexPattern(`@/(?!lib/shared(?:/|$)|lib/[^/]+/${LAYER}(?:/|$))`, exempt, 'APP は lib/shared と domain・application だけを import する（TA-D2）'),
-      regexPattern(`@/lib/(?!${escapeRegex(context)}/)[^/]+/${LAYER}(?:/|$)`, exempt, '別 context の domain・application は型だけを import する（TA-D2）', {
+      regexPattern(`@/(?!lib/shared(?:/|$)|lib/[^/]+/${LAYER}(?:/|$))`, exempt, 'APP は lib/shared と domain・application だけを import する（web-dep-02）'),
+      regexPattern(`@/lib/(?!${escapeRegex(context)}/)[^/]+/${LAYER}(?:/|$)`, exempt, '別 context の domain・application は型だけを import する（web-dep-02）', {
         allowTypeImports: true,
       }),
     ],
@@ -107,20 +107,20 @@ const presSpec = {
     regexPattern(
       '@/lib/(?:api|platform)(?:/|$)|@/lib/(?:audioCache|sfx|reportClientError|pushBrowserPort|webauthnBrowserPort|swCacheCleanup|config)$|@/lib/[^/]+/infrastructure(?:/|$)',
       exempt,
-      'PRES は adapter・infrastructure を直接 import しない（TA-D5）',
+      'PRES は adapter・infrastructure を直接 import しない（web-dep-05）',
     ),
   ],
   importPaths: [
     {
       name: '@/lib/playback/domain/queue',
       allowTypeImports: true,
-      message: 'PRES は再生 domain の値を import しない（TA-D5）',
+      message: 'PRES は再生 domain の値を import しない（web-dep-05）',
     },
     {
       name: '@/lib/playback/domain/session',
       allowTypeImports: true,
       allowImportNames: ['PLAYBACK_SPEEDS'],
-      message: 'PRES は再生 domain の値を import しない（TA-D5。PLAYBACK_SPEEDS を除く）',
+      message: 'PRES は再生 domain の値を import しない（web-dep-05。PLAYBACK_SPEEDS を除く）',
     },
   ],
 }
@@ -129,7 +129,7 @@ const contextsSpec = {
   name: 'ROOT(contexts)',
   match: (file) => file.startsWith('contexts/'),
   files: ['contexts/**/*.{ts,tsx}'],
-  importPatterns: (exempt) => [regexPattern('@/components(?:/|$)', exempt, 'contexts は components を import しない（TA-D6）')],
+  importPatterns: (exempt) => [regexPattern('@/components(?:/|$)', exempt, 'contexts は components を import しない（web-dep-06）')],
 }
 
 const platformSpec = {
@@ -140,7 +140,7 @@ const platformSpec = {
     regexPattern(
       `@/lib/[^/]+/${LAYER}(?:/|$)|@/lib/(?:passkey|push/pushRegistration)$`,
       exempt,
-      'adapter は domain・application の値を import しない（型だけ）（TA-D7）',
+      'adapter は domain・application の値を import しない（型だけ）（web-dep-07）',
       { allowTypeImports: true },
     ),
   ],
@@ -151,7 +151,7 @@ const apiSpec = {
   match: (file) => file.startsWith('lib/api/'),
   files: ['lib/api/**/*.{ts,tsx}'],
   importPatterns: (exempt) => [
-    regexPattern('@/(?!types(?:/|$)|lib/shared(?:/|$)|lib/platform/cookie$|lib/api(?:/|$))', exempt, 'lib/api は types・lib/shared・lib/platform/cookie・lib/api の中だけを import する（TA-D7）'),
+    regexPattern('@/(?!types(?:/|$)|lib/shared(?:/|$)|lib/platform/cookie$|lib/api(?:/|$))', exempt, 'lib/api は types・lib/shared・lib/platform/cookie・lib/api の中だけを import する（web-dep-07）'),
   ],
 }
 
@@ -171,14 +171,14 @@ function buildRules(spec, importExempt, globalExempt) {
       'error',
       ...GLOBALS.filter((g) => !globalExempt.has(g)).map((name) => ({
         name,
-        message: `DOMAIN・APP は外界の識別子 ${name} を参照しない（TA-D3）`,
+        message: `DOMAIN・APP は外界の識別子 ${name} を参照しない（web-dep-03）`,
       })),
     ]
     rules['no-restricted-syntax'] = [
       'error',
       ...SYNTAX.filter((s) => !globalExempt.has(s.id)).map((s) => ({
         selector: s.selector,
-        message: `DOMAIN・APP は ${s.id} を呼ばない（TA-D3）`,
+        message: `DOMAIN・APP は ${s.id} を呼ばない（web-dep-03）`,
       })),
     ]
   }
@@ -215,14 +215,14 @@ export function createBoundaryConfigs() {
   // 許可リストの行を持つファイルごとに、層の block と同じ規則を、その行の specifier だけ外して書き直す。
   const byFile = new Map()
   for (const row of allowlist) {
-    if (!IMPORT_RULES.has(row.rule) && row.rule !== 'TA-D3') continue
+    if (!IMPORT_RULES.has(row.rule) && row.rule !== 'web-dep-03') continue
     byFile.set(row.file, [...(byFile.get(row.file) ?? []), row])
   }
   for (const [file, rows] of [...byFile].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const spec = specs.find((s) => s.match(file))
     if (spec === undefined) throw new Error(`許可リストの ${file} に当たる層の block が無い`)
     const importExempt = rows.filter((r) => IMPORT_RULES.has(r.rule)).map((r) => r.specifier)
-    const globalExempt = new Set(rows.filter((r) => r.rule === 'TA-D3').map((r) => r.specifier))
+    const globalExempt = new Set(rows.filter((r) => r.rule === 'web-dep-03').map((r) => r.specifier))
     configs.push({ files: [escapeGlob(file)], rules: buildRules(spec, importExempt, globalExempt) })
   }
   return tseslint.config(...configs)

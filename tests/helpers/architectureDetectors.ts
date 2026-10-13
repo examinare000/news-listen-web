@@ -12,10 +12,10 @@ import {
 } from './architecture'
 
 // ---------------------------------------------------------------------------
-// TA-D1・D2・D5・D6・D7・D12（import の向き）
+// web-dep-01・D2・D5・D6・D7・D12（import の向き）
 // ---------------------------------------------------------------------------
 
-/** 新 Spec §4 TA-D12 が許す context 間の向き（from → to）。 */
+/** 新 Spec §4 web-dep-12 が許す context 間の向き（from → to）。 */
 const ALLOWED_CROSS_CONTEXT: ReadonlyArray<readonly [string, string]> = [
   ['playback', 'catalog'],
   ['learning', 'catalog'],
@@ -74,7 +74,7 @@ const isLibApiAllowedImport = (resolved: string): boolean =>
   resolved === 'lib/platform/cookie' ||
   resolved.startsWith('lib/api/')
 
-/** TA-D1・D2・D5・D6・D7・D12 の違反の行（同じ組は呼出側で 1 行にまとめる）。 */
+/** web-dep-01・D2・D5・D6・D7・D12 の違反の行（同じ組は呼出側で 1 行にまとめる）。 */
 export function detectImportRows(file: string, source: string): Row[] {
   const layer = layerOf(file)
   const rows: Row[] = []
@@ -85,7 +85,7 @@ export function detectImportRows(file: string, source: string): Row[] {
 
     if (layer === 'DOMAIN') {
       if (resolved === null) {
-        if (FORBIDDEN_FRAMEWORK_PACKAGES(specifier)) add('TA-D1', specifier)
+        if (FORBIDDEN_FRAMEWORK_PACKAGES(specifier)) add('web-dep-01', specifier)
         continue
       }
       const ownContext = contextOf(file)
@@ -95,10 +95,10 @@ export function detectImportRows(file: string, source: string): Row[] {
         const targetContext = contextOf(resolved)
         if (targetContext === ownContext) continue
         const allowed = ALLOWED_CROSS_CONTEXT.some(([from, to]) => from === ownContext && to === targetContext)
-        if (!allowed) add('TA-D12', specifier)
+        if (!allowed) add('web-dep-12', specifier)
         continue
       }
-      add('TA-D1', specifier)
+      add('web-dep-01', specifier)
     } else if (layer === 'APP') {
       if (resolved === null) continue
       const ownContext = contextOf(file)
@@ -108,28 +108,28 @@ export function detectImportRows(file: string, source: string): Row[] {
         if (contextOf(resolved) === ownContext) continue
         if (imp.typeOnly) continue
       }
-      add('TA-D2', specifier)
+      add('web-dep-02', specifier)
     } else if (layer === 'PRES') {
       if (resolved === null) continue
-      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp)) add('TA-D5', specifier)
+      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp)) add('web-dep-05', specifier)
     } else if (file.startsWith('contexts/')) {
       if (resolved !== null && (resolved === 'components' || resolved.startsWith('components/'))) {
-        add('TA-D6', specifier)
+        add('web-dep-06', specifier)
       }
     } else if (file.startsWith('lib/platform/')) {
-      if (resolved !== null && !imp.typeOnly && isDomainOrAppModule(resolved)) add('TA-D7', specifier)
+      if (resolved !== null && !imp.typeOnly && isDomainOrAppModule(resolved)) add('web-dep-07', specifier)
     } else if (file.startsWith('lib/api/')) {
-      if (resolved !== null && !isLibApiAllowedImport(resolved)) add('TA-D7', specifier)
+      if (resolved !== null && !isLibApiAllowedImport(resolved)) add('web-dep-07', specifier)
     }
   }
   return rows
 }
 
 // ---------------------------------------------------------------------------
-// TA-D3（DOMAIN・APP の外界の識別子）
+// web-dep-03（DOMAIN・APP の外界の識別子）
 // ---------------------------------------------------------------------------
 
-const TA_D3_GLOBALS: ReadonlySet<string> = new Set([
+const WEB_DEP_03_GLOBALS: ReadonlySet<string> = new Set([
   'window',
   'document',
   'navigator',
@@ -179,13 +179,13 @@ function isReferencePosition(node: ts.Identifier): boolean {
   return true
 }
 
-/** TA-D3: `window` 等のグローバルの参照（型の位置を含む）・`URL.createObjectURL`・`JSON.parse`/`JSON.stringify` の呼出。 */
+/** web-dep-03: `window` 等のグローバルの参照（型の位置を含む）・`URL.createObjectURL`・`JSON.parse`/`JSON.stringify` の呼出。 */
 export function detectGlobalRows(file: string, source: string): Row[] {
   const sf = parseSource(file, source)
   const rows: Row[] = []
-  const add = (specifier: string): void => void rows.push({ rule: 'TA-D3', file, specifier })
+  const add = (specifier: string): void => void rows.push({ rule: 'web-dep-03', file, specifier })
   const visit = (node: ts.Node): void => {
-    if (ts.isIdentifier(node) && TA_D3_GLOBALS.has(node.text) && isReferencePosition(node)) add(node.text)
+    if (ts.isIdentifier(node) && WEB_DEP_03_GLOBALS.has(node.text) && isReferencePosition(node)) add(node.text)
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
       const callee = node.expression
       if (ts.isIdentifier(callee.expression) && callee.expression.text === 'JSON') {
@@ -207,16 +207,16 @@ export function detectGlobalRows(file: string, source: string): Row[] {
 }
 
 // ---------------------------------------------------------------------------
-// TA-D4（データモデルの漏れ）・TA-D11（localStorage）
+// web-dep-04（データモデルの漏れ）・web-dep-11（localStorage）
 // ---------------------------------------------------------------------------
 
-/** TA-D4 (a): INFRA・DOMAIN・APP 以外のファイルが `@/types`（`types/**`）を import する。 */
+/** web-dep-04 (a): INFRA・DOMAIN・APP 以外のファイルが `@/types`（`types/**`）を import する。 */
 export function detectTypesImportRows(file: string, source: string): Row[] {
   const layer = layerOf(file)
   if (layer === 'INFRA' || layer === 'DOMAIN' || layer === 'APP') return []
   return collectImports(file, source)
     .filter((imp) => imp.resolved !== null && (imp.resolved === 'types' || imp.resolved.startsWith('types/')))
-    .map((imp) => ({ rule: 'TA-D4', file, specifier: imp.specifier }))
+    .map((imp) => ({ rule: 'web-dep-04', file, specifier: imp.specifier }))
 }
 
 /** `types/index.ts` が自分で宣言して export する型の名前（再 export を除く）。 */
@@ -278,7 +278,7 @@ function topLevelTypeDeclarationNames(sf: ts.SourceFile): Set<string> {
 }
 
 /**
- * TA-D4 (b): DOMAIN・APP の export する宣言の中に、`types/index.ts` が自分で宣言した型名が型参照として現れる。
+ * web-dep-04 (b): DOMAIN・APP の export する宣言の中に、`types/index.ts` が自分で宣言した型名が型参照として現れる。
  * そのファイル自身が同名の型を宣言しているとき、参照はその型に解決されるので DTO の漏れではなく、数えない。
  */
 export function detectDomainTypeReferenceRows(file: string, source: string, dtoTypeNames: ReadonlySet<string>): Row[] {
@@ -288,7 +288,7 @@ export function detectDomainTypeReferenceRows(file: string, source: string, dtoT
   const own = topLevelTypeDeclarationNames(sf)
   const isDtoReference = (name: string): boolean => dtoTypeNames.has(name) && !own.has(name)
   const rows: Row[] = []
-  const add = (name: string): void => void rows.push({ rule: 'TA-D4', file, specifier: name })
+  const add = (name: string): void => void rows.push({ rule: 'web-dep-04', file, specifier: name })
   const visit = (node: ts.Node): void => {
     if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && isDtoReference(node.typeName.text)) {
       add(node.typeName.text)
@@ -314,7 +314,7 @@ export interface LocalStorageOccurrence {
   readonly kind: 'identifier' | 'string'
 }
 
-/** TA-D11: 識別子・property 名の `localStorage`、または文字列・テンプレートの中の `localStorage`（コメントは数えない）。 */
+/** web-dep-11: 識別子・property 名の `localStorage`、または文字列・テンプレートの中の `localStorage`（コメントは数えない）。 */
 export function findLocalStorageOccurrences(file: string, source: string): LocalStorageOccurrence[] {
   const sf = parseSource(file, source)
   const found: LocalStorageOccurrence[] = []
@@ -337,7 +337,7 @@ export function findLocalStorageOccurrences(file: string, source: string): Local
 }
 
 // ---------------------------------------------------------------------------
-// TA-V4（規則の置き場）
+// web-check-04（規則の置き場）
 // ---------------------------------------------------------------------------
 
 const DIFFICULTY_LEVEL_VALUES: readonly string[] = [
@@ -395,7 +395,7 @@ const numericValues = (elements: ReadonlyArray<ts.Expression>): number[] =>
 const stringValues = (elements: ReadonlyArray<ts.Expression>): string[] =>
   elements.filter(ts.isStringLiteralLike).map((e) => e.text)
 
-// TA-R-CT-6 の式（TA-R-CT-1 と同じ行に当たる出現は TA-R-CT-6 だけに数える）
+// web-rule-catalog-06 の式（web-rule-catalog-01 と同じ行に当たる出現は web-rule-catalog-06 だけに数える）
 const CT6_TRANSITION = /!==\s*'completed'\s*&&[^\n]*===\s*'completed'/
 
 function ct1Starts(ctx: MatchContext): number[] {
@@ -423,7 +423,7 @@ const only =
 
 export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
   {
-    rule: 'TA-R-CT-1',
+    rule: 'web-rule-catalog-01',
     allowed: only('lib/catalog/domain/episode.ts', 'lib/catalog/infrastructure/episodeMapper.ts'),
     patterns: [
       { label: '.status と生成状態の比較', find: ct1Starts },
@@ -437,7 +437,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-CT-2',
+    rule: 'web-rule-catalog-02',
     allowed: only('lib/catalog/domain/episode.ts'),
     patterns: [
       { label: 'intro_text.slice(', find: (ctx) => regexStarts(ctx.body, /intro_text\.slice\(/) },
@@ -445,7 +445,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-CT-3',
+    rule: 'web-rule-catalog-03',
     allowed: only('lib/catalog/domain/generationLimit.ts'),
     patterns: [
       { label: '/monthly/i', find: (ctx) => regexStarts(ctx.body, /\/monthly\/i/) },
@@ -458,7 +458,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-CT-6',
+    rule: 'web-rule-catalog-06',
     allowed: only('lib/catalog/domain/generationWatch.ts'),
     patterns: [
       { label: 'POLL_TIMEOUT_MS', find: (ctx) => regexStarts(ctx.body, /\bPOLL_TIMEOUT_MS\b/) },
@@ -466,7 +466,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-AC-3',
+    rule: 'web-rule-account-03',
     allowed: only('lib/account/domain/password.ts'),
     patterns: [
       { label: 'password.length', find: (ctx) => regexStarts(ctx.body, /password\.length/i) },
@@ -478,12 +478,12 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-AC-6',
+    rule: 'web-rule-account-06',
     allowed: only('lib/account/domain/adminAccess.ts'),
     patterns: [{ label: "role === 'admin'", find: (ctx) => regexStarts(ctx.body, /role\s*===\s*'admin'/) }],
   },
   {
-    rule: 'TA-R-PB-2',
+    rule: 'web-rule-playback-02',
     allowed: only('lib/playback/domain/session.ts'),
     patterns: [
       {
@@ -497,7 +497,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-PF-1',
+    rule: 'web-rule-prefs-01',
     allowed: only('lib/preferences/domain/settings.ts', 'lib/shared/difficulty.ts'),
     patterns: [
       { label: '[3, 5, 7, 10]', find: (ctx) => regexStarts(ctx.body, /\[\s*3\s*,\s*5\s*,\s*7\s*,\s*10\s*\]/) },
@@ -512,17 +512,17 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-R-LN-1',
+    rule: 'web-rule-learning-01',
     allowed: only('lib/learning/domain/streak.ts'),
     patterns: [{ label: '5 * 60 * 1000', find: (ctx) => regexStarts(ctx.body, /\b5\s*\*\s*60\s*\*\s*1000\b/) }],
   },
   {
-    rule: 'TA-R-LN-2',
+    rule: 'web-rule-learning-02',
     allowed: only('lib/learning/domain/quiz.ts'),
     patterns: [{ label: '>= 0.5', find: (ctx) => regexStarts(ctx.body, />=\s*0\.5\b/) }],
   },
   {
-    rule: 'TA-R-LN-3',
+    rule: 'web-rule-learning-03',
     allowed: only('lib/learning/domain/vocabularyTest.ts', 'lib/learning/infrastructure/learningGateway.ts'),
     patterns: [
       { label: 'slice(0, 10)', find: ln3Slice10Starts },
@@ -531,7 +531,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
-    rule: 'TA-D8',
+    rule: 'web-dep-08',
     allowed: (file) =>
       file === 'lib/api/gateway.ts' || file === 'lib/platform/cacheStore.ts' || file.startsWith('app/api/'),
     patterns: [
@@ -546,7 +546,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
   },
 ]
 
-/** TA-V4: 規則ごとの「出てよいファイル以外の出現」の行。 */
+/** web-check-04: 規則ごとの「出てよいファイル以外の出現」の行。 */
 export function detectRuleRows(file: string, source: string): Row[] {
   const ctx: MatchContext = { file, source, body: stripComments(file, source) }
   const rows: Row[] = []
@@ -561,7 +561,7 @@ export function detectRuleRows(file: string, source: string): Row[] {
 }
 
 // ---------------------------------------------------------------------------
-// TA-V5 (b)（export する型の readonly）
+// web-check-05 (b)（export する型の readonly）
 // ---------------------------------------------------------------------------
 
 export interface PublicTypeScan {
@@ -644,7 +644,7 @@ export function scanPublicTypes(file: string, source: string, excludedTypeNames:
 }
 
 // ---------------------------------------------------------------------------
-// TA-V8（テストの隔離）
+// web-check-08（テストの隔離）
 // ---------------------------------------------------------------------------
 
 /** テストの `@/` で始まる import（静的・export from・import()・`vi.mock` の第 1 引数）の文字列。 */

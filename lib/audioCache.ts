@@ -21,7 +21,7 @@ import type { Podcast } from '@/types'
 
 /**
  * 署名付き URL 込みの Podcast を取得する関数。`lib/audioCache` は `lib/api` に依存せず、
- * 呼出側（page）が API クライアントの取得関数を渡す（設計書 W-S1 対象 4・SG-W1 決定 A）。
+ * 呼出側（page）が API クライアントの取得関数を渡す（設計書 web-slice-gateway-01 対象 4・web-dec-05 決定 A）。
  */
 export type FetchPodcast = (podcastId: string) => Promise<Podcast>
 

@@ -17,7 +17,7 @@ import { createPushRegistration } from '@/lib/push/pushRegistration'
 // - 'authenticated' / 'unauthenticated': 解決済み
 export type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 
-// CI-T15（SG-S0-1 候補 (b) で確定）: refreshMe が失効（401）を検知したときの
+// web-contract-18（SG-S0-1 候補 (b) で確定）: refreshMe が失効（401）を検知したときの
 // SW 管理キャッシュ（shell-*/api-*）消去結果。'skipped' は 401 以外（成功・network error 等）で
 // cleanup 自体を行っていないことを表す。
 export type RefreshMeResult = { cleanup: 'done' | 'incomplete' | 'skipped' }

@@ -1,5 +1,5 @@
-// Catalog domain の Episode: 判別（TA-R-CT-1）・題の規則（TA-R-CT-2）・出典の可否（TA-R-CT-10）・失敗の値域（TA-R-CT-11）。
-// DTO（`@/types`）も Playback も import しない（TA-D1・TA-D12）。DTO からの読み取りは infrastructure の episodeMapper が行う。
+// Catalog domain の Episode: 判別（web-rule-catalog-01）・題の規則（web-rule-catalog-02）・出典の可否（web-rule-catalog-10）・失敗の値域（web-rule-catalog-11）。
+// DTO（`@/types`）も Playback も import しない（web-dep-01・web-dep-12）。DTO からの読み取りは infrastructure の episodeMapper が行う。
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
 /** オフライン再生用に発行された音源の解放口。中身（blob URL 等）は露出しない。 */
@@ -78,7 +78,7 @@ export interface EpisodeLabel {
   readonly intro: string
 }
 
-/** Queue の要素（W-17）。 */
+/** Queue の要素（web-deriv-17）。 */
 export interface QueuedEpisode {
   readonly id: string
   readonly label: EpisodeLabel
@@ -194,7 +194,7 @@ export function displayTitle(label: EpisodeLabel, maxLen: number): string {
 
 /**
  * 再生できるのは completed ∧ audioUrl≠'' ∧ failure=null のときだけ。completed の矛盾（audioUrl が空、または failure あり）は
- * Playable にせず Failed に倒す（PS-07）。reason は failure があればその値、なければ generation_failed。
+ * Playable にせず Failed に倒す（shared-session-08）。reason は failure があればその値、なければ generation_failed。
  */
 export function classifyEpisode(input: EpisodeReadout): Episode {
   const title = displayTitle({ title: input.title, intro: input.intro }, Number.POSITIVE_INFINITY)

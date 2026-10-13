@@ -28,7 +28,7 @@ function formatAverage(n: number | null | undefined): string {
 
 // 管理者向け read-only リテンション計測ダッシュボード（ADR-075 決定E1）。
 // C0 ゲート「D30 継続率 ≥30% かつ 完聴率 ≥50%」の判定に必要な KPI を中心に表示する。
-// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（CI-T16）。
+// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（web-contract-19）。
 // GET /admin/metrics はラッパー無しでスナップショットを直接返し、指定日（省略時は当日）に
 // 集計が無ければ 404 を返す契約（backend api/schemas.py 確定版）。
 export default function AdminMetricsPage() {

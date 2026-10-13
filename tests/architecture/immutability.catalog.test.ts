@@ -1,6 +1,6 @@
 // @vitest-environment node
-// Catalog の生成関数と decodeEpisode の不変性（TA-V6 の観点 1・2）。入力を全深さで複製し、戻り値を深く凍結する。
-// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 TA-V6、§5.0（値の生成）。
+// Catalog の生成関数と decodeEpisode の不変性（web-check-06 の観点 1・2）。入力を全深さで複製し、戻り値を深く凍結する。
+// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-06、§5.0（値の生成）。
 // key `audioHandle` の値だけは、解放の操作を持つ不透明な値なので凍結せず、入力と同じ参照を保つ。
 //
 // RED 理由（実装前）: `@/lib/catalog/domain/episode`・`@/lib/catalog/infrastructure/episodeMapper` が無い（module not found）。
@@ -61,7 +61,7 @@ function snapshotWithoutHandle(value: object): unknown {
   return structuredClone(rest)
 }
 
-describe('TA-V6 helper の自己点検: 深い凍結の判定', () => {
+describe('web-check-06 helper の自己点検: 深い凍結の判定', () => {
   test('完全に凍結した値は 0 件、凍結していない node は path つきで拾う（凍結済みの親の下の可変な入れ子も拾う）', () => {
     expect(unfrozenNodes(Object.freeze({ a: Object.freeze([Object.freeze({ b: 1 })]) }))).toEqual([])
     expect(unfrozenNodes({ a: 1 })).toEqual(['$'])
@@ -145,7 +145,7 @@ function podcastDto(): Podcast {
 // ---------------------------------------------------------------------------
 // 観点 1: 複製（呼出の後で入力を書き換えても戻り値は変わらない）
 // ---------------------------------------------------------------------------
-describe('TA-V6 観点 1: 生成関数は入力を複製する（呼出の後で入力を書き換えても戻り値は変わらない）', () => {
+describe('web-check-06 観点 1: 生成関数は入力を複製する（呼出の後で入力を書き換えても戻り値は変わらない）', () => {
   test('playableEpisode: 入力の field・入れ子を書き換えても戻り値は変わらず、入れ子は別の参照。audioHandle だけは同じ参照', () => {
     const handle = { release: vi.fn() }
     const input = playableInput(handle)
@@ -224,7 +224,7 @@ describe('TA-V6 観点 1: 生成関数は入力を複製する（呼出の後で
 // ---------------------------------------------------------------------------
 // 観点 2: 凍結（戻り値は全深さで凍結され、strict mode の書込みは throw する）
 // ---------------------------------------------------------------------------
-describe('TA-V6 観点 2: 戻り値は audioHandle を除く全深さで凍結される', () => {
+describe('web-check-06 観点 2: 戻り値は audioHandle を除く全深さで凍結される', () => {
   const handle = { release: vi.fn() }
 
   test('playableEpisode・classifyEpisode(Playable)・generatingEpisode・failedEpisode・queuedEpisode・sourceCredit は凍結された値を返す', () => {
@@ -274,7 +274,7 @@ describe('TA-V6 観点 2: 戻り値は audioHandle を除く全深さで凍結�
 // ---------------------------------------------------------------------------
 // decodeEpisode: DTO と参照を共有しない
 // ---------------------------------------------------------------------------
-describe('TA-V6 decodeEpisode: 戻り値は DTO と参照を共有せず、深く凍結される', () => {
+describe('web-check-06 decodeEpisode: 戻り値は DTO と参照を共有せず、深く凍結される', () => {
   test('decode の後で DTO の入れ子を書き換えても戻り値は変わらない', () => {
     const dto = podcastDto()
     const result = decodeEpisode(dto)

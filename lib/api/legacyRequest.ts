@@ -1,9 +1,9 @@
 import { createGateway } from '@/lib/api/gateway'
 import type { ApiFailure, GatewayJsonRequest } from '@/lib/api/gateway'
 
-// owner: user・導入: W-S1（2026-09-24）。
+// owner: user・導入: web-slice-gateway-01（2026-09-24）。
 // 削除条件: app/・components/・hooks/ が既存の API クライアント関数の呼出（ApiError の import）を
-// しなくなった時（grep 0。W-S4d1 で満たし、本体削除は W-S4d3）。
+// しなくなった時（grep 0。web-slice-context-06 で満たし、本体削除は web-slice-context-07）。
 export class ApiError extends Error {
   constructor(
     public readonly status: number,
@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-// TP1（互換 adapter）が読む gateway 失敗オブジェクトの raw。symbol キーは import せず、
+// web-temp-01（互換 adapter）が読む gateway 失敗オブジェクトの raw。symbol キーは import せず、
 // gateway.ts と同じ Symbol.for(...) 文字列で own プロパティを直接読む（factory 形式の
 // mock でも壊れない）。読み手はこのファイルだけ。
 const GATEWAY_RAW_KEY = Symbol.for('news-listen.web.gateway.raw')
@@ -65,7 +65,7 @@ export async function request<T>(
       throw new ApiError(raw.status, raw.detail, raw.retryAfterSeconds)
     }
     if (raw.type === 'no_content') {
-      // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。TP1 削除で消える）
+      // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。web-temp-01 削除で消える）
       return undefined as T
     }
     // malformed: 本文が JSON として読めなかった元の parse エラーをそのまま再 throw
@@ -94,7 +94,7 @@ export async function request<T>(
       throw new ApiError(failure.status, 'Unknown error')
     case 'unknown':
       if (failure.status === 204) {
-        // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。TP1 削除で消える）
+        // 204 No Content: 旧契約では成功扱いだったため undefined を返す（型の穴。web-temp-01 削除で消える）
         return undefined as T
       }
       throw new ApiError(failure.status, 'Unknown error')

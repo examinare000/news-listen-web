@@ -5,7 +5,7 @@ import type { AudioHandle, PlayableEpisode } from '@/lib/catalog/domain/episode'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { AudioElement } from './audioElement'
 
-// 型の定義は Catalog が持つ（TA-D12: Playback → Catalog の向き）。既存の import path を保つため再 export する。
+// 型の定義は Catalog が持つ（web-dep-12: Playback → Catalog の向き）。既存の import path を保つため再 export する。
 export type { AudioHandle, PlayableEpisode }
 
 /** 8 段の再生速度。 */

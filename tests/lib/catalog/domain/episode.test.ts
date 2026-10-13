@@ -1,6 +1,6 @@
 // Catalog domain の Episode: 判別・生成関数・題の規則・出典の可否。
-// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §5.0〜§5.2（TA-R-CT-1・TA-R-CT-2・TA-R-CT-10）、
-// 共有仕様 §4.4（PS-07）。
+// 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §5.0〜§5.2（web-rule-catalog-01・web-rule-catalog-02・web-rule-catalog-10）、
+// 共有仕様 §4.4（shared-session-08）。
 //
 // RED 理由（実装前）: `@/lib/catalog/domain/episode` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
@@ -46,7 +46,7 @@ function readout(over: Partial<EpisodeReadout> = {}): EpisodeReadout {
 }
 
 // ---------------------------------------------------------------------------
-// classifyEpisode: 判別 12 行（TA-R-CT-1）
+// classifyEpisode: 判別 12 行（web-rule-catalog-01）
 // ---------------------------------------------------------------------------
 type Expected = { kind: 'playable' } | { kind: 'generating' } | { kind: 'failed'; reason: FailureReason }
 
@@ -62,9 +62,9 @@ const AUDIO = 'https://example.com/p1.mp3'
 
 const CLASSIFY_ROWS: readonly ClassifyRow[] = [
   { status: 'completed', audioUrl: AUDIO, failure: null, expected: { kind: 'playable' }, note: '' },
-  { status: 'completed', audioUrl: AUDIO, failure: 'quota_exhausted', expected: { kind: 'failed', reason: 'quota_exhausted' }, note: ' PS-07' },
+  { status: 'completed', audioUrl: AUDIO, failure: 'quota_exhausted', expected: { kind: 'failed', reason: 'quota_exhausted' }, note: ' shared-session-08' },
   { status: 'completed', audioUrl: '', failure: null, expected: { kind: 'failed', reason: 'generation_failed' }, note: '' },
-  { status: 'completed', audioUrl: '', failure: 'quota_exhausted', expected: { kind: 'failed', reason: 'quota_exhausted' }, note: ' PS-07' },
+  { status: 'completed', audioUrl: '', failure: 'quota_exhausted', expected: { kind: 'failed', reason: 'quota_exhausted' }, note: ' shared-session-08' },
   { status: 'processing', audioUrl: AUDIO, failure: null, expected: { kind: 'generating' }, note: '' },
   { status: 'processing', audioUrl: AUDIO, failure: 'quota_exhausted', expected: { kind: 'generating' }, note: '' },
   { status: 'processing', audioUrl: '', failure: null, expected: { kind: 'generating' }, note: '' },
@@ -75,9 +75,9 @@ const CLASSIFY_ROWS: readonly ClassifyRow[] = [
   { status: 'failed', audioUrl: '', failure: 'quota_exhausted', expected: { kind: 'failed', reason: 'quota_exhausted' }, note: '' },
 ]
 
-describe('TA-R-CT-1 classifyEpisode: status × audioUrl × failure の判別', () => {
+describe('web-rule-catalog-01 classifyEpisode: status × audioUrl × failure の判別', () => {
   test.each(CLASSIFY_ROWS)(
-    'TA-R-CT-1$note: status=$status audioUrl=$audioUrl failure=$failure → $expected',
+    'web-rule-catalog-01$note: status=$status audioUrl=$audioUrl failure=$failure → $expected',
     ({ status, audioUrl, failure, expected }) => {
       const episode = classifyEpisode(readout({ status, audioUrl, failure }))
       expect(episode.kind).toBe(expected.kind)
@@ -87,7 +87,7 @@ describe('TA-R-CT-1 classifyEpisode: status × audioUrl × failure の判別', (
     },
   )
 
-  test('TA-R-CT-1: Playable になるのは completed ∧ audioUrl≠"" ∧ failure=null の 1 行だけ', () => {
+  test('web-rule-catalog-01: Playable になるのは completed ∧ audioUrl≠"" ∧ failure=null の 1 行だけ', () => {
     const playableRows = CLASSIFY_ROWS.filter((row) => classifyEpisode(readout(row)).kind === 'playable')
     expect(playableRows).toHaveLength(1)
     expect(playableRows[0]).toMatchObject({ status: 'completed', audioUrl: AUDIO, failure: null })
@@ -97,7 +97,7 @@ describe('TA-R-CT-1 classifyEpisode: status × audioUrl × failure の判別', (
 // ---------------------------------------------------------------------------
 // title の補完（variant 共通）
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-2 classifyEpisode: どの variant でも title は displayTitle(label, +∞) と等しい', () => {
+describe('web-rule-catalog-02 classifyEpisode: どの variant でも title は displayTitle(label, +∞) と等しい', () => {
   const LONG_INTRO = 'あ'.repeat(60)
   const statuses: ReadonlyArray<EpisodeReadout['status']> = ['completed', 'processing', 'failed']
 
@@ -112,7 +112,7 @@ describe('TA-R-CT-2 classifyEpisode: どの variant でも title は displayTitl
 // ---------------------------------------------------------------------------
 // field の集合
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-1 classifyEpisode: variant ごとの field の集合に過不足が無い', () => {
+describe('web-rule-catalog-01 classifyEpisode: variant ごとの field の集合に過不足が無い', () => {
   const full = readout()
 
   test('Playable は内容をすべて持ち、値は入力から写される（audioHandle の key は無い）', () => {
@@ -160,7 +160,7 @@ describe('TA-R-CT-1 classifyEpisode: variant ごとの field の集合に過不�
   })
 })
 
-describe('TA-R-CT-10 classifyEpisode: Playable の sources は sourceCredit を通る', () => {
+describe('web-rule-catalog-10 classifyEpisode: Playable の sources は sourceCredit を通る', () => {
   const origins: readonly SourceOrigin[] = ['operator', 'user', 'unknown']
 
   test.each(origins)('sourceOrigin=%s: sources[i] は sourceCredit(input.sources[i], origin) と等しい', (origin) => {
@@ -177,7 +177,7 @@ describe('TA-R-CT-10 classifyEpisode: Playable の sources は sourceCredit を�
 // ---------------------------------------------------------------------------
 // sourceCredit
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-10 sourceCredit: CC BY-SA の表示可否は運営者由来のときだけ true', () => {
+describe('web-rule-catalog-10 sourceCredit: CC BY-SA の表示可否は運営者由来のときだけ true', () => {
   test.each([
     ['operator', true],
     ['user', false],
@@ -190,7 +190,7 @@ describe('TA-R-CT-10 sourceCredit: CC BY-SA の表示可否は運営者由来の
 // ---------------------------------------------------------------------------
 // displayTitle: podcastTitle.test.ts の 11 件と同じ入力
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-2 displayTitle: tests/lib/podcastTitle.test.ts と同じ入力は同じ値', () => {
+describe('web-rule-catalog-02 displayTitle: tests/lib/podcastTitle.test.ts と同じ入力は同じ値', () => {
   const LONG_INTRO =
     'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん1234567890'
   const label = (title: string | null, intro: string): EpisodeLabel => ({ title, intro })

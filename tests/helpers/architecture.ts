@@ -10,7 +10,7 @@ export const WEB_ROOT = path.resolve(__dirname, '../..')
 const ALLOWLIST_RELATIVE_PATH = 'architecture/boundaries.allowlist.json'
 const ALLOWLIST_PATH = path.join(WEB_ROOT, ALLOWLIST_RELATIVE_PATH)
 
-/** 走査するディレクトリ（新 Spec §7 TA-V2 の量化集合）。 */
+/** 走査するディレクトリ（新 Spec §7 web-check-02 の量化集合）。 */
 const SCAN_DIRS = ['lib', 'app', 'components', 'hooks', 'contexts', 'types'] as const
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ export function stripComments(fileName: string, source: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// import の収集（新 Spec §7 TA-V2 の定義）
+// import の収集（新 Spec §7 web-check-02 の定義）
 // ---------------------------------------------------------------------------
 
 export interface ImportRecord {
@@ -264,7 +264,7 @@ export function collectImports(fileName: string, source: string): ImportRecord[]
 }
 
 // ---------------------------------------------------------------------------
-// 許可リスト（TP-A1）
+// 許可リスト（web-temp-04）
 // ---------------------------------------------------------------------------
 
 export interface Row {
