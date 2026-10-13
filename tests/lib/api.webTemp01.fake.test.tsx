@@ -1,10 +1,10 @@
-// TP1（createApiClient 互換 adapter）の factory 形式 mock 経路のピン。
+// web-temp-01（createApiClient 互換 adapter）の factory 形式 mock 経路のピン。
 // 対応: reports/plan.md A3-1、reports/spec.md T-W18・T-W19（CI-W18・CI-W19・CI-W20・CI-W7）。
 // factory 形式の mock（vi.hoisted + vi.mock('@/lib/api/gateway', () => ({ createGateway: () => fake }))、
 // importOriginal なし）は @/lib/api/gateway の named export をまるごと fake に置き換える。
-// TP1（lib/api.ts の request()）・ApiClientProvider がこの module から値として import するのは
+// web-temp-01（lib/api.ts の request()）・ApiClientProvider がこの module から値として import するのは
 // createGateway だけなので、この形の mock でも両経路が同じ fake に届く（CI-W18。SR-9 対処）。
-// T-W18・T-W19 は T-W6・T-W7・T-W20（実 gateway が要る `tests/lib/api.tp1.test.ts`）と mock の範囲が
+// T-W18・T-W19 は T-W6・T-W7・T-W20（実 gateway が要る `tests/lib/api.webTemp01.test.ts`）と mock の範囲が
 // 違うため別ファイルに置く（vitest の vi.mock はファイル単位で効く）。
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
@@ -34,8 +34,8 @@ function Probe({ onRead }: { onRead: (gw: unknown) => void }) {
   return null
 }
 
-describe('TP1 factory mock pin: verifies: [CI-W18, CI-W20]', () => {
-  test('ApiClientProvider 経由と TP1（createApiClient）経由は同じ fake インスタンスに届く', () => {
+describe('web-temp-01 factory mock pin: verifies: [CI-W18, CI-W20]', () => {
+  test('ApiClientProvider 経由と web-temp-01（createApiClient）経由は同じ fake インスタンスに届く', () => {
     const seen: unknown[] = []
     render(
       <ApiClientProvider>
@@ -59,7 +59,7 @@ describe('TP1 factory mock pin: verifies: [CI-W18, CI-W20]', () => {
   })
 })
 
-describe('TP1 factory mock pin: verifies: [CI-W19, CI-W7, CI-W18]', () => {
+describe('web-temp-01 factory mock pin: verifies: [CI-W19, CI-W7, CI-W18]', () => {
   test.each([
     ['network', { kind: 'network' } satisfies ApiFailure, 0, 'Network error'],
     ['timeout', { kind: 'timeout' } satisfies ApiFailure, 0, 'Network error'],

@@ -103,7 +103,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('AuthProvider logout — push 購読解除（SG-C6）', () => {
+describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
   // T50
   test('R4, CI-L1, CI-D2: 既存購読があれば client().logout() より前に unsubscribePush を呼ぶ。port.unsubscribe は呼ばない', async () => {
     const portUnsubscribe = vi.fn(async () => true)

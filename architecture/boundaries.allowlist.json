@@ -1,779 +1,779 @@
 [
   {
-    "rule": "TA-D11",
-    "file": "app/(app)/dashboard/page.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
-  },
-  {
-    "rule": "TA-D11",
-    "file": "components/ui/ThemeToggle.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
-  },
-  {
-    "rule": "TA-D11",
-    "file": "contexts/AppContext.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
-  },
-  {
-    "rule": "TA-D11",
-    "file": "hooks/useAudioPlayer.ts",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
-  },
-  {
-    "rule": "TA-D11",
-    "file": "hooks/useLocalStorage.ts",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
-  },
-  {
-    "rule": "TA-D11",
-    "file": "lib/sfx.ts",
-    "specifier": "localStorage",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
-  },
-  {
-    "rule": "TA-D2",
+    "rule": "web-dep-02",
     "file": "lib/passkey.ts",
     "specifier": "@/lib/webauthnBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D2",
+    "rule": "web-dep-02",
     "file": "lib/passkey.ts",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D2",
+    "rule": "web-dep-02",
     "file": "lib/push/pushRegistration.ts",
     "specifier": "@/lib/pushBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D2",
+    "rule": "web-dep-02",
     "file": "lib/push/pushRegistration.ts",
     "specifier": "@/lib/webpush",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D2",
+    "rule": "web-dep-02",
     "file": "lib/push/pushRegistration.ts",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D3",
+    "rule": "web-dep-03",
     "file": "lib/passkey.ts",
     "specifier": "JSON.parse",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/admin/featured-sites/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/admin/invites/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/admin/metrics/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/admin/users/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/dashboard/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/feed/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T4"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-03"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/podcast/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/subscriptions/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T5"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-04"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T12"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/ArticleCard.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T4"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-03"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/PodcastCard.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/ui/DifficultyBadge.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/ui/OnboardingSourcesModal.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T5"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-04"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "components/ui/StatusBadge.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "contexts/AppContext.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "contexts/AudioPlayerContext.tsx",
     "specifier": "@/types",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "contexts/AuthContext.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "contexts/StreakContext.tsx",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "hooks/useWebPushSubscription.ts",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/audioCache.ts",
     "specifier": "@/types",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/format.ts",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T15"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-closure-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/passkey.ts",
     "specifier": "LoginResponse",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/passkey.ts",
     "specifier": "PasskeyOptionsResponse",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/playbackQueue.ts",
     "specifier": "@/types",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/push/pushRegistration.ts",
     "specifier": "PushSubscriptionJSON",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D4",
+    "rule": "web-dep-04",
     "file": "lib/pushBrowserPort.ts",
     "specifier": "@/types/index",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/admin/featured-sites/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/admin/invites/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/admin/metrics/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/admin/users/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/dashboard/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/dashboard/page.tsx",
     "specifier": "@/lib/sfx",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/feed/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T4"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/feed/page.tsx",
     "specifier": "@/lib/sfx",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/audioCache",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/sfx",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/podcast/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/podcast/page.tsx",
     "specifier": "@/lib/audioCache",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T7a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-prefs-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "@/lib/audioCache",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "@/lib/config",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/subscriptions/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T5"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T12"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-02"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "@/lib/sfx",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/global-error.tsx",
     "specifier": "@/lib/reportClientError",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T10a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-platform-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T5"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "app/signup/page.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ClientErrorReporter.tsx",
     "specifier": "@/lib/reportClientError",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T10a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-platform-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ErrorFallback.tsx",
     "specifier": "@/lib/reportClientError",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T10a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-platform-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/PushNotificationSection.tsx",
     "specifier": "@/lib/pushBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "@/lib/webauthnBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/LoginModal.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/LoginModal.tsx",
     "specifier": "@/lib/webauthnBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/OnboardingSourcesModal.tsx",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T5"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-04"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "components/ui/ThemeToggle.tsx",
     "specifier": "@/lib/config",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "hooks/useAudioPlayer.ts",
     "specifier": "@/lib/config",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "hooks/useWebPushSubscription.ts",
     "specifier": "@/lib/api",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D5",
+    "rule": "web-dep-05",
     "file": "hooks/useWebPushSubscription.ts",
     "specifier": "@/lib/pushBrowserPort",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D6",
+    "rule": "web-dep-06",
     "file": "contexts/AudioPlayerContext.tsx",
     "specifier": "@/components/ui/Toast",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-D7",
+    "rule": "web-dep-07",
     "file": "lib/api/gateway.ts",
     "specifier": "@/lib/cookie",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T9"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "app/(app)/admin/metrics/page.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "app/(app)/feed/page.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "app/(app)/settings/page.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "app/(app)/subscriptions/page.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "components/ui/AccountSection.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "components/ui/LoginModal.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "components/ui/OnboardingSourcesModal.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "contexts/AuthContext.tsx",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d1"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-06"
   },
   {
-    "rule": "TA-D8",
+    "rule": "web-dep-08",
     "file": "lib/api/legacyRequest.ts",
     "specifier": ".status と数値の比較",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4d3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-07"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-dep-11",
+    "file": "app/(app)/dashboard/page.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
+  },
+  {
+    "rule": "web-dep-11",
+    "file": "components/ui/ThemeToggle.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
+  },
+  {
+    "rule": "web-dep-11",
+    "file": "contexts/AppContext.tsx",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
+  },
+  {
+    "rule": "web-dep-11",
+    "file": "hooks/useAudioPlayer.ts",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
+  },
+  {
+    "rule": "web-dep-11",
+    "file": "hooks/useLocalStorage.ts",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
+  },
+  {
+    "rule": "web-dep-11",
+    "file": "lib/sfx.ts",
+    "specifier": "localStorage",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
+  },
+  {
+    "rule": "web-rule-account-03",
     "file": "app/(app)/admin/users/page.tsx",
     "specifier": "password.length",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "app/signup/page.tsx",
     "specifier": "PASSWORD_MIN_LENGTH",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "app/signup/page.tsx",
     "specifier": "countPasswordCharacterClasses",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "app/signup/page.tsx",
     "specifier": "password.length",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "PASSWORD_MIN_LENGTH",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "countPasswordCharacterClasses",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-3",
+    "rule": "web-rule-account-03",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "password.length",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-03"
   },
   {
-    "rule": "TA-R-AC-6",
+    "rule": "web-rule-account-06",
     "file": "app/(app)/admin/users/page.tsx",
     "specifier": "role === 'admin'",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T8"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-admin-01"
   },
   {
-    "rule": "TA-R-AC-6",
+    "rule": "web-rule-account-06",
     "file": "components/NavigationBar.tsx",
     "specifier": "role === 'admin'",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-R-AC-6",
+    "rule": "web-rule-account-06",
     "file": "components/ui/AccountSection.tsx",
     "specifier": "role === 'admin'",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T6"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-account-01"
   },
   {
-    "rule": "TA-R-CT-2",
+    "rule": "web-rule-catalog-02",
     "file": "lib/podcastTitle.ts",
     "specifier": "intro_text.slice(",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-R-CT-3",
+    "rule": "web-rule-catalog-03",
     "file": "app/(app)/feed/page.tsx",
     "specifier": "/monthly/i",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-01"
   },
   {
-    "rule": "TA-R-CT-3",
+    "rule": "web-rule-catalog-03",
     "file": "app/(app)/feed/page.tsx",
     "specifier": "86400",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4a"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-01"
   },
   {
-    "rule": "TA-R-CT-6",
+    "rule": "web-rule-catalog-06",
     "file": "app/(app)/podcast/page.tsx",
     "specifier": "!== 'completed' && … === 'completed'",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-R-CT-6",
+    "rule": "web-rule-catalog-06",
     "file": "hooks/usePodcastListPolling.ts",
     "specifier": "POLL_TIMEOUT_MS",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-R-CT-6",
+    "rule": "web-rule-catalog-06",
     "file": "lib/podcastPolling.ts",
     "specifier": "POLL_TIMEOUT_MS",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T3"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
   },
   {
-    "rule": "TA-R-LN-1",
+    "rule": "web-rule-learning-01",
     "file": "contexts/StreakContext.tsx",
     "specifier": "5 * 60 * 1000",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T13"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "TA-R-LN-2",
+    "rule": "web-rule-learning-02",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": ">= 0.5",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T11"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-01"
   },
   {
-    "rule": "TA-R-LN-3",
+    "rule": "web-rule-learning-03",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "retest_correct",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T12"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-02"
   },
   {
-    "rule": "TA-R-LN-3",
+    "rule": "web-rule-learning-03",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "slice(0, 10)",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T12"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-02"
   },
   {
-    "rule": "TA-R-LN-3",
+    "rule": "web-rule-learning-03",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "slice(0, 3)",
-    "introducedBy": "W-T1",
-    "removeBy": "W-T12"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-02"
   },
   {
-    "rule": "TA-R-PB-2",
+    "rule": "web-rule-playback-02",
     "file": "hooks/useAudioPlayer.ts",
     "specifier": "速度の配列",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S2c"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-playback-05"
   },
   {
-    "rule": "TA-R-PF-1",
+    "rule": "web-rule-prefs-01",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "[3, 5, 7, 10]",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
   },
   {
-    "rule": "TA-R-PF-1",
+    "rule": "web-rule-prefs-01",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "難易度の値の配列",
-    "introducedBy": "W-T1",
-    "removeBy": "W-S4b"
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-context-02"
   }
 ]

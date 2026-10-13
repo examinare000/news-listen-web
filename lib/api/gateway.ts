@@ -1,9 +1,9 @@
 /**
  * ApiGateway: BFF-proxied API へのアクセスを Result 型で返す薄い gateway。
  *
- * すべての操作は throw・reject せず `Result<T, ApiFailure>` に解決する（CI-T12-1）。
+ * すべての操作は throw・reject せず `Result<T, ApiFailure>` に解決する（web-contract-15-1）。
  * fetch・Response・Headers・CSRF cookie は非公開の `exchange` に閉じ込め、公開型には現れない
- * （CI-T12-7 leakage guard）。
+ * （web-contract-15-7 leakage guard）。
  */
 import { readCookie } from '@/lib/cookie'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
@@ -40,8 +40,8 @@ type RawExchange =
 
 const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-// owner: user・導入: W-S1（2026-09-24）。読み手は互換 adapter（TP1）だけ。
-// TP1 削除（W-S4d3）でこのキーの読み手がいなくなるので、そのとき一緒に消してよい（公開契約は変わらない）。
+// owner: user・導入: web-slice-gateway-01（2026-09-24）。読み手は互換 adapter（web-temp-01）だけ。
+// web-temp-01 削除（web-slice-context-07）でこのキーの読み手がいなくなるので、そのとき一緒に消してよい（公開契約は変わらない）。
 const RAW_KEY = Symbol.for('news-listen.web.gateway.raw')
 
 type JsonReadOutcome =
@@ -62,7 +62,7 @@ function readJsonWithDeadline(response: Response, deadline: Promise<void>): Prom
 function detailFromJsonBody(bodyRead: JsonReadOutcome & { timedOut: false }): string {
   if (!bodyRead.ok) return 'Unknown error'
   const body = bodyRead.value
-  // 本文が null・プリミティブ・detail 無しでも throw しない（CI-T12-1: 公開操作は reject・throw しない）
+  // 本文が null・プリミティブ・detail 無しでも throw しない（web-contract-15-1: 公開操作は reject・throw しない）
   if (typeof body !== 'object' || body === null || !('detail' in body)) return 'Unknown error'
   const detail: unknown = body.detail
   if (typeof detail === 'string') {

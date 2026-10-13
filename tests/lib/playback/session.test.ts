@@ -1,5 +1,5 @@
 // PlaybackSession（lib/playback/domain/session）の契約テスト。
-// verifies: CI-T1, CI-T1b, CI-T1f, CI-T2, CI-T3, CI-T4, CI-P08, CI-C03
+// verifies: web-contract-01, web-contract-02, web-contract-03, web-contract-04, web-contract-05, web-contract-06, CI-P08, CI-C03
 //
 // RED 理由: `fail`・`isPlayableEpisode` がまだ存在しない。
 //
@@ -157,9 +157,9 @@ beforeEach(() => {
 })
 
 // ---------------------------------------------------------------------------
-// CI-T1: 遷移 13 件（上位 Spec §3.1 の遷移表）
+// web-contract-01: 遷移 13 件（上位 Spec §3.1 の遷移表）
 // ---------------------------------------------------------------------------
-describe('CI-T1 遷移（13 件）', () => {
+describe('web-contract-01 遷移（13 件）', () => {
   test('初期状態は idle', () => {
     expect(st().status).toBe('idle')
   })
@@ -302,9 +302,9 @@ describe('CI-T1 遷移（13 件）', () => {
 })
 
 // ---------------------------------------------------------------------------
-// CI-T1: 表外入力は no-op（状態・保持値・AudioElement 不変・事象なし）
+// web-contract-01: 表外入力は no-op（状態・保持値・AudioElement 不変・事象なし）
 // ---------------------------------------------------------------------------
-describe('CI-T1 表にない入力は no-op（状態・AudioElement 不変・事象なし）', () => {
+describe('web-contract-01 表にない入力は no-op（状態・AudioElement 不変・事象なし）', () => {
   type Input = { name: string; run: () => Promise<void> | void }
   const inputs = (): Record<string, Input> => ({
     play: { name: 'play()', run: () => session.play() },
@@ -346,9 +346,9 @@ describe('CI-T1 表にない入力は no-op（状態・AudioElement 不変・事
 })
 
 // ---------------------------------------------------------------------------
-// CI-T1: 合成遷移・禁止遷移（別エピソードへの切替）
+// web-contract-01: 合成遷移・禁止遷移（別エピソードへの切替）
 // ---------------------------------------------------------------------------
-describe('CI-T1 start による切替の合成', () => {
+describe('web-contract-01 start による切替の合成', () => {
   test('playing 中の start は paused（旧 episode のまま）→ loading の順に stateChanged を発行する', async () => {
     await drive('playing', makeEpisode('a'))
     const events = recordEvents()
@@ -387,9 +387,9 @@ describe('CI-T1 start による切替の合成', () => {
 })
 
 // ---------------------------------------------------------------------------
-// CI-T1b: stop()
+// web-contract-02: stop()
 // ---------------------------------------------------------------------------
-describe('CI-T1b stop()', () => {
+describe('web-contract-02 stop()', () => {
   for (const status of NON_IDLE) {
     test(`${status} → idle: AudioElement は一時停止し src が空、positionChanged / listenCompleted なし`, async () => {
       await drive(status, makeEpisode('a'))
@@ -434,9 +434,9 @@ describe('CI-T1b stop()', () => {
 })
 
 // ---------------------------------------------------------------------------
-// CI-T2: play() の reject と収束
+// web-contract-04: play() の reject と収束
 // ---------------------------------------------------------------------------
-describe('CI-T2 play()', () => {
+describe('web-contract-04 play()', () => {
   test('NotAllowedError で reject → errored(autoplay_blocked)。play() 自体は reject しない', async () => {
     await drive('paused', makeEpisode('a'))
     vi.spyOn(audio, 'play').mockRejectedValue(notAllowed())
@@ -527,17 +527,17 @@ describe('CI-T2 play()', () => {
 })
 
 // ---------------------------------------------------------------------------
-// CI-T3: resume と loadedmetadata の再適用（RS-01〜RS-07 を resolveResumePosition 経由で駆動）
+// web-contract-05: resume と loadedmetadata の再適用（shared-resume-01〜shared-resume-07 を resolveResumePosition 経由で駆動）
 // ---------------------------------------------------------------------------
-describe('CI-T3 resume（resolveResumePosition → start → loadedmetadata）', () => {
+describe('web-contract-05 resume（resolveResumePosition → start → loadedmetadata）', () => {
   const rows: Array<[string, number, number, number]> = [
-    ['RS-01', 0, 600, 0],
-    ['RS-02', 120, 600, 120],
-    ['RS-03', 598, 600, 0],
-    ['RS-04', 597.5, 600, 597.5],
-    ['RS-05', 600, 600, 0],
-    ['RS-06', 120, 0, 120],
-    ['RS-07', -5, 600, 0],
+    ['shared-resume-01', 0, 600, 0],
+    ['shared-resume-02', 120, 600, 120],
+    ['shared-resume-03', 598, 600, 0],
+    ['shared-resume-04', 597.5, 600, 597.5],
+    ['shared-resume-05', 600, 600, 0],
+    ['shared-resume-06', 120, 0, 120],
+    ['shared-resume-07', -5, 600, 0],
   ]
 
   test.each(rows)('%s: (%s, %s) → 位置 %s', (_id, server, dur, expected) => {
@@ -568,9 +568,9 @@ describe('CI-T3 resume（resolveResumePosition → start → loadedmetadata）',
 })
 
 // ---------------------------------------------------------------------------
-// CI-T4: 速度
+// web-contract-06: 速度
 // ---------------------------------------------------------------------------
-describe('CI-T4 速度', () => {
+describe('web-contract-06 速度', () => {
   test('start の速度を playbackRate と defaultPlaybackRate の両方へ設定し、loadedmetadata 後に再適用する', () => {
     session.start(makeEpisode('a'), 0, 1.5)
     expect(audio.playbackRate).toBe(1.5)
@@ -876,7 +876,7 @@ describe('CI-C03 audioHandle の解放', () => {
   })
 })
 
-describe('CI-C03・CI-T1 release の例外は捕捉せず伝え、状態と AudioElement は事後条件を満たす', () => {
+describe('CI-C03・web-contract-01 release の例外は捕捉せず伝え、状態と AudioElement は事後条件を満たす', () => {
   const err = new Error('release failed')
 
   for (const status of ['paused', 'playing'] as const) {
@@ -925,7 +925,7 @@ describe('CI-C03・CI-T1 release の例外は捕捉せず伝え、状態と Audi
 })
 
 // ---------------------------------------------------------------------------
-// CI-T1f: fail(ref, reason)（遷移表の外の操作。13 遷移には数えない）
+// web-contract-03: fail(ref, reason)（遷移表の外の操作。13 遷移には数えない）
 // ---------------------------------------------------------------------------
 type FailReason = Parameters<PlaybackSession['fail']>[1]
 
@@ -949,13 +949,13 @@ async function driveFrom(
 
 /** 呼ばない。型検査だけが読む（使われない @ts-expect-error は TS2578 で typecheck が落ちる）。 */
 function failTypeProbes(s: PlaybackSession): void {
-  // @ts-expect-error CI-T1f media は fail で作れない
+  // @ts-expect-error web-contract-03 media は fail で作れない
   s.fail({ id: 'a' }, { kind: 'media' })
-  // @ts-expect-error CI-T1f autoplay_blocked は fail で作れない
+  // @ts-expect-error web-contract-03 autoplay_blocked は fail で作れない
   s.fail({ id: 'a' }, { kind: 'autoplay_blocked' })
 }
 
-describe('CI-T1f fail()', () => {
+describe('web-contract-03 fail()', () => {
   for (const status of ALL_STATUSES) {
     for (const [name, reason] of FAIL_REASONS) {
       test(`${status} から fail({id}, ${name}) すると errored（episode は id だけ・position 0・渡した reason）になり、speed は直前の値（idle/ended は 1.0）`, async () => {
@@ -1173,11 +1173,11 @@ describe('CI-T1f fail()', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 共有仕様の行 ID: PS-09（停止）・PS-10（失敗にする）
+// 共有仕様の行 ID: shared-session-11（停止）・shared-session-12（失敗にする）
 // ---------------------------------------------------------------------------
-describe('PS-09 停止', () => {
+describe('shared-session-11 停止', () => {
   for (const status of NON_IDLE) {
-    test(`PS-09: ${status} で stop() すると idle になり、AudioElement は一時停止して src が空`, async () => {
+    test(`shared-session-11: ${status} で stop() すると idle になり、AudioElement は一時停止して src が空`, async () => {
       await drive(status, makeEpisode('a'))
       session.stop()
       expect(st().status).toBe('idle')
@@ -1186,7 +1186,7 @@ describe('PS-09 停止', () => {
     })
   }
 
-  test('PS-09: 初期の idle で stop() しても AudioElement は変わらず事象も出ない', () => {
+  test('shared-session-11: 初期の idle で stop() しても AudioElement は変わらず事象も出ない', () => {
     audio.currentTime = 12
     audio.volume = 0.4
     const before = fields(audio)
@@ -1197,9 +1197,9 @@ describe('PS-09 停止', () => {
   })
 })
 
-describe('PS-10 失敗にする', () => {
+describe('shared-session-12 失敗にする', () => {
   for (const status of ALL_STATUSES) {
-    test(`PS-10: ${status} で fail({id}, fetch_failed) すると、渡した理由つきの errored（episode は id だけ）になる`, async () => {
+    test(`shared-session-12: ${status} で fail({id}, fetch_failed) すると、渡した理由つきの errored（episode は id だけ）になる`, async () => {
       await driveFrom(status, makeEpisode('a'))
 
       session.fail({ id: 'x' }, FETCH_FAILED)

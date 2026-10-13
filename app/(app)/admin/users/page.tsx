@@ -9,7 +9,7 @@ import type { AuthUser, UserRole } from '@/types/index'
 
 // 管理者用ユーザー管理画面。一覧・作成・ロール変更・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
-// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（CI-T16）。
+// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（web-contract-19）。
 export default function AdminUsersPage() {
   return (
     <AdminGate title="ユーザー管理">

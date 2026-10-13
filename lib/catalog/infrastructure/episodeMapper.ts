@@ -1,4 +1,4 @@
-// DTO `Podcast` → domain `Episode`。欠落の補完・名前の改名・値域の正規化をここで終え、判別（TA-R-CT-1）は domain に渡す。
+// DTO `Podcast` → domain `Episode`。欠落の補完・名前の改名・値域の正規化をここで終え、判別（web-rule-catalog-01）は domain に渡す。
 import {
   classifyEpisode,
   type Episode,
@@ -8,12 +8,12 @@ import {
 } from '@/lib/catalog/domain/episode'
 import type { Podcast } from '@/types'
 
-/** PS-07b・W-31: `partial_failed` は再生不可で、domain の値域の外なので `failed` に写す。 */
+/** shared-session-09・web-deriv-31: `partial_failed` は再生不可で、domain の値域の外なので `failed` に写す。 */
 function readStatus(status: Podcast['status']): EpisodeReadout['status'] {
   return status === 'partial_failed' ? 'failed' : status
 }
 
-/** TA-R-CT-11: null だけが失敗なし。識別子以外（自由文・空文字・`partial_failed`）は `generation_failed`。 */
+/** web-rule-catalog-11: null だけが失敗なし。識別子以外（自由文・空文字・`partial_failed`）は `generation_failed`。 */
 function readFailure(errorMessage: Podcast['error_message']): FailureReason | null {
   if (errorMessage === null) return null
   return errorMessage === 'quota_exhausted' ? 'quota_exhausted' : 'generation_failed'

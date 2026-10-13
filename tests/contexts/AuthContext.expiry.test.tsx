@@ -6,7 +6,7 @@ import { AppProvider } from '@/contexts/AppContext'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { setupMockCaches } from '../helpers/mockCaches'
 
-// CI-T15（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
+// web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
 // 消す。audio-v1 は失効経路では消さない（棄却済み: 主体付き key・SW 一元化）。
 // C4: 既存 tests/contexts/AuthContext.test.tsx は @/lib/swCacheCleanup・@/lib/audioCache を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api のみ
@@ -72,8 +72,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
-  test('T-T15a: clears shell-*/api-* but keeps audio-v1 when getMe rejects with ApiError(401) (verifies: CI-T15-1, CI-T15-2)', async () => {
+describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
+  test('T-T15a: clears shell-*/api-* but keeps audio-v1 when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -91,7 +91,7 @@ describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
     expect(screen.getByTestId('cleanup')).toHaveTextContent('done')
   })
 
-  test('T-T15d: state transitions to unauthenticated and cleanup is reported incomplete when cache deletion fails (verifies: CI-T15-3)', async () => {
+  test('T-T15d: state transitions to unauthenticated and cleanup is reported incomplete when cache deletion fails (verifies: web-contract-18-3)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('shell-pages-v1')
     vi.spyOn(cacheStorage, 'delete').mockRejectedValue(new Error('quota'))
@@ -105,7 +105,7 @@ describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
     expect(screen.getByTestId('cleanup')).toHaveTextContent('incomplete')
   })
 
-  test('T-T15e: does not touch caches and reports cleanup skipped when getMe succeeds (verifies: CI-T15-4)', async () => {
+  test('T-T15e: does not touch caches and reports cleanup skipped when getMe succeeds (verifies: web-contract-18-4)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -122,7 +122,7 @@ describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15b: does not clear any cache when getMe rejects with a non-401 ApiError (network error) (verifies: CI-T15-2, CI-T15-4)', async () => {
+  test('T-T15b: does not clear any cache when getMe rejects with a non-401 ApiError (network error) (verifies: web-contract-18-2, web-contract-18-4)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -140,7 +140,7 @@ describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15c: clears shell-*/api-* on the initial mount auto-resolve when getMe rejects with ApiError(401) (verifies: CI-T15-1, CI-T15-2)', async () => {
+  test('T-T15c: clears shell-*/api-* on the initial mount auto-resolve when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -155,7 +155,7 @@ describe('AuthContext failure cleanup (verifies: CI-T15)', () => {
     await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
   })
 
-  test('T-T15f: a second consecutive expiry cleanup is a no-op that still resolves as done (verifies: CI-T15-6)', async () => {
+  test('T-T15f: a second consecutive expiry cleanup is a no-op that still resolves as done (verifies: web-contract-18-6)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')

@@ -36,7 +36,7 @@ function parseOptionalPositiveInt(raw: string): number | undefined | 'invalid' {
 
 // 管理者用招待コード管理画面。作成・一覧・失効を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
-// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（CI-T16）。
+// gating（未認証・非 admin・読み込み中）は AdminGate に集約する（web-contract-19）。
 export default function AdminInvitesPage() {
   return (
     <AdminGate title="招待コード管理">

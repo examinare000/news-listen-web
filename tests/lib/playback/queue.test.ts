@@ -1,7 +1,7 @@
 // 新モジュール lib/playback/domain/queue の契約テスト。
 // - 「playbackQueue」describe: 旧 tests/lib/playbackQueue.test.ts の全ケース（reorderUpNext → moveUpNext の読み替えのみ）。
 // - それ以降: 出力 gate の網羅列挙・入力 gate（不変条件を破る q の入力）・正規化・no-op の同一参照・export 面。
-// verifies: CI-T9
+// verifies: web-contract-12
 //
 // RED 理由: `@/lib/playback/domain/queue` がまだ存在しない。
 import { describe, test, expect } from 'vitest'
@@ -148,7 +148,7 @@ function assertInvariants(q: QueueState<Podcast>, trail: string) {
   }
 }
 
-describe('CI-T9 出力 gate（公開操作の全戻り値が不変条件 1〜3 を満たす）', () => {
+describe('web-contract-12 出力 gate（公開操作の全戻り値が不変条件 1〜3 を満たす）', () => {
   type Op = { name: string; run: (q: Q) => Q }
   const a = pod('a')
   const b = pod('b')
@@ -211,7 +211,7 @@ describe('CI-T9 出力 gate（公開操作の全戻り値が不変条件 1〜3 �
 // ---------------------------------------------------------------------------
 // 入力 gate: 不変条件を破る q を受け取る 6 操作は、処理の前に Error を throw する（24 セル）
 // ---------------------------------------------------------------------------
-describe('CI-T9 入力 gate（不変条件を破る q を渡す 6 操作 × 4 種 = 24 セル）', () => {
+describe('web-contract-12 入力 gate（不変条件を破る q を渡す 6 操作 × 4 種 = 24 セル）', () => {
   const invalidQueues: Array<[string, { items: Podcast[]; currentIndex: number | null }]> = [
     ['Q_dup（id 重複）', { items: [pod('a'), pod('a')], currentIndex: 0 }],
     ['Q_oob（currentIndex 範囲外）', { items: [pod('a'), pod('b')], currentIndex: 5 }],
@@ -236,7 +236,7 @@ describe('CI-T9 入力 gate（不変条件を破る q を渡す 6 操作 × 4 �
   }
 })
 
-describe('CI-T9 入力 gate の対象外（current / upNext / start は不変条件違反の q でも throw しない）', () => {
+describe('web-contract-12 入力 gate の対象外（current / upNext / start は不変条件違反の q でも throw しない）', () => {
   const qDup = { items: [pod('a'), pod('a')], currentIndex: 0 }
   const qOob = { items: [pod('a'), pod('b')], currentIndex: 5 }
   const qFrac = { items: [pod('a'), pod('b')], currentIndex: 0.5 }
@@ -266,7 +266,7 @@ describe('CI-T9 入力 gate の対象外（current / upNext / start は不変条
 // ---------------------------------------------------------------------------
 // 正規化・no-op
 // ---------------------------------------------------------------------------
-describe('CI-T9 setQueue の正規化', () => {
+describe('web-contract-12 setQueue の正規化', () => {
   test('startAt が NaN なら 0（current は先頭）', () => {
     expect(current(setQueue([pod('a'), pod('b'), pod('c')], Number.NaN))?.id).toBe('a')
   })
@@ -287,7 +287,7 @@ describe('CI-T9 setQueue の正規化', () => {
   })
 })
 
-describe('CI-T9 moveUpNext の範囲外・非整数・NaN は同一参照の q を返す', () => {
+describe('web-contract-12 moveUpNext の範囲外・非整数・NaN は同一参照の q を返す', () => {
   const q = setQueue([pod('a'), pod('b'), pod('c')], 0) // upNext [b, c]
 
   test('NaN の from', () => {
@@ -310,7 +310,7 @@ describe('CI-T9 moveUpNext の範囲外・非整数・NaN は同一参照の q �
   })
 })
 
-describe('CI-T9 no-op 経路は入力 q を同一参照で返す', () => {
+describe('web-contract-12 no-op 経路は入力 q を同一参照で返す', () => {
   const q = setQueue([pod('a'), pod('b'), pod('c')], 0)
 
   test('add: 重複は同一参照', () => {
@@ -337,7 +337,7 @@ describe('CI-T9 no-op 経路は入力 q を同一参照で返す', () => {
   })
 })
 
-describe('CI-T9 export 面（公開 11 操作だけ）', () => {
+describe('web-contract-12 export 面（公開 11 操作だけ）', () => {
   test('create と reorderUpNext を export せず、11 操作と一致する', async () => {
     const Q = await import('@/lib/playback/domain/queue')
     expect(Object.keys(Q).sort()).toEqual(

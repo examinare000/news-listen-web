@@ -4,7 +4,7 @@ import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
 /**
  * 実 port（createRealPushBrowserPort）の getExistingSubscription() テスト。
  *
- * SG-C5: navigator.serviceWorker.ready ではなく getRegistration() を使う（待たずに取得）。
+ * web-dec-03: navigator.serviceWorker.ready ではなく getRegistration() を使う（待たずに取得）。
  * spec.md §4.1 CI-P1〜CI-P4、§4.10 T1〜T8。
  */
 describe('createRealPushBrowserPort — getExistingSubscription', () => {

@@ -54,8 +54,8 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     setQueue(next)
   }, [])
 
-  // gateway は throw・reject しない（CI-T12-1）ので、fire-and-forget に catch は要らない。
-  // 3 呼出パスは W-S1b（リソース別分割）で lib/api 側の呼出関数へ集約する予定（今は直呼び）。
+  // gateway は throw・reject しない（web-contract-15-1）ので、fire-and-forget に catch は要らない。
+  // 3 呼出パスは web-slice-gateway-02（リソース別分割）で lib/api 側の呼出関数へ集約する予定（今は直呼び）。
   const onPositionSave = useCallback(
     (podcastId: string, seconds: number) => {
       void gw.request(`/api/backend/podcasts/${podcastId}/position`, {

@@ -180,10 +180,10 @@ describe('Pass-through of backend status codes', () => {
 
 // ==========================================================
 // 異常系: 設定不正（BACKEND_BASE_URL / BACKEND_API_KEY 欠落・path 付き）→ 500・generic 本文
-// CI-T14: BACKEND_API_KEY 欠落を BACKEND_BASE_URL 欠落と同じ fail-closed（500・generic 本文）に揃える。
+// web-contract-17: BACKEND_API_KEY 欠落を BACKEND_BASE_URL 欠落と同じ fail-closed（500・generic 本文）に揃える。
 // ==========================================================
-describe('Server misconfiguration (verifies: CI-T14)', () => {
-  test('T-T14a: returns generic 500 without forwarding when BACKEND_API_KEY is empty (verifies: CI-T14-1, CI-T14-2, CI-T14-5)', async () => {
+describe('Server misconfiguration (verifies: web-contract-17)', () => {
+  test('T-T14a: returns generic 500 without forwarding when BACKEND_API_KEY is empty (verifies: web-contract-17-1, web-contract-17-2, web-contract-17-5)', async () => {
     vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
     vi.stubEnv('BACKEND_API_KEY', '')
     const fetchSpy = vi.fn()
@@ -199,7 +199,7 @@ describe('Server misconfiguration (verifies: CI-T14)', () => {
     expect(JSON.stringify(body)).not.toContain('BACKEND')
   })
 
-  test('T-T14b: returns generic 500 without env name in body when BACKEND_BASE_URL is empty (verifies: CI-T14-2)', async () => {
+  test('T-T14b: returns generic 500 without env name in body when BACKEND_BASE_URL is empty (verifies: web-contract-17-2)', async () => {
     vi.stubEnv('BACKEND_BASE_URL', '')
     const req = makeRequest('GET', 'feed')
 
@@ -211,7 +211,7 @@ describe('Server misconfiguration (verifies: CI-T14)', () => {
     expect(JSON.stringify(body)).not.toContain('BACKEND_BASE_URL')
   })
 
-  test('T-T14c: returns generic 500 without forwarding when BACKEND_BASE_URL has a path segment (verifies: CI-T14-3, CI-T14-2, CI-T14-5)', async () => {
+  test('T-T14c: returns generic 500 without forwarding when BACKEND_BASE_URL has a path segment (verifies: web-contract-17-3, web-contract-17-2, web-contract-17-5)', async () => {
     vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com/v1')
     vi.stubEnv('BACKEND_API_KEY', 'secret')
     const fetchSpy = vi.fn()
@@ -227,7 +227,7 @@ describe('Server misconfiguration (verifies: CI-T14)', () => {
     expect(JSON.stringify(body)).not.toContain('api.example.com')
   })
 
-  test('T-T14d: forwards when BACKEND_BASE_URL has only a trailing slash (boundary; verifies: CI-T14-3, CI-T14-4)', async () => {
+  test('T-T14d: forwards when BACKEND_BASE_URL has only a trailing slash (boundary; verifies: web-contract-17-3, web-contract-17-4)', async () => {
     mockBackendOk({ status: 'ok' })
     vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com/')
     vi.stubEnv('BACKEND_API_KEY', 'key')
@@ -245,7 +245,7 @@ describe('Server misconfiguration (verifies: CI-T14)', () => {
 // 異常系: 不正スキーム → 500 (SSRF 緩和)
 // ==========================================================
 describe('Invalid scheme in BACKEND_BASE_URL env', () => {
-  test('T-T14e: returns 500 for ftp:// scheme with a generic body (verifies: CI-T14-2)', async () => {
+  test('T-T14e: returns 500 for ftp:// scheme with a generic body (verifies: web-contract-17-2)', async () => {
     vi.stubEnv('BACKEND_BASE_URL', 'ftp://evil.example.com')
     const req = makeRequest('GET', 'feed')
 

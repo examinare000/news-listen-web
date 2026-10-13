@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import React from 'react'
 import { AdminGate } from '@/components/AdminGate'
 
-// CI-T16: AdminGate は adminAccess(useAuth()) の 4 値で分岐する唯一の gating 集約点。
+// web-contract-19: AdminGate は adminAccess(useAuth()) の 4 値で分岐する唯一の gating 集約点。
 // useApp() に依存しない（C5: metrics page test は AppProvider 無しで描画するため）。
 // vi.mock で useAuth を丸ごと差し替える（既存 admin 4 page test と同じ方式。C6）。
 
@@ -47,8 +47,8 @@ function renderGate(title = 'ユーザー管理') {
   )
 }
 
-describe('AdminGate (verifies: CI-T16)', () => {
-  test('T-T16b-1: status=unknown shows a loading indicator and mounts neither children nor the login modal (verifies: CI-T16-3, CI-T16-4)', () => {
+describe('AdminGate (verifies: web-contract-19)', () => {
+  test('T-T16b-1: status=unknown shows a loading indicator and mounts neither children nor the login modal (verifies: web-contract-19-3, web-contract-19-4)', () => {
     authOverride.current.status = 'unknown'
     renderGate()
 
@@ -57,7 +57,7 @@ describe('AdminGate (verifies: CI-T16)', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  test('T-T16b-2: status=unauthenticated shows the login modal and does not mount children (verifies: CI-T16-3, CI-T16-4)', () => {
+  test('T-T16b-2: status=unauthenticated shows the login modal and does not mount children (verifies: web-contract-19-3, web-contract-19-4)', () => {
     authOverride.current.status = 'unauthenticated'
     renderGate()
 
@@ -65,7 +65,7 @@ describe('AdminGate (verifies: CI-T16)', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
-  test('T-T16b-3: status=authenticated with a non-admin user shows the denied message with the given title (verifies: CI-T16-3, CI-T16-4)', () => {
+  test('T-T16b-3: status=authenticated with a non-admin user shows the denied message with the given title (verifies: web-contract-19-3, web-contract-19-4)', () => {
     authOverride.current.status = 'authenticated'
     authOverride.current.user = { username: 'bob', role: 'user', display_name: 'Bob' }
     renderGate('ユーザー管理')
@@ -76,7 +76,7 @@ describe('AdminGate (verifies: CI-T16)', () => {
     expect(screen.getByRole('link', { name: '設定へ戻る' })).toHaveAttribute('href', '/settings')
   })
 
-  test('T-T16b-4: status=authenticated with user=null shows the denied message (verifies: CI-T16-3)', () => {
+  test('T-T16b-4: status=authenticated with user=null shows the denied message (verifies: web-contract-19-3)', () => {
     authOverride.current.status = 'authenticated'
     authOverride.current.user = null
     renderGate()
@@ -85,7 +85,7 @@ describe('AdminGate (verifies: CI-T16)', () => {
     expect(screen.getByText('この画面は管理者のみ利用できます。')).toBeInTheDocument()
   })
 
-  test('T-T16b-5: status=authenticated with an admin user mounts children and shows neither loading nor login modal (verifies: CI-T16-3)', () => {
+  test('T-T16b-5: status=authenticated with an admin user mounts children and shows neither loading nor login modal (verifies: web-contract-19-3)', () => {
     authOverride.current.status = 'authenticated'
     authOverride.current.user = { username: 'alice', role: 'admin', display_name: 'Alice' }
     renderGate()

@@ -1,5 +1,5 @@
 // Catalog infrastructure の episodeMapper: DTO `Podcast` を domain の `Episode` へ読み取る。
-// 正本: 既存 Spec §3.2・§4（CI-T11）・§5（CP5）、共有仕様 §4.4（PS-07・PS-07b）、新 Spec §5.2（TA-R-CT-10・TA-R-CT-11）。
+// 正本: 既存 Spec §3.2・§4（web-contract-14）・§5（CP5）、共有仕様 §4.4（shared-session-08・shared-session-09）、新 Spec §5.2（web-rule-catalog-10・web-rule-catalog-11）。
 //
 // RED 理由（実装前）: `@/lib/catalog/infrastructure/episodeMapper` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
@@ -34,7 +34,7 @@ const AUDIO = 'https://example.com/p1.mp3'
 const ERR = 'quota_exhausted'
 
 // ---------------------------------------------------------------------------
-// CI-T11 の 16 行
+// web-contract-14 の 16 行
 // ---------------------------------------------------------------------------
 type Expected = { kind: 'playable' } | { kind: 'generating' } | { kind: 'failed'; reason: 'generation_failed' | 'quota_exhausted' }
 const PLAYABLE: Expected = { kind: 'playable' }
@@ -42,7 +42,7 @@ const GENERATING: Expected = { kind: 'generating' }
 const GEN_FAILED: Expected = { kind: 'failed', reason: 'generation_failed' }
 const QUOTA_FAILED: Expected = { kind: 'failed', reason: 'quota_exhausted' }
 
-interface Ci11Row {
+interface WebContract14Row {
   readonly status: Podcast['status']
   readonly audio_url: string
   readonly error_message: string | null
@@ -50,11 +50,11 @@ interface Ci11Row {
   readonly note: string
 }
 
-const CI_T11_ROWS: readonly Ci11Row[] = [
+const WEB_CONTRACT_14_ROWS: readonly WebContract14Row[] = [
   { status: 'completed', audio_url: AUDIO, error_message: null, expected: PLAYABLE, note: '' },
-  { status: 'completed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' PS-07' },
+  { status: 'completed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' shared-session-08' },
   { status: 'completed', audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
-  { status: 'completed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: ' PS-07' },
+  { status: 'completed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: ' shared-session-08' },
   { status: 'processing', audio_url: AUDIO, error_message: null, expected: GENERATING, note: '' },
   { status: 'processing', audio_url: AUDIO, error_message: ERR, expected: GENERATING, note: '' },
   { status: 'processing', audio_url: '', error_message: null, expected: GENERATING, note: '' },
@@ -63,20 +63,20 @@ const CI_T11_ROWS: readonly Ci11Row[] = [
   { status: 'failed', audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
   { status: 'failed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: '' },
   { status: 'failed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: '' },
-  { status: 'partial_failed', audio_url: AUDIO, error_message: null, expected: GEN_FAILED, note: ' PS-07b' },
-  { status: 'partial_failed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' PS-07b' },
+  { status: 'partial_failed', audio_url: AUDIO, error_message: null, expected: GEN_FAILED, note: ' shared-session-09' },
+  { status: 'partial_failed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' shared-session-09' },
   { status: 'partial_failed', audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
   { status: 'partial_failed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: '' },
 ]
 
-describe('CI-T11 decodeEpisode: status 4 値 × audio_url × error_message の 16 行', () => {
+describe('web-contract-14 decodeEpisode: status 4 値 × audio_url × error_message の 16 行', () => {
   test('16 行ある（status 4 × audio_url 2 × error_message 2 を欠かさない）', () => {
-    expect(CI_T11_ROWS).toHaveLength(16)
-    expect(new Set(CI_T11_ROWS.map((r) => `${r.status}|${r.audio_url === ''}|${r.error_message === null}`)).size).toBe(16)
+    expect(WEB_CONTRACT_14_ROWS).toHaveLength(16)
+    expect(new Set(WEB_CONTRACT_14_ROWS.map((r) => `${r.status}|${r.audio_url === ''}|${r.error_message === null}`)).size).toBe(16)
   })
 
-  test.each(CI_T11_ROWS)(
-    'verifies: CI-T11$note: status=$status audio_url=$audio_url error_message=$error_message → $expected',
+  test.each(WEB_CONTRACT_14_ROWS)(
+    'verifies: web-contract-14$note: status=$status audio_url=$audio_url error_message=$error_message → $expected',
     ({ status, audio_url, error_message, expected }) => {
       const episode = decodeEpisode(dto({ status, audio_url, error_message }))
       expect(episode.kind).toBe(expected.kind)
@@ -88,9 +88,9 @@ describe('CI-T11 decodeEpisode: status 4 値 × audio_url × error_message の 1
 })
 
 // ---------------------------------------------------------------------------
-// TA-R-CT-11: failed の reason
+// web-rule-catalog-11: failed の reason
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-11 decodeEpisode: status=failed の reason は 2 値の識別子だけ', () => {
+describe('web-rule-catalog-11 decodeEpisode: status=failed の reason は 2 値の識別子だけ', () => {
   test.each([
     ['generation_failed', 'generation_failed'],
     ['quota_exhausted', 'quota_exhausted'],
@@ -105,9 +105,9 @@ describe('TA-R-CT-11 decodeEpisode: status=failed の reason は 2 値の識別�
 })
 
 // ---------------------------------------------------------------------------
-// TA-R-CT-10: source_kind → 表示可否
+// web-rule-catalog-10: source_kind → 表示可否
 // ---------------------------------------------------------------------------
-describe('TA-R-CT-10 decodeEpisode: CC BY-SA の表示可否は source_kind=featured のときだけ true', () => {
+describe('web-rule-catalog-10 decodeEpisode: CC BY-SA の表示可否は source_kind=featured のときだけ true', () => {
   const kinds: ReadonlyArray<[string, Podcast['source_kind'], boolean]> = [
     ['featured', 'featured', true],
     ['user', 'user', false],
@@ -129,7 +129,7 @@ describe('TA-R-CT-10 decodeEpisode: CC BY-SA の表示可否は source_kind=feat
 })
 
 // ---------------------------------------------------------------------------
-// CI-T11（補完と改名）
+// web-contract-14（補完と改名）
 // ---------------------------------------------------------------------------
 describe('decodeEpisode: 欠落の補完と名前の写像', () => {
   test('全 field を持つ DTO は domain の語に写される（role は捨てる。snake_case は camelCase）', () => {

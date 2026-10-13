@@ -8,7 +8,7 @@ import type {
 } from '@/lib/api/gateway'
 
 // テスト用 double: 呼出を (method, path, body) で記録し、応答を (method, path) で
-// 登録できる。名前は `W-S4d2a:20` の `tests/helpers/fakeGateway.ts` と衝突しないよう分ける
+// 登録できる。名前は `web-slice-context-04:20` の `tests/helpers/fakeGateway.ts` と衝突しないよう分ける
 // （spec §8.2）。未登録の既定応答は network 失敗（既存 AudioPlayerBar.test.tsx:374-377 の
 // fetch reject と同じ意味）。
 
