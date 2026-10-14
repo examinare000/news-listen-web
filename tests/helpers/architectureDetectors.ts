@@ -646,46 +646,542 @@ export function scanPublicTypes(file: string, source: string, excludedTypeNames:
 // ---------------------------------------------------------------------------
 // web-check-08（テストの隔離）
 // ---------------------------------------------------------------------------
+// 対象 = (分類が unit で、到達に DOMAIN・APP を含む) または (path が tests/lib/<context>/{domain,application}/ の下)。
+// 到達は test-local の閉包で求め、違反の検出も同じ範囲を走る。禁止依存の有無は対象の選別に使わない。
+// このファイル自身も architecture テストの閉包に入るので、読み込み手段の名前（require・Function・eval・__vi 接頭辞など）と
+// `vi`・`vitest` の識別子は、コードの Identifier として書かない（名前は文字列で持つ）。
 
-/** テストの `@/` で始まる import（静的・export from・import()・`vi.mock` の第 1 引数）の文字列。 */
-function collectTestAliasSpecifiers(file: string, source: string): string[] {
-  const specifiers = collectImports(file, source).map((i) => i.specifier)
-  const sf = parseSource(file, source)
-  const visit = (node: ts.Node): void => {
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      ts.isIdentifier(node.expression.expression) &&
-      node.expression.expression.text === 'vi' &&
-      node.expression.name.text === 'mock'
-    ) {
-      const first = node.arguments[0]
-      if (first !== undefined && ts.isStringLiteralLike(first)) specifiers.push(first.text)
+export type TestClass = 'unit' | 'adapter' | 'integration'
+
+export interface TestInventoryEntry {
+  readonly class: TestClass
+  readonly reason?: string
+}
+
+export interface MigrationAllowance {
+  readonly file: string
+  readonly specifier: string
+  readonly owner: string
+  readonly reason: string
+  /** その行が 0 件になっているべき期限の slice。 */
+  readonly removeBy: string
+  /** 依存を消す作業を担う slice。 */
+  readonly task: string
+}
+
+export interface TestIsolationInput {
+  /** 列挙したテストファイル（web root 起点）。 */
+  readonly testFiles: readonly string[]
+  /** vitest の setupFiles（web root 起点）。 */
+  readonly setupFiles: readonly string[]
+  /** production の走査集合（subject の母集団）。 */
+  readonly productionFiles: readonly string[]
+  /** 本文を返す。無ければ undefined。 */
+  readonly readSource: (file: string) => string | undefined
+  readonly tests: Readonly<Record<string, TestInventoryEntry>>
+  readonly subjects: Readonly<Record<string, readonly string[]>>
+  readonly allowances: readonly MigrationAllowance[]
+}
+
+export interface IsolationFinding {
+  readonly kind: string
+  readonly file: string
+  readonly detail: string
+}
+
+export interface TestIsolationResult {
+  /** 辞書順。 */
+  readonly targets: readonly string[]
+  /** 分類が unit でなく、到達に DOMAIN・APP を含むテスト。辞書順。 */
+  readonly domainImportingNonUnit: readonly string[]
+  /** (kind, file, detail) の辞書順。重複なし。 */
+  readonly findings: readonly IsolationFinding[]
+}
+
+const KIND = {
+  forbiddenDependency: 'forbidden-dependency',
+  moduleMockOrLoad: 'module-mock-or-load',
+  undeterminableModuleLoad: 'undeterminable-module-load',
+  unresolvedLocalImport: 'unresolved-local-import',
+  unclassifiedTest: 'unclassified-test',
+  unknownTest: 'unknown-test',
+  invalidClass: 'invalid-class',
+  missingReason: 'missing-reason',
+  adapterWithoutAdapter: 'adapter-without-adapter-import',
+  unregisteredSubject: 'unregistered-subject',
+  unknownSubject: 'unknown-subject',
+  subjectTestsMismatch: 'subject-tests-mismatch',
+  subjectUntested: 'subject-untested',
+  staleAllowance: 'stale-allowance',
+  setupProductionDependency: 'setup-production-dependency',
+  disallowedViCall: 'disallowed-vi-call',
+} as const
+
+const TEST_CLASSES: readonly string[] = ['unit', 'adapter', 'integration']
+
+/** module の読み込み・差し替えになる `vi` のメンバー。 */
+const VI_LOAD_MEMBERS: ReadonlySet<string> = new Set(['mock', 'doMock', 'unmock', 'doUnmock', 'importActual', 'importMock'])
+
+/** 読み込みも環境変数の変更もしない `vi` のメンバー。増やすときは仕様の改訂として扱う。 */
+const VI_ALLOWED: ReadonlySet<string> = new Set([
+  'fn',
+  'spyOn',
+  'stubGlobal',
+  'unstubAllGlobals',
+  'useFakeTimers',
+  'useRealTimers',
+  'getTimerCount',
+  'advanceTimersByTime',
+  'advanceTimersByTimeAsync',
+  'setSystemTime',
+  'clearAllMocks',
+  'resetAllMocks',
+  'restoreAllMocks',
+])
+
+/** vitest の global API に入る、`VitestUtils` を指す名前（`vi` と `vitest` は同じ値）。 */
+const VITEST_GLOBAL_NAMES: readonly string[] = ['vi', 'vitest']
+
+/** import 構文と `vi` を使わずに module を読み込む・文字列を評価する手段の名前。 */
+const LOAD_NAME_PREFIX = /^__vi/
+const LOAD_NAMES: ReadonlySet<string> = new Set(['require', 'createRequire', 'getBuiltinModule', 'eval'])
+
+const VITEST_SPECIFIER = /^(vitest(\/|$)|@vitest\/)/
+const TEST_DOMAIN_PATH = /^tests\/lib\/[^/]+\/(domain|application)\//
+const SOURCE_EXTENSION = /\.[cm]?[jt]sx?$/
+
+const isUnderTests = (resolved: string): boolean => resolved.startsWith('tests/')
+const withoutExtension = (p: string): string => p.replace(/\.tsx?$/, '')
+const isSafeProductionLayer = (resolved: string): boolean => {
+  const layer = layerOf(resolved)
+  return layer === 'DOMAIN' || layer === 'APP' || layer === 'SHARED'
+}
+
+interface Ref {
+  readonly specifier: string
+  readonly resolved: string | null
+}
+
+interface LoadCall {
+  /** `vi.<member>(<第 1 引数の原文>)`。`vi` の実際の名前によらず `vi.` に揃える。 */
+  readonly detail: string
+  readonly resolved: string | null
+}
+
+interface FileFacts {
+  /** 実行時 import と `<vi>.importActual(<literal>)` の行き先。 */
+  readonly refs: readonly Ref[]
+  readonly loadCalls: readonly LoadCall[]
+  /** 全テストで検出する、行き先を決められない読み込みの `detail`。 */
+  readonly undeterminable: readonly string[]
+  /** 許可集合の外の `vi` のメンバー。 */
+  readonly disallowedVi: readonly string[]
+}
+
+/** `architecture.ts` の import の解決と同じ規則で解く（解決の規則を 1 か所に保つため、収集器を通す）。 */
+function resolveSpecifier(fromFile: string, specifier: string): string | null {
+  return collectImports(fromFile, `import ${JSON.stringify(specifier)}`)[0]?.resolved ?? null
+}
+
+/** 許可する形は 1 つだけ: `vitest` からの、名前付き指定子だけの ImportDeclaration。 */
+const isAllowedVitestImport = (record: ImportRecord): boolean =>
+  record.kind === 'import' &&
+  record.specifier === 'vitest' &&
+  !record.hasDefault &&
+  !record.hasNamespace &&
+  record.valueNames.length + record.typeNames.length > 0
+
+/** `vitest` から名前付き import した `vi`・`vitest` の local 名（別名を含む）。 */
+function collectVitestLocalNames(sf: ts.SourceFile): Set<string> {
+  const names = new Set<string>()
+  for (const statement of sf.statements) {
+    if (!ts.isImportDeclaration(statement)) continue
+    if (!ts.isStringLiteralLike(statement.moduleSpecifier) || statement.moduleSpecifier.text !== 'vitest') continue
+    const bindings = statement.importClause?.namedBindings
+    if (bindings === undefined || !ts.isNamedImports(bindings)) continue
+    for (const element of bindings.elements) {
+      if (VITEST_GLOBAL_NAMES.includes((element.propertyName ?? element.name).text)) names.add(element.name.text)
     }
+  }
+  return names
+}
+
+/** import の中、または ExpressionWithTypeArguments 以外の型ノードの中。後者は実行時に消えるが、前者は束縛の宣言でしかない。 */
+const isInertContainer = (node: ts.Node): boolean =>
+  ts.isImportDeclaration(node) || (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node))
+
+/** 型の位置。インスタンス化式（`vi.importActual<T>`）と heritage clause は実行時に評価されるので型の位置に数えない。 */
+const isInTypePosition = (node: ts.Node): boolean =>
+  ts.findAncestor(node.parent, (a) => ts.isTypeNode(a) && !ts.isExpressionWithTypeArguments(a)) !== undefined
+
+/** 値の位置: import の中・型の位置・プロパティ名の位置のどれでもない。 */
+function isValuePosition(id: ts.Identifier): boolean {
+  const parent = id.parent
+  const isPropertyName =
+    (ts.isPropertyAccessExpression(parent) ||
+      ts.isPropertyAssignment(parent) ||
+      ts.isMethodDeclaration(parent) ||
+      ts.isPropertyDeclaration(parent) ||
+      ts.isPropertySignature(parent) ||
+      ts.isMethodSignature(parent)) &&
+    parent.name === id
+  return !isPropertyName && ts.findAncestor(parent, isInertContainer) === undefined
+}
+
+/** `Function` の識別子のうち、それだけでは文字列を評価できない位置: 直接の引数・`instanceof` の右辺・型の位置。 */
+function isInertFunctionPosition(id: ts.Identifier): boolean {
+  const parent = id.parent
+  const args = ts.isCallExpression(parent) ? parent.arguments : ts.isNewExpression(parent) ? (parent.arguments ?? []) : []
+  if (args.some((a) => a === id)) return true
+  if (ts.isBinaryExpression(parent) && parent.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword && parent.right === id) {
+    return true
+  }
+  return isInTypePosition(id)
+}
+
+const isCallee = (node: ts.Node): boolean => ts.isCallExpression(node.parent) && node.parent.expression === node
+
+/** 1 つのファイルの構文だけで決まる事実（本文と path だけを入力にする）。 */
+function analyzeFile(file: string, source: string): FileFacts {
+  const sf = parseSource(file, source)
+  const records = collectImports(file, source).filter((r) => !r.typeOnly)
+  const refs: Ref[] = records.map(({ specifier, resolved }) => ({ specifier, resolved }))
+  const loadCalls: LoadCall[] = []
+  const undeterminable: string[] = records
+    .filter((r) => VITEST_SPECIFIER.test(r.specifier) && !isAllowedVitestImport(r))
+    .map((r) => r.specifier)
+  const disallowedVi: string[] = []
+  const localNames = collectVitestLocalNames(sf)
+  const isVitestUtils = (id: ts.Identifier): boolean => VITEST_GLOBAL_NAMES.includes(id.text) || localNames.has(id.text)
+
+  const visitIdentifier = (id: ts.Identifier): void => {
+    const valuePosition = isValuePosition(id)
+    if (valuePosition && isVitestUtils(id)) {
+      const parent = id.parent
+      if (ts.isPropertyAccessExpression(parent) && parent.expression === id) {
+        const member = parent.name.text
+        if (VI_LOAD_MEMBERS.has(member)) {
+          if (!isCallee(parent)) undeterminable.push(`vi.${member}`)
+        } else if (!VI_ALLOWED.has(member)) {
+          disallowedVi.push(`vi.${member}`)
+        }
+      } else {
+        undeterminable.push(id.text)
+      }
+    }
+    const isLoadName =
+      LOAD_NAME_PREFIX.test(id.text) ||
+      LOAD_NAMES.has(id.text) ||
+      (id.text === 'module' && valuePosition) ||
+      (id.text === 'Function' && !isInertFunctionPosition(id))
+    if (isLoadName) undeterminable.push(id.text)
+  }
+
+  const visitCall = (call: ts.CallExpression): void => {
+    const first = call.arguments[0]
+    const literal = first !== undefined && ts.isStringLiteralLike(first) ? first.text : null
+    const callee = call.expression
+    if (callee.kind === ts.SyntaxKind.ImportKeyword) {
+      if (literal === null) undeterminable.push(`import(${first?.getText(sf) ?? ''})`)
+      return
+    }
+    if (
+      ts.isPropertyAccessExpression(callee) &&
+      ts.isIdentifier(callee.expression) &&
+      isVitestUtils(callee.expression) &&
+      isValuePosition(callee.expression) &&
+      VI_LOAD_MEMBERS.has(callee.name.text)
+    ) {
+      const member = callee.name.text
+      const detail = `vi.${member}(${first?.getText(sf) ?? ''})`
+      if (literal === null) undeterminable.push(detail)
+      const resolved = literal === null ? null : resolveSpecifier(file, literal)
+      loadCalls.push({ detail, resolved })
+      if (member === 'importActual' && literal !== null) refs.push({ specifier: literal, resolved })
+    }
+  }
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) visitIdentifier(node)
+    else if (ts.isCallExpression(node)) visitCall(node)
+    else if (ts.isMetaProperty(node) && node.keywordToken === ts.SyntaxKind.ImportKeyword) undeterminable.push('import.meta')
     ts.forEachChild(node, visit)
   }
   visit(sf)
-  return specifiers.filter((s) => s.startsWith('@/'))
+  return { refs, loadCalls, undeterminable, disallowedVi }
 }
 
-const isDomainApplicationOrShared = (specifier: string): { domainOrApp: boolean; ok: boolean } => {
-  const resolved = specifier.slice(2)
-  const layer = layerOf(resolved)
-  return { domainOrApp: layer === 'DOMAIN' || layer === 'APP', ok: layer === 'DOMAIN' || layer === 'APP' || layer === 'SHARED' }
+/** 最上位の文が、型だけの import・interface・type alias・`export type` だけのファイル。 */
+function isTypeOnlyModule(file: string, source: string): boolean {
+  const isTypeOnlyImport = (statement: ts.ImportDeclaration): boolean => {
+    const clause = statement.importClause
+    if (clause === undefined) return false
+    if (clause.phaseModifier === ts.SyntaxKind.TypeKeyword) return true
+    const bindings = clause.namedBindings
+    return (
+      clause.name === undefined &&
+      bindings !== undefined &&
+      ts.isNamedImports(bindings) &&
+      bindings.elements.length > 0 &&
+      bindings.elements.every((e) => e.isTypeOnly)
+    )
+  }
+  return parseSource(file, source).statements.every(
+    (statement) =>
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement) ||
+      (ts.isExportDeclaration(statement) && statement.isTypeOnly) ||
+      (ts.isImportDeclaration(statement) && isTypeOnlyImport(statement)),
+  )
 }
 
-/** `@/` の import がすべて domain・application・shared で、domain か application を 1 つ以上含むテスト。 */
-export function isDomainIsolationTarget(file: string, source: string): boolean {
-  const specifiers = collectTestAliasSpecifiers(file, source)
-  if (specifiers.length === 0) return false
-  const judged = specifiers.map(isDomainApplicationOrShared)
-  return judged.every((j) => j.ok) && judged.some((j) => j.domainOrApp)
+interface TestAnalysis {
+  /** 起点のファイルと、test-local 閉包のファイル。 */
+  readonly files: readonly string[]
+  readonly unresolved: ReadonlyArray<{ readonly file: string; readonly specifier: string }>
+  /** 閉包の実行時 import が指す production module の path（拡張子なし）。 */
+  readonly reach: ReadonlySet<string>
 }
 
-/** 対象のテストが `@/lib/api`・`@/lib/platform` を import（または `vi.mock`）している箇所。 */
-export function findIsolationViolations(file: string, source: string): string[] {
-  return collectTestAliasSpecifiers(file, source).filter((s) => {
-    const resolved = s.slice(2)
-    return resolved === 'lib/api' || resolved.startsWith('lib/api/') || resolved.startsWith('lib/platform/')
+interface Evaluation {
+  readonly input: TestIsolationInput
+  /** 重複を除いた辞書順。 */
+  readonly testFiles: readonly string[]
+  readonly sourceOf: (file: string) => string
+  readonly factsOf: (file: string) => FileFacts
+  readonly analysisOf: (root: string) => TestAnalysis
+  readonly entryOf: (file: string) => TestInventoryEntry | undefined
+}
+
+function assertReadable(label: string, files: readonly string[], readSource: TestIsolationInput['readSource']): void {
+  const unreadable = files.filter((f) => readSource(f) === undefined)
+  if (unreadable.length > 0) {
+    throw new Error(`${label}の本文を読み込めません: ${unreadable.join(', ')}。列挙と実ファイルの不整合を解消してください`)
+  }
+}
+
+function assertPreconditions(input: TestIsolationInput): void {
+  if (input.testFiles.length === 0) throw new Error('テストの列挙が空です。git の列挙が失敗していないか確認してください')
+  if (input.productionFiles.length === 0) throw new Error('production の列挙が空です。git の列挙が失敗していないか確認してください')
+  assertReadable('テスト', input.testFiles, input.readSource)
+  assertReadable('setup ファイル', input.setupFiles, input.readSource)
+  assertReadable('production', input.productionFiles, input.readSource)
+}
+
+function createEvaluation(input: TestIsolationInput): Evaluation {
+  const sourceOf = (file: string): string => {
+    const source = input.readSource(file)
+    if (source === undefined) throw new Error(`${file} の本文を読み込めません。列挙と実ファイルの不整合を解消してください`)
+    return source
+  }
+  const factsCache = new Map<string, FileFacts>()
+  const factsOf = (file: string): FileFacts => {
+    let facts = factsCache.get(file)
+    if (facts === undefined) {
+      facts = analyzeFile(file, sourceOf(file))
+      factsCache.set(file, facts)
+    }
+    return facts
+  }
+  const findLocalModule = (resolved: string): string | undefined => {
+    const candidates = SOURCE_EXTENSION.test(resolved)
+      ? [resolved]
+      : [`${resolved}.ts`, `${resolved}.tsx`, `${resolved}/index.ts`, `${resolved}/index.tsx`]
+    return candidates.find((c) => input.readSource(c) !== undefined)
+  }
+  const analysisCache = new Map<string, TestAnalysis>()
+  const analysisOf = (root: string): TestAnalysis => {
+    const cached = analysisCache.get(root)
+    if (cached !== undefined) return cached
+    const queue = [root]
+    const visited = new Set(queue)
+    const unresolved: Array<{ file: string; specifier: string }> = []
+    const reach = new Set<string>()
+    for (const file of queue) {
+      for (const ref of factsOf(file).refs) {
+        if (ref.resolved === null) continue
+        if (!isUnderTests(ref.resolved)) {
+          reach.add(withoutExtension(ref.resolved))
+          continue
+        }
+        const local = findLocalModule(ref.resolved)
+        if (local === undefined) unresolved.push({ file, specifier: ref.specifier })
+        else if (!visited.has(local)) {
+          visited.add(local)
+          queue.push(local)
+        }
+      }
+    }
+    const analysis: TestAnalysis = { files: queue, unresolved, reach }
+    analysisCache.set(root, analysis)
+    return analysis
+  }
+  const inventoryKeys = new Set(Object.keys(input.tests))
+  return {
+    input,
+    testFiles: [...new Set(input.testFiles)].sort(),
+    sourceOf,
+    factsOf,
+    analysisOf,
+    entryOf: (file) => (inventoryKeys.has(file) ? input.tests[file] : undefined),
+  }
+}
+
+const finding = (kind: string, file: string, detail: string): IsolationFinding => ({ kind, file, detail })
+
+/** helper の中で見つけたものは、見つけた helper の path を前に付ける。 */
+const detailIn = (owner: string, file: string, detail: string): string => (file === owner ? detail : `${file} → ${detail}`)
+
+function isForbiddenDependency(ref: Ref): boolean {
+  if (ref.resolved === null) return ref.specifier !== 'vitest'
+  return !isUnderTests(ref.resolved) && !isSafeProductionLayer(ref.resolved)
+}
+
+const isAdapterDependency = (ref: Ref): boolean => ref.resolved !== null && isForbiddenDependency(ref)
+
+const reachesDomainOrApp = (analysis: TestAnalysis): boolean => [...analysis.reach].some(isDomainOrAppModule)
+
+const isTarget = (ev: Evaluation, test: string): boolean =>
+  (ev.entryOf(test)?.class === 'unit' && reachesDomainOrApp(ev.analysisOf(test))) || TEST_DOMAIN_PATH.test(test)
+
+/** 行き先を決められない読み込みと解決失敗は全テストで、禁止依存・読み込み・許可外の `vi` は対象だけで検出する。 */
+function collectTestFindings(ev: Evaluation, test: string, target: boolean): IsolationFinding[] {
+  const out: IsolationFinding[] = []
+  const analysis = ev.analysisOf(test)
+  for (const file of analysis.files) {
+    const facts = ev.factsOf(file)
+    const at = (detail: string): string => detailIn(test, file, detail)
+    for (const detail of facts.undeterminable) out.push(finding(KIND.undeterminableModuleLoad, test, at(detail)))
+    if (!target) continue
+    for (const ref of facts.refs.filter(isForbiddenDependency)) out.push(finding(KIND.forbiddenDependency, test, at(ref.specifier)))
+    for (const call of facts.loadCalls) out.push(finding(KIND.moduleMockOrLoad, test, at(call.detail)))
+    for (const detail of facts.disallowedVi) out.push(finding(KIND.disallowedViCall, test, at(detail)))
+  }
+  for (const { file, specifier } of analysis.unresolved) {
+    out.push(finding(KIND.unresolvedLocalImport, test, detailIn(test, file, specifier)))
+  }
+  return out
+}
+
+function collectInventoryFindings(ev: Evaluation): IsolationFinding[] {
+  const out: IsolationFinding[] = []
+  const listed = new Set(ev.testFiles)
+  for (const test of ev.testFiles) {
+    if (ev.entryOf(test) === undefined) out.push(finding(KIND.unclassifiedTest, test, '台帳 TEST_INVENTORY に分類がありません'))
+  }
+  for (const [test, entry] of Object.entries(ev.input.tests)) {
+    if (!listed.has(test)) out.push(finding(KIND.unknownTest, test, '列挙されたテストに存在しません'))
+    if (!TEST_CLASSES.includes(entry.class)) {
+      out.push(finding(KIND.invalidClass, test, `class が不正です: ${String(entry.class)}`))
+      continue
+    }
+    if (entry.class !== 'unit' && (entry.reason ?? '').trim() === '') out.push(finding(KIND.missingReason, test, `${entry.class} には理由が必須です`))
+    if (entry.class === 'adapter' && listed.has(test)) {
+      const dependsOnAdapter = ev.analysisOf(test).files.some((f) => ev.factsOf(f).refs.some(isAdapterDependency))
+      if (!dependsOnAdapter) out.push(finding(KIND.adapterWithoutAdapter, test, 'adapter への実行時 import がありません'))
+    }
+  }
+  return out
+}
+
+function collectSubjectFindings(ev: Evaluation): IsolationFinding[] {
+  const out: IsolationFinding[] = []
+  const { productionFiles, subjects } = ev.input
+  const production = new Set(productionFiles)
+  const subjectKeys = Object.keys(subjects)
+  const registered = new Set(subjectKeys)
+  const knownContexts = new Set(subjectKeys.map(contextOf).filter((c): c is string => c !== null))
+  const unitTests = ev.testFiles.filter((t) => ev.entryOf(t)?.class === 'unit')
+
+  for (const file of [...new Set(productionFiles)].sort()) {
+    if (!isDomainOrAppModule(file) || registered.has(file)) continue
+    const context = contextOf(file)
+    const detail =
+      context !== null && !knownContexts.has(context)
+        ? `新しい context: ${context}。台帳 SUBJECT_INVENTORY に subject とテストの対応を追加してください`
+        : '台帳 SUBJECT_INVENTORY に subject とテストの対応を追加してください'
+    out.push(finding(KIND.unregisteredSubject, file, detail))
+  }
+
+  for (const subject of subjectKeys) {
+    if (!production.has(subject) || !isDomainOrAppModule(subject)) {
+      out.push(finding(KIND.unknownSubject, subject, 'production の DOMAIN・APP のファイルではありません'))
+      continue
+    }
+    const recorded = subjects[subject]
+    const expected = unitTests.filter((t) => ev.analysisOf(t).reach.has(withoutExtension(subject)))
+    const excess = recorded.filter((t) => !expected.includes(t))
+    const missing = expected.filter((t) => !recorded.includes(t))
+    if (excess.length > 0 || missing.length > 0) {
+      out.push(finding(KIND.subjectTestsMismatch, subject, `過剰: [${excess.join(', ')}] 不足: [${missing.join(', ')}]`))
+    }
+    if (recorded.length === 0 && !isTypeOnlyModule(subject, ev.sourceOf(subject))) {
+      out.push(finding(KIND.subjectUntested, subject, '型だけの module ではないので、検証する unit テストが 1 本以上必要です'))
+    }
+  }
+  return out
+}
+
+/** setup ファイルは全テストの前に走るので、production の import も mock も持ち込ませない（パッケージの mock は許可）。 */
+function collectSetupFindings(ev: Evaluation): IsolationFinding[] {
+  const out: IsolationFinding[] = []
+  for (const setup of ev.input.setupFiles) {
+    for (const file of ev.analysisOf(setup).files) {
+      const facts = ev.factsOf(file)
+      const at = (detail: string): string => detailIn(setup, file, detail)
+      for (const ref of facts.refs) {
+        if (ref.resolved !== null && !isUnderTests(ref.resolved)) out.push(finding(KIND.setupProductionDependency, setup, at(ref.specifier)))
+      }
+      for (const call of facts.loadCalls) {
+        if (call.resolved !== null && !isUnderTests(call.resolved)) out.push(finding(KIND.setupProductionDependency, setup, at(call.detail)))
+      }
+    }
+  }
+  return out
+}
+
+/** 一致する許可は違反を消し、どの違反にも使われなかった許可は stale として返す。 */
+function applyAllowances(findings: readonly IsolationFinding[], allowances: readonly MigrationAllowance[]): IsolationFinding[] {
+  const keyOf = (file: string, detail: string): string => `${file}\u0000${detail}`
+  const allowedKeys = new Set(allowances.map((a) => keyOf(a.file, a.specifier)))
+  const usedKeys = new Set<string>()
+  const remaining = findings.filter((f) => {
+    const key = keyOf(f.file, f.detail)
+    const allowable = (f.kind === KIND.forbiddenDependency || f.kind === KIND.moduleMockOrLoad) && allowedKeys.has(key)
+    if (allowable) usedKeys.add(key)
+    return !allowable
   })
+  const stale = allowances
+    .filter((a) => !usedKeys.has(keyOf(a.file, a.specifier)))
+    .map((a) => finding(KIND.staleAllowance, a.file, a.specifier))
+  return [...remaining, ...stale]
+}
+
+const findingKey = (f: IsolationFinding): string => `${f.kind} | ${f.file} | ${f.detail}`
+
+function sortedUnique(findings: readonly IsolationFinding[]): IsolationFinding[] {
+  const byKey = new Map(findings.map((f) => [findingKey(f), f] as const))
+  return [...byKey.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([, f]) => f)
+}
+
+/**
+ * web-check-08: 全テストの分類・全 subject の対応・対象テストの隔離を、注入された入力だけで判定する（fs・git に触れない）。
+ * 前提条件（列挙が空、本文を読めない）だけ throw し、それ以外は finding として返す。
+ */
+export function evaluateTestIsolation(input: TestIsolationInput): TestIsolationResult {
+  assertPreconditions(input)
+  const ev = createEvaluation(input)
+  const targets = ev.testFiles.filter((t) => isTarget(ev, t))
+  const targetSet = new Set(targets)
+  const findings = [
+    ...ev.testFiles.flatMap((t) => collectTestFindings(ev, t, targetSet.has(t))),
+    ...collectInventoryFindings(ev),
+    ...collectSubjectFindings(ev),
+    ...collectSetupFindings(ev),
+  ]
+  return {
+    targets,
+    domainImportingNonUnit: ev.testFiles.filter((t) => ev.entryOf(t)?.class !== 'unit' && reachesDomainOrApp(ev.analysisOf(t))),
+    findings: sortedUnique(applyAllowances(findings, input.allowances)),
+  }
 }
