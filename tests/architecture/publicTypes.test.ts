@@ -8,12 +8,6 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { layerOf, listScanFiles, readSource } from '../helpers/architecture'
 import { scanPublicTypes } from '../helpers/architectureDetectors'
 
-/**
- * 量化する集合から外す型: domain が駆動する port の interface（adapter が実装し、domain が property へ代入する）。
- * 外す型はここに名前で列挙する。列挙に無い型の違反は 0 件とする。
- */
-const EXCLUDED_PORT_TYPES = ['AudioElement']
-
 /** 空振りの防止: 走査した export の名前に含まれるべき 9 つ。 */
 const MUST_BE_SCANNED = [
   'QueueState',
@@ -37,25 +31,23 @@ beforeAll(() => {
 })
 
 describe('web-check-05 (b) DOMAIN・APP・shared の export する型は readonly（構文で判定）', () => {
-  test('readonly でない property と配列型（T[]・Array<T>）が 0 件。除外は AudioElement だけで、その型が DOMAIN に実在する', () => {
-    const scans = targetFiles.map((f) => ({ file: f, scan: scanPublicTypes(f, readSource(f), EXCLUDED_PORT_TYPES) }))
+  test('readonly でない property と配列型（T[]・Array<T>）が 0 件。名前の除外は無く、APP の AudioElement も走査される', () => {
+    const scans = targetFiles.map((f) => ({ file: f, scan: scanPublicTypes(f, readSource(f), []) }))
     expect(scans.flatMap((s) => s.scan.violations)).toEqual([])
-
-    expect(EXCLUDED_PORT_TYPES).toEqual(['AudioElement'])
-    const domainExports = scans.filter((s) => layerOf(s.file) === 'DOMAIN').flatMap((s) => s.scan.exportedNames)
-    expect(domainExports, '除外する AudioElement が DOMAIN に実在しない').toContain('AudioElement')
+    const appExports = scans.filter((s) => layerOf(s.file) === 'APP').flatMap((s) => s.scan.exportedNames)
+    expect(appExports, 'AudioElement が APP の走査集合に無い').toContain('AudioElement')
   })
 
   test('走査した export の名前が 9 つ（QueueState・PlayableEpisode・PlaybackState・ApiFailure・Result・AdminAccessSession・ResolvePlaybackInput・PasskeyClient・PushRegistrationApiClient）を含む', () => {
-    const scanned = new Set(targetFiles.flatMap((f) => scanPublicTypes(f, readSource(f), EXCLUDED_PORT_TYPES).exportedNames))
+    const scanned = new Set(targetFiles.flatMap((f) => scanPublicTypes(f, readSource(f), []).exportedNames))
     expect(MUST_BE_SCANNED.filter((n) => !scanned.has(n))).toEqual([])
   })
 
-  test('除外が効いている根拠: AudioElement を除外しなければ、書き込み可能な property（src ほか）が違反として出る', () => {
-    const audioFile = targetFiles.find((f) => f === 'lib/playback/domain/audioElement.ts')
-    expect(audioFile, 'lib/playback/domain/audioElement.ts が走査集合に無い').toBeDefined()
-    const withoutExclusion = scanPublicTypes('lib/playback/domain/audioElement.ts', readSource('lib/playback/domain/audioElement.ts'), [])
-    expect(withoutExclusion.violations.length).toBeGreaterThan(0)
+  test('反例: 操作だけの AudioElement は違反 0 件、書き込める property（src）を足すと違反 1 件', () => {
+    const ports = 'lib/playback/application/ports.ts'
+    expect(scanPublicTypes(ports, readSource(ports), []).violations).toEqual([])
+    const writable = readSource(ports).replace('export interface AudioElement {', 'export interface AudioElement {\n  src: string')
+    expect(scanPublicTypes(ports, writable, []).violations).toEqual([`${ports}: AudioElement: readonly の無い property src`])
   })
 })
 

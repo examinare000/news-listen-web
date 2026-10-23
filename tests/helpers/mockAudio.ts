@@ -1,5 +1,5 @@
 import { vi } from 'vitest'
-import type { AudioElement } from '@/lib/playback/domain/audioElement'
+import type { AudioElement } from '@/lib/playback/application/ports'
 
 type EventListener = (event: Event) => void
 
@@ -29,8 +29,26 @@ export class MockAudio implements AudioElement {
     this.paused = true
   }
 
-  load(): void {
-    // src が変わった後の再ロード
+  load(src: string): void {
+    this.src = src
+  }
+
+  unload(): void {
+    this.paused = true
+    this.src = ''
+  }
+
+  seek(seconds: number): void {
+    this.currentTime = seconds
+  }
+
+  setPlaybackRate(rate: number): void {
+    this.defaultPlaybackRate = rate
+    this.playbackRate = rate
+  }
+
+  setVolume(volume: number): void {
+    this.volume = volume
   }
 
   addEventListener(type: string, listener: EventListener): void {
