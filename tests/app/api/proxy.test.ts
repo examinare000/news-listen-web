@@ -390,6 +390,60 @@ describe('Session cookie relay', () => {
 })
 
 // ==========================================================
+// Retry-After の中継（生成上限の 429 で次回可能の目安を出すため）
+// ==========================================================
+describe('Retry-After relay (verifies: web-dec-13)', () => {
+  function stubBackendResponse(body: string, status: number, headers: Record<string, string>) {
+    vi.stubEnv('BACKEND_BASE_URL', 'https://api.example.com')
+    vi.stubEnv('BACKEND_API_KEY', 'key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { status, headers })))
+  }
+
+  test('web-dec-13: relays backend Retry-After on 429', async () => {
+    const body = JSON.stringify({ detail: 'Monthly podcast generation limit reached' })
+    stubBackendResponse(body, 429, {
+      'Content-Type': 'application/json',
+      'Retry-After': '3600',
+    })
+    const req = makeRequest('POST', 'articles/1/star')
+
+    const res = await POST(asNextRequest(req), makeContext(['articles', '1', 'star']))
+
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBe('3600')
+    expect(await res.json()).toEqual({ detail: 'Monthly podcast generation limit reached' })
+  })
+
+  test('web-dec-13: does not add Retry-After when backend omits it', async () => {
+    stubBackendResponse(JSON.stringify({ detail: 'Too many requests' }), 429, {
+      'Content-Type': 'application/json',
+    })
+    const req = makeRequest('POST', 'articles/1/star')
+
+    const res = await POST(asNextRequest(req), makeContext(['articles', '1', 'star']))
+
+    expect(res.status).toBe(429)
+    expect(res.headers.get('Retry-After')).toBeNull()
+  })
+
+  test('web-dec-13: relays Retry-After regardless of status and does not relay other headers', async () => {
+    stubBackendResponse(JSON.stringify({ ok: true }), 200, {
+      'Content-Type': 'text/plain',
+      'Retry-After': '120',
+      'X-Backend-Extra': 'leak',
+    })
+    const req = makeRequest('GET', 'feed')
+
+    const res = await GET(asNextRequest(req), makeContext(['feed']))
+
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Retry-After')).toBe('120')
+    expect(res.headers.get('X-Backend-Extra')).toBeNull()
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+  })
+})
+
+// ==========================================================
 // 異常系: バックエンド到達不能 → 502
 // ==========================================================
 describe('Backend unreachable', () => {

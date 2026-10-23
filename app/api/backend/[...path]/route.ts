@@ -110,6 +110,13 @@ async function forward(req: NextRequest, pathSegments: string[]): Promise<NextRe
     headers: { 'Content-Type': 'application/json' },
   })
 
+  // 生成上限の 429 などで次回可能の目安をブラウザへ出すため、backend の Retry-After を
+  // 値を変えずに中継する（web-dec-13 / ADR-073）。解釈は gateway が担う。
+  const retryAfter = backendResponse.headers.get('Retry-After')
+  if (retryAfter !== null) {
+    response.headers.set('Retry-After', retryAfter)
+  }
+
   // バックエンドが発行した Set-Cookie をブラウザへ中継する。バックエンドは Domain 属性を
   // 付けないため、Cookie は Web アプリのオリジンにバインドされる（httpOnly/SameSite は維持）。
   // ログイン時のセッション発行・ログアウト時の失効の双方をこの中継でブラウザに反映する。
