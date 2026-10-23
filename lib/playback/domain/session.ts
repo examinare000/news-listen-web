@@ -1,9 +1,8 @@
-// 再生セッション: 1 つの AudioElement を駆動する状態機械。
-// 状態変化は 13 遷移と、表の外の操作 stop()・fail() だけ。表にない入力は no-op（throw しない）。
+// 再生セッションの遷移の決定: 状態と入力から、次の状態・音声要素への指示・事象を返す純関数 transition。
+// 状態変化は 13 遷移と、表の外の操作 stop・fail だけ。表にない入力は no-op（throw しない）。
 // 契約の正本は docs/design/modules/web/2026-09-16-implementation-spec-domain-model.md §3.1。
 import type { AudioHandle, PlayableEpisode } from '@/lib/catalog/domain/episode'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
-import type { AudioElement } from './audioElement'
 
 // 型の定義は Catalog が持つ（web-dep-12: Playback → Catalog の向き）。既存の import path を保つため再 export する。
 export type { AudioHandle, PlayableEpisode }
@@ -55,20 +54,49 @@ export type PlaybackEvent =
   | { readonly type: 'positionChanged'; readonly episodeId: string; readonly seconds: number }
   | { readonly type: 'listenCompleted'; readonly episodeId: string }
 
-export interface PlaybackSession {
-  state(): PlaybackState
-  start(episode: PlayableEpisode, resumePosition: number, speed: PlaybackSpeed): void
-  play(): Promise<void>
-  pause(): void
-  seek(seconds: number): void
-  seekRelative(deltaSeconds: number): void
-  setSpeed(speed: PlaybackSpeed): void
-  setVolume(volume: number): void
-  /** どの状態からでも idle へ戻し、音源を外す。13 遷移の外のリセット。 */
-  stop(): void
-  /** どの状態からでも errored にし、idle 以外なら音源を外す。13 遷移の外。media・autoplay_blocked は音声要素の事象からだけ生まれる。 */
-  fail(ref: EpisodeRef, reason: Extract<PlaybackErrorReason, { readonly kind: 'source_unavailable' | 'fetch_failed' }>): void
-  subscribe(listener: (event: PlaybackEvent) => void): () => void
+/** transition への入力。currentTime は呼出側が音声要素から読んだ値。 */
+export type PlaybackInput =
+  | {
+      readonly type: 'start'
+      readonly episode: PlayableEpisode
+      readonly resumePosition: number
+      readonly speed: PlaybackSpeed
+      readonly currentTime: number
+    }
+  | { readonly type: 'play' }
+  | { readonly type: 'pause'; readonly currentTime: number }
+  | { readonly type: 'seek'; readonly seconds: number }
+  | { readonly type: 'seekRelative'; readonly deltaSeconds: number }
+  | { readonly type: 'setSpeed'; readonly speed: PlaybackSpeed }
+  | { readonly type: 'stop' }
+  | {
+      readonly type: 'fail'
+      readonly ref: EpisodeRef
+      readonly reason: Extract<PlaybackErrorReason, { readonly kind: 'source_unavailable' | 'fetch_failed' }>
+    }
+  | { readonly type: 'loadedmetadata'; readonly duration: number }
+  | { readonly type: 'timeupdate'; readonly currentTime: number }
+  | { readonly type: 'ended' }
+  | { readonly type: 'error'; readonly currentTime: number }
+  | { readonly type: 'playRejected'; readonly autoplayBlocked: boolean; readonly currentTime: number }
+
+/** transition が返す、音声要素への指示。 */
+export type AudioCommand =
+  | { readonly type: 'load'; readonly src: string; readonly resumePosition: number; readonly speed: PlaybackSpeed }
+  | { readonly type: 'unload' }
+  | { readonly type: 'play' }
+  | { readonly type: 'pause' }
+  | { readonly type: 'seek'; readonly seconds: number }
+  | { readonly type: 'setPlaybackRate'; readonly speed: PlaybackSpeed }
+  // 並びの最後に置く。実行は事象の発行の後（新しい音源の load の後でなければ再生中の URL を失う）。
+  | { readonly type: 'releaseHandle'; readonly handle: AudioHandle }
+
+export type Transition = {
+  readonly state: PlaybackState
+  readonly commands: ReadonlyArray<AudioCommand>
+  readonly events: ReadonlyArray<PlaybackEvent>
+  /** 前段。loading・playing からの start だけが持つ（中間状態 idle・paused への遷移。releaseHandle を含まない）。 */
+  readonly prelude?: Transition
 }
 
 const DEFAULT_SPEED: PlaybackSpeed = 1.0
@@ -89,10 +117,6 @@ function normalizeDuration(seconds: number): number {
 function clampPosition(seconds: number, duration: number): number {
   const lower = Math.max(0, seconds)
   return duration > 0 ? Math.min(duration, lower) : lower
-}
-
-function isAutoplayBlocked(error: unknown): boolean {
-  return typeof error === 'object' && error !== null && 'name' in error && error.name === 'NotAllowedError'
 }
 
 /** 呼出側の値を共有しないよう、plain object と配列だけを全深さで複製する。release 口の audioHandle は同一参照のまま。 */
@@ -129,219 +153,194 @@ function handleOf(state: PlaybackState): AudioHandle | undefined {
   return isPlayableEpisode(state.episode) ? state.episode.audioHandle : undefined
 }
 
-export function createPlaybackSession(audio: AudioElement): PlaybackSession {
-  let state: PlaybackState = Object.freeze({ status: 'idle' })
-  // play() の遅延 reject が、その後の pause / play / start / stop / fail を上書きしないための世代。
-  let token = 0
-  const listeners = new Set<(event: PlaybackEvent) => void>()
+// 入力の state は深く凍結済みであることを前提にする。ここで新しく作る値だけを凍結し、
+// 前の状態から引き継ぐ参照と呼出側の値は凍結し直さない。
+function noop(state: PlaybackState): Transition {
+  return { state, commands: [], events: [] }
+}
 
-  const emit = (event: PlaybackEvent): void => {
-    for (const listener of [...listeners]) listener(event)
-  }
-  // 状態に入る episode は start と fail が作った凍結済みの写しだけなので辿らない。reason は fail が複製してから渡し、
-  // 事象由来の reason は session 内のリテラルなので、ここで凍結するのは呼出側と共有しない値だけ。
-  const assign = (next: PlaybackState): void => {
-    if (next.status === 'errored') freezeDeep(next.reason)
-    state = Object.freeze(next)
-  }
-  const commit = (next: PlaybackState): void => {
-    assign(next)
-    emit({ type: 'stateChanged', state })
-  }
+function change(state: PlaybackState, commands: ReadonlyArray<AudioCommand>, events: ReadonlyArray<PlaybackEvent>): Transition {
+  return { state: Object.freeze(state), commands, events }
+}
 
-  const applySpeed = (speed: PlaybackSpeed): void => {
-    audio.defaultPlaybackRate = speed
-    audio.playbackRate = speed
-  }
+function changed(state: PlaybackState): PlaybackEvent {
+  return { type: 'stateChanged', state }
+}
 
-  const loadSource = (episode: PlayableEpisode, resumePosition: number, speed: PlaybackSpeed): void => {
-    audio.src = episode.audioUrl
-    applySpeed(speed)
-    audio.load()
-    audio.currentTime = resumePosition
-    commit({ status: 'loading', episode, resumePosition, speed })
-  }
+function releaseCommands(previous: AudioHandle | undefined, next: AudioHandle | undefined): ReadonlyArray<AudioCommand> {
+  return previous !== undefined && previous !== next ? [{ type: 'releaseHandle', handle: previous }] : []
+}
 
-  const detachSource = (): void => {
-    audio.pause()
-    audio.src = ''
-    audio.load()
-  }
+function loadFrom(episode: PlayableEpisode, resumePosition: number, speed: PlaybackSpeed): PlaybackState {
+  return Object.freeze({ status: 'loading', episode, resumePosition, speed })
+}
 
-  const seekTo = (seconds: number): void => {
-    const s = state
-    if (s.status !== 'paused' && s.status !== 'playing') return
-    const position = clampPosition(seconds, s.duration)
-    audio.currentTime = position
-    if (position === s.position) return
-    commit({ ...s, position })
-    emit({ type: 'positionChanged', episodeId: s.episode.id, seconds: position })
+function start(state: PlaybackState, input: Extract<PlaybackInput, { type: 'start' }>): Transition {
+  const episode = freezeDeep(cloneDeep(input.episode))
+  const resumePosition = normalizeResume(input.resumePosition)
+  const speed = normalizeSpeed(input.speed)
+  const loading = loadFrom(episode, resumePosition, speed)
+  const body = change(
+    loading,
+    [{ type: 'load', src: episode.audioUrl, resumePosition, speed }, ...releaseCommands(handleOf(state), episode.audioHandle)],
+    [changed(loading)],
+  )
+  if (state.status === 'playing') {
+    const paused: PlaybackState = Object.freeze({
+      ...state,
+      status: 'paused',
+      position: clampPosition(input.currentTime, state.duration),
+    })
+    return { ...body, prelude: change(paused, [{ type: 'pause' }], [changed(paused)]) }
   }
+  if (state.status === 'loading') {
+    const idle: PlaybackState = Object.freeze({ status: 'idle' })
+    return { ...body, prelude: change(idle, [{ type: 'unload' }], [changed(idle)]) }
+  }
+  return body
+}
 
-  audio.addEventListener('loadedmetadata', () => {
-    const s = state
-    if (s.status !== 'loading') return
-    const duration = normalizeDuration(audio.duration)
-    const position = clampPosition(s.resumePosition, duration)
-    audio.currentTime = position
-    applySpeed(s.speed)
-    commit({ status: 'paused', episode: s.episode, position, duration, speed: s.speed })
+function play(state: PlaybackState): Transition {
+  if (state.status === 'errored') {
+    // id だけの参照は音源を持たない。再試行は Coordinator が再生元の解決からやり直して start を呼ぶ。
+    if (!isPlayableEpisode(state.episode)) return noop(state)
+    const loading = loadFrom(state.episode, state.position, state.speed)
+    return change(
+      loading,
+      [{ type: 'load', src: state.episode.audioUrl, resumePosition: state.position, speed: state.speed }],
+      [changed(loading)],
+    )
+  }
+  if (state.status !== 'paused') return noop(state)
+  const playing: PlaybackState = Object.freeze({ ...state, status: 'playing' })
+  return change(playing, [{ type: 'play' }], [changed(playing)])
+}
+
+function pause(state: PlaybackState, currentTime: number): Transition {
+  if (state.status !== 'playing') return noop(state)
+  const paused: PlaybackState = Object.freeze({
+    ...state,
+    status: 'paused',
+    position: clampPosition(currentTime, state.duration),
   })
+  return change(paused, [{ type: 'pause' }], [changed(paused)])
+}
 
-  audio.addEventListener('timeupdate', () => {
-    const s = state
-    if (s.status !== 'playing') return
-    const position = clampPosition(audio.currentTime, s.duration)
-    if (position === s.position) return
-    commit({ ...s, position })
-    emit({ type: 'positionChanged', episodeId: s.episode.id, seconds: position })
+function seekTo(state: PlaybackState, seconds: number): Transition {
+  if (state.status !== 'paused' && state.status !== 'playing') return noop(state)
+  const position = clampPosition(seconds, state.duration)
+  const commands: ReadonlyArray<AudioCommand> = [{ type: 'seek', seconds: position }]
+  if (position === state.position) return { state, commands, events: [] }
+  const next: PlaybackState = Object.freeze({ ...state, position })
+  return change(next, commands, [changed(next), { type: 'positionChanged', episodeId: state.episode.id, seconds: position }])
+}
+
+function setSpeed(state: PlaybackState, speed: PlaybackSpeed): Transition {
+  if (!PLAYBACK_SPEEDS.some((v) => v === speed)) return noop(state)
+  if (state.status === 'idle' || state.status === 'ended') return noop(state)
+  const commands: ReadonlyArray<AudioCommand> = [{ type: 'setPlaybackRate', speed }]
+  if (state.speed === speed) return { state, commands, events: [] }
+  const next: PlaybackState = Object.freeze({ ...state, speed })
+  return change(next, commands, [changed(next)])
+}
+
+function stop(state: PlaybackState): Transition {
+  if (state.status === 'idle') return noop(state)
+  const idle: PlaybackState = Object.freeze({ status: 'idle' })
+  return change(idle, [{ type: 'unload' }, ...releaseCommands(handleOf(state), undefined)], [changed(idle)])
+}
+
+function fail(state: PlaybackState, input: Extract<PlaybackInput, { type: 'fail' }>): Transition {
+  // ref が full episode でも id だけを写す。ref の audioHandle を保持・release しない。
+  const errored: PlaybackState = Object.freeze({
+    status: 'errored',
+    episode: freezeDeep({ id: input.ref.id }),
+    position: 0,
+    speed: 'speed' in state ? state.speed : DEFAULT_SPEED,
+    reason: freezeDeep(cloneDeep(input.reason)),
   })
+  const detach: ReadonlyArray<AudioCommand> =
+    state.status === 'idle' ? [] : [{ type: 'unload' }, ...releaseCommands(handleOf(state), undefined)]
+  return change(errored, detach, [changed(errored)])
+}
 
-  audio.addEventListener('ended', () => {
-    const s = state
-    if (s.status !== 'playing') return
-    // 完聴の記録を次エピソードへの遷移より先に行えるよう、listenCompleted を先に出す。
-    assign({ status: 'ended', episode: s.episode, duration: s.duration })
-    emit({ type: 'listenCompleted', episodeId: s.episode.id })
-    emit({ type: 'stateChanged', state })
+function loadedMetadata(state: PlaybackState, rawDuration: number): Transition {
+  if (state.status !== 'loading') return noop(state)
+  const duration = normalizeDuration(rawDuration)
+  const position = clampPosition(state.resumePosition, duration)
+  const paused: PlaybackState = Object.freeze({
+    status: 'paused',
+    episode: state.episode,
+    position,
+    duration,
+    speed: state.speed,
   })
+  return change(
+    paused,
+    [
+      { type: 'seek', seconds: position },
+      { type: 'setPlaybackRate', speed: state.speed },
+    ],
+    [changed(paused)],
+  )
+}
 
-  audio.addEventListener('error', () => {
-    const s = state
-    if (s.status === 'loading') {
-      commit({
-        status: 'errored',
-        episode: s.episode,
-        position: s.resumePosition,
-        speed: s.speed,
-        reason: { kind: 'media' },
-      })
-    } else if (s.status === 'playing') {
-      commit({
-        status: 'errored',
-        episode: s.episode,
-        position: clampPosition(audio.currentTime, s.duration),
-        speed: s.speed,
-        reason: { kind: 'media' },
-      })
-    }
+function timeUpdate(state: PlaybackState, currentTime: number): Transition {
+  if (state.status !== 'playing') return noop(state)
+  const position = clampPosition(currentTime, state.duration)
+  if (position === state.position) return noop(state)
+  const next: PlaybackState = Object.freeze({ ...state, position })
+  return change(next, [], [changed(next), { type: 'positionChanged', episodeId: state.episode.id, seconds: position }])
+}
+
+function ended(state: PlaybackState): Transition {
+  if (state.status !== 'playing') return noop(state)
+  const next: PlaybackState = Object.freeze({ status: 'ended', episode: state.episode, duration: state.duration })
+  // 完聴の記録を次エピソードへの遷移より先に行えるよう、listenCompleted を先に出す。
+  return change(next, [], [{ type: 'listenCompleted', episodeId: state.episode.id }, changed(next)])
+}
+
+function mediaError(state: PlaybackState, currentTime: number, kind: 'media' | 'autoplay_blocked'): Transition {
+  if (state.status !== 'loading' && state.status !== 'playing') return noop(state)
+  const position = state.status === 'loading' ? state.resumePosition : clampPosition(currentTime, state.duration)
+  const errored: PlaybackState = Object.freeze({
+    status: 'errored',
+    episode: state.episode,
+    position,
+    speed: state.speed,
+    reason: freezeDeep({ kind }),
   })
+  return change(errored, [], [changed(errored)])
+}
 
-  return {
-    state: () => state,
-
-    start(given, resumePosition, speed) {
-      const episode = freezeDeep(cloneDeep(given))
-      const previousHandle = handleOf(state)
-      token += 1
-      const s = state
-      if (s.status === 'playing') {
-        audio.pause()
-        commit({ ...s, status: 'paused', position: clampPosition(audio.currentTime, s.duration) })
-      } else if (s.status === 'loading') {
-        detachSource()
-        commit({ status: 'idle' })
-      }
-      loadSource(episode, normalizeResume(resumePosition), normalizeSpeed(speed))
-      // release は最後の 1 手: 新音源の load() の後でなければ再生中の URL を失う。
-      if (previousHandle !== undefined && previousHandle !== episode.audioHandle) previousHandle.release()
-    },
-
-    play() {
-      const s = state
-      if (s.status === 'errored') {
-        // id だけの参照は音源を持たない。再試行は Coordinator が再生元の解決からやり直して start を呼ぶ。
-        if (isPlayableEpisode(s.episode)) loadSource(s.episode, s.position, s.speed)
-        return Promise.resolve()
-      }
-      if (s.status !== 'paused') return Promise.resolve()
-
-      token += 1
-      const mine = token
-      assign({ ...s, status: 'playing' })
-      const settled = audio.play()
-      emit({ type: 'stateChanged', state })
-      return settled.then(
-        () => undefined,
-        (error: unknown) => {
-          const current = state
-          if (token !== mine || current.status !== 'playing') return
-          commit({
-            status: 'errored',
-            episode: current.episode,
-            position: clampPosition(audio.currentTime, current.duration),
-            speed: current.speed,
-            reason: { kind: isAutoplayBlocked(error) ? 'autoplay_blocked' : 'media' },
-          })
-        },
-      )
-    },
-
-    pause() {
-      const s = state
-      if (s.status !== 'playing') return
-      token += 1
-      audio.pause()
-      commit({ ...s, status: 'paused', position: clampPosition(audio.currentTime, s.duration) })
-    },
-
-    seek(seconds) {
-      if (Number.isFinite(seconds)) seekTo(seconds)
-    },
-
-    seekRelative(deltaSeconds) {
-      const s = state
-      if (!Number.isFinite(deltaSeconds)) return
-      if (s.status === 'paused' || s.status === 'playing') seekTo(s.position + deltaSeconds)
-    },
-
-    setSpeed(speed) {
-      const s = state
-      if (!PLAYBACK_SPEEDS.some((v) => v === speed)) return
-      if (s.status === 'idle' || s.status === 'ended') return
-      applySpeed(speed)
-      if (s.speed !== speed) commit({ ...s, speed })
-    },
-
-    setVolume(volume) {
-      if (Number.isFinite(volume)) audio.volume = Math.min(1, Math.max(0, volume))
-    },
-
-    stop() {
-      const s = state
-      if (s.status === 'idle') return
-      const handle = handleOf(s)
-      token += 1
-      detachSource()
-      commit({ status: 'idle' })
-      // release は最後の 1 手: src を外した後でなければ再生中の URL を失う。
-      handle?.release()
-    },
-
-    fail(ref, reason) {
-      const s = state
-      const handle = handleOf(s)
-      // ref が full episode でも id だけを写す。ref の audioHandle を保持・release しない。
-      const episode = freezeDeep({ id: ref.id })
-      const copiedReason = freezeDeep(cloneDeep(reason))
-      token += 1
-      if (s.status !== 'idle') detachSource()
-      commit({
-        status: 'errored',
-        episode,
-        position: 0,
-        speed: 'speed' in s ? s.speed : DEFAULT_SPEED,
-        reason: copiedReason,
-      })
-      // release は最後の 1 手: src を外した後でなければ再生中の URL を失う。
-      handle?.release()
-    },
-
-    subscribe(listener) {
-      listeners.add(listener)
-      return () => {
-        listeners.delete(listener)
-      }
-    },
+export function transition(state: PlaybackState, input: PlaybackInput): Transition {
+  switch (input.type) {
+    case 'start':
+      return start(state, input)
+    case 'play':
+      return play(state)
+    case 'pause':
+      return pause(state, input.currentTime)
+    case 'seek':
+      return Number.isFinite(input.seconds) ? seekTo(state, input.seconds) : noop(state)
+    case 'seekRelative':
+      if (!Number.isFinite(input.deltaSeconds)) return noop(state)
+      return state.status === 'paused' || state.status === 'playing' ? seekTo(state, state.position + input.deltaSeconds) : noop(state)
+    case 'setSpeed':
+      return setSpeed(state, input.speed)
+    case 'stop':
+      return stop(state)
+    case 'fail':
+      return fail(state, input)
+    case 'loadedmetadata':
+      return loadedMetadata(state, input.duration)
+    case 'timeupdate':
+      return timeUpdate(state, input.currentTime)
+    case 'ended':
+      return ended(state)
+    case 'error':
+      return mediaError(state, input.currentTime, 'media')
+    case 'playRejected':
+      return state.status === 'playing' ? mediaError(state, input.currentTime, input.autoplayBlocked ? 'autoplay_blocked' : 'media') : noop(state)
   }
 }

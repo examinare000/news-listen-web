@@ -117,6 +117,11 @@ const presSpec = {
       message: 'PRES は再生 domain の値を import しない（web-dep-05）',
     },
     {
+      name: '@/lib/playback/application/session',
+      allowTypeImports: true,
+      message: 'PRES は再生の application の値を import しない（web-dep-05）',
+    },
+    {
       name: '@/lib/playback/domain/session',
       allowTypeImports: true,
       allowImportNames: ['PLAYBACK_SPEEDS'],

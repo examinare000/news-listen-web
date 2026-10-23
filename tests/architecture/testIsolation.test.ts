@@ -857,7 +857,7 @@ describe('web-check-08 自己点検: 母集団・分類・subject・移行許可
           "import type { ApiFailure } from '@/lib/shared/apiFailure'",
           "import { MockAudio } from '../../helpers/mockAudio'",
         ].join('\n'),
-        'tests/helpers/mockAudio.ts': "import type { AudioElement } from '@/lib/playback/domain/audioElement'\nexport class MockAudio {}",
+        'tests/helpers/mockAudio.ts': "import type { AudioElement } from '@/lib/playback/application/ports'\nexport class MockAudio {}",
       },
     })
     expect(result.targets).toContain(TEST)

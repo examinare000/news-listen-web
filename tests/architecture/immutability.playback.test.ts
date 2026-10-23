@@ -20,8 +20,10 @@ import {
   upNext,
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
-import { createPlaybackSession, isPlayableEpisode } from '@/lib/playback/domain/session'
-import type { PlayableEpisode, PlaybackEvent, PlaybackSession, PlaybackState } from '@/lib/playback/domain/session'
+import { createPlaybackSession } from '@/lib/playback/application/session'
+import type { PlaybackSession } from '@/lib/playback/application/session'
+import { isPlayableEpisode } from '@/lib/playback/domain/session'
+import type { PlayableEpisode, PlaybackEvent, PlaybackState } from '@/lib/playback/domain/session'
 import type { Podcast } from '@/types'
 import { MockAudio } from '../helpers/mockAudio'
 

@@ -48,10 +48,10 @@ function isPresForbiddenInfrastructure(resolved: string): boolean {
   )
 }
 
-/** PRES が `lib/playback/domain/{session,queue}` から値を import する違反か。 */
+/** PRES が `lib/playback/domain/{session,queue}` と `lib/playback/application/session` から値を import する違反か。 */
 function isPresPlaybackValueImport(imp: ImportRecord): boolean {
   if (imp.resolved === null || imp.typeOnly) return false
-  if (imp.resolved === 'lib/playback/domain/queue') return true
+  if (imp.resolved === 'lib/playback/domain/queue' || imp.resolved === 'lib/playback/application/session') return true
   if (imp.resolved !== 'lib/playback/domain/session') return false
   const onlySpeeds =
     !imp.hasDefault &&

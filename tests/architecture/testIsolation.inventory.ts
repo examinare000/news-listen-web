@@ -23,8 +23,10 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/playback/queue.conformance.test.ts',
   'tests/lib/playback/queue.test.ts',
   'tests/lib/playback/resume.test.ts',
+  'tests/lib/playback/session.generation.test.ts',
   'tests/lib/playback/session.test.ts',
   'tests/lib/playback/source.test.ts',
+  'tests/lib/playback/transition.test.ts',
   'tests/lib/playbackPosition.test.ts',
   'tests/lib/playbackQueue.conformance.test.ts',
   'tests/lib/playbackQueue.test.ts',
@@ -211,8 +213,12 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/account/domain/role.ts': [],
   'lib/catalog/domain/episode.ts': ['tests/lib/catalog/domain/episode.test.ts'],
   'lib/passkey.ts': ['tests/lib/passkey.test.ts'],
-  'lib/playback/application/ports.ts': [],
-  'lib/playback/domain/audioElement.ts': ['tests/lib/playback/ports.test.ts'],
+  'lib/playback/application/ports.ts': ['tests/lib/playback/ports.test.ts'],
+  'lib/playback/application/session.ts': [
+    'tests/architecture/immutability.playback.test.ts',
+    'tests/lib/playback/session.generation.test.ts',
+    'tests/lib/playback/session.test.ts',
+  ],
   'lib/playback/domain/queue.ts': [
     'tests/architecture/immutability.playback.test.ts',
     'tests/architecture/readonly.types.test.ts',
@@ -220,7 +226,11 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
     'tests/lib/playback/queue.test.ts',
   ],
   'lib/playback/domain/resume.ts': ['tests/lib/playback/resume.test.ts', 'tests/lib/playback/session.test.ts'],
-  'lib/playback/domain/session.ts': ['tests/architecture/immutability.playback.test.ts', 'tests/lib/playback/session.test.ts'],
+  'lib/playback/domain/session.ts': [
+    'tests/architecture/immutability.playback.test.ts',
+    'tests/lib/playback/session.test.ts',
+    'tests/lib/playback/transition.test.ts',
+  ],
   'lib/playback/domain/source.ts': ['tests/lib/playback/source.test.ts'],
   'lib/push/pushRegistration.ts': ['tests/lib/push/pushRegistration.test.ts'],
 }

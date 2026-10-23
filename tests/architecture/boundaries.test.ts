@@ -125,7 +125,7 @@ describe('web-check-02 走査集合 F と配置', () => {
       'lib/playback/domain/queue.ts',
       'lib/playback/domain/resume.ts',
       'lib/playback/domain/source.ts',
-      'lib/playback/domain/audioElement.ts',
+      'lib/playback/application/session.ts',
       'lib/shared/result.ts',
       'lib/shared/apiFailure.ts',
       'lib/shared/difficulty.ts',
@@ -272,6 +272,12 @@ const importCases: readonly ImportCase[] = [
     ],
   },
   {
+    name: 'web-dep-05 正例: PRES が application/session の値を import する',
+    file: 'app/(app)/x/page.tsx',
+    source: "import { createPlaybackSession } from '@/lib/playback/application/session'",
+    expected: ['web-dep-05 | app/(app)/x/page.tsx | @/lib/playback/application/session'],
+  },
+  {
     name: 'web-dep-05 負例: 型だけ・PLAYBACK_SPEEDS だけ・PLAYBACK_SPEEDS と型',
     file: 'hooks/useX.ts',
     source: [
@@ -365,7 +371,7 @@ const importCases: readonly ImportCase[] = [
     name: 'web-dep-07 負例: platform → domain の import type。正例: 値の import',
     file: 'lib/platform/audioElement.ts',
     source: [
-      "import type { AudioElement } from '@/lib/playback/domain/audioElement'",
+      "import type { AudioElement } from '@/lib/playback/application/ports'",
       "import { createPlaybackSession } from '@/lib/playback/domain/session'",
     ].join('\n'),
     expected: ['web-dep-07 | lib/platform/audioElement.ts | @/lib/playback/domain/session'],
@@ -579,6 +585,7 @@ const lintExamples: readonly LintExample[] = [
   { name: 'web-dep-02 正例: pushRegistration から account の値', filePath: 'lib/push/pushRegistration.ts', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: true },
   { name: 'web-dep-05 正例: PRES が queue の値を import する', filePath: 'components/AdminGate.tsx', source: `import { start } from '${QUEUE}'`, flagged: true },
   { name: 'web-dep-05 正例: PLAYBACK_SPEEDS 以外の値を含む', filePath: 'app/(app)/podcast/[id]/page.tsx', source: `import { PLAYBACK_SPEEDS, createPlaybackSession } from '${SESSION}'`, flagged: true },
+  { name: 'web-dep-05 正例: application/session の値', filePath: 'app/(app)/podcast/[id]/page.tsx', source: "import { createPlaybackSession } from '@/lib/playback/application/session'", flagged: true },
   { name: 'web-dep-05 正例: 名前空間', filePath: 'app/(app)/podcast/[id]/page.tsx', source: `import * as S from '${SESSION}'`, flagged: true },
   { name: 'web-dep-05 正例: 副作用だけ', filePath: 'app/(app)/podcast/[id]/page.tsx', source: `import '${QUEUE}'`, flagged: true },
   { name: 'web-dep-05 負例: import type', filePath: 'hooks/useStartPodcast.ts', source: `import type { QueueState } from '${QUEUE}'`, flagged: false },

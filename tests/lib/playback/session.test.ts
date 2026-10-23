@@ -19,13 +19,14 @@
 // AudioElement への呼出回数は assert しない（handle の release 回数は契約そのものなので例外）。
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 import type { Mock } from 'vitest'
-import { createPlaybackSession, isPlayableEpisode, PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
+import { createPlaybackSession } from '@/lib/playback/application/session'
+import type { PlaybackSession } from '@/lib/playback/application/session'
+import { isPlayableEpisode, PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type {
   AudioHandle,
   EpisodeRef,
   PlayableEpisode,
   PlaybackEvent,
-  PlaybackSession,
   PlaybackSpeed,
 } from '@/lib/playback/domain/session'
 import { resolveResumePosition } from '@/lib/playback/domain/resume'
