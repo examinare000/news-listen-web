@@ -11,6 +11,7 @@
 import type { MigrationAllowance, TestInventoryEntry } from '../helpers/architectureDetectors'
 
 const UNIT_TESTS: readonly string[] = [
+  'tests/architecture/cqrs.playback.test.ts',
   'tests/architecture/immutability.playback.test.ts',
   'tests/architecture/readonly.types.test.ts',
   'tests/lib/account/adminAccess.test.ts',
@@ -19,6 +20,10 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/format.test.ts',
   'tests/lib/highlightTerms.test.ts',
   'tests/lib/passkey.test.ts',
+  'tests/lib/playback/application/coordinator.test.ts',
+  'tests/lib/playback/application/positionReporter.test.ts',
+  'tests/lib/playback/application/readModels.test.ts',
+  'tests/lib/playback/domain/queueEntry.test.ts',
   'tests/lib/playback/ports.test.ts',
   'tests/lib/playback/queue.conformance.test.ts',
   'tests/lib/playback/queue.test.ts',
@@ -67,6 +72,7 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/audioCache.test.ts',
       'tests/lib/cookie.test.ts',
       'tests/lib/platform/adapters.test.ts',
+      'tests/lib/platform/playbackBrowserAdapters.test.ts',
       'tests/lib/pushBrowserPort.real.test.ts',
       'tests/lib/pushBrowserPort.test.ts',
       'tests/lib/reportClientError.test.ts',
@@ -80,6 +86,15 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
     files: [
       'tests/lib/catalog/infrastructure/episodeGateway.test.ts',
       'tests/lib/catalog/infrastructure/episodeMapper.test.ts',
+    ],
+  },
+  {
+    reason:
+      'infrastructure の保存庫・端末の位置・gateway の関数が、技術 seam（Cache・KeyValueStore・ApiGateway の double）と結んで record と request の形を検証する',
+    files: [
+      'tests/lib/playback/infrastructure/gatewayFns.test.ts',
+      'tests/lib/playback/infrastructure/localPositionStore.test.ts',
+      'tests/lib/playback/infrastructure/offlineLibrary.test.ts',
     ],
   },
   {
@@ -211,11 +226,23 @@ export const TEST_INVENTORY: Readonly<Record<string, TestInventoryEntry>> = Obje
 export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/account/domain/adminAccess.ts': ['tests/lib/account/adminAccess.test.ts'],
   'lib/account/domain/role.ts': [],
-  'lib/catalog/domain/episode.ts': ['tests/lib/catalog/domain/episode.test.ts'],
+  'lib/catalog/domain/episode.ts': ['tests/lib/catalog/domain/episode.test.ts', 'tests/lib/playback/domain/queueEntry.test.ts'],
   'lib/passkey.ts': ['tests/lib/passkey.test.ts'],
-  'lib/playback/application/ports.ts': ['tests/lib/playback/ports.test.ts'],
-  'lib/playback/application/session.ts': [
+  'lib/playback/application/coordinator.ts': [
+    'tests/architecture/cqrs.playback.test.ts',
     'tests/architecture/immutability.playback.test.ts',
+    'tests/lib/playback/application/coordinator.test.ts',
+  ],
+  'lib/playback/application/ports.ts': ['tests/lib/playback/ports.test.ts'],
+  'lib/playback/application/positionReporter.ts': [
+    'tests/lib/playback/application/coordinator.test.ts',
+    'tests/lib/playback/application/positionReporter.test.ts',
+  ],
+  'lib/playback/application/readModels.ts': ['tests/lib/playback/application/readModels.test.ts'],
+  'lib/playback/application/session.ts': [
+    'tests/architecture/cqrs.playback.test.ts',
+    'tests/architecture/immutability.playback.test.ts',
+    'tests/lib/playback/application/coordinator.test.ts',
     'tests/lib/playback/session.generation.test.ts',
     'tests/lib/playback/session.test.ts',
   ],
@@ -225,6 +252,7 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
     'tests/lib/playback/queue.conformance.test.ts',
     'tests/lib/playback/queue.test.ts',
   ],
+  'lib/playback/domain/queueEntry.ts': ['tests/lib/playback/domain/queueEntry.test.ts'],
   'lib/playback/domain/resume.ts': ['tests/lib/playback/resume.test.ts', 'tests/lib/playback/session.test.ts'],
   'lib/playback/domain/session.ts': [
     'tests/architecture/immutability.playback.test.ts',

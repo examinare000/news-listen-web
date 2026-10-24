@@ -1,11 +1,56 @@
 // Playback application の port。実装は Catalog の infrastructure が持つ（HTTP・DTO はここに現れない）。
-import type { Episode } from '@/lib/catalog/domain/episode'
+import type { Episode, PlayableEpisode } from '@/lib/catalog/domain/episode'
+import type { PlaybackSpeed } from '@/lib/playback/domain/session'
+import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
 
 export interface EpisodeSource {
   fetch(id: string): Promise<Result<Episode, ApiFailure>>
 }
+
+/** 位置と完聴の送信。応答の本文は捨て、成否だけを返す。 */
+export interface PositionSync {
+  updatePosition(id: string, seconds: number): Promise<Result<void, ApiFailure>>
+  markCompleted(id: string): Promise<Result<void, ApiFailure>>
+}
+
+export type SaveFailure =
+  | { readonly kind: 'unsupported' }
+  | { readonly kind: 'storage_full' }
+  | { readonly kind: 'download_failed'; readonly failure: ApiFailure }
+  | { readonly kind: 'not_playable' }
+
+export interface OfflineLibrary {
+  save(id: string): Promise<Result<void, SaveFailure>>
+  /** 保存済みなら audioHandle 付きの PlayableEpisode。無い・再生できないときは null。 */
+  get(id: string): Promise<PlayableEpisode | null>
+  has(id: string): Promise<boolean>
+  remove(id: string): Promise<void>
+  clear(): Promise<void>
+  list(): Promise<ReadonlyArray<OfflineEpisodeView>>
+  usage(): Promise<StorageUsageView | null>
+}
+
+/** 端末に残す再生位置。表示と resume の候補に使う。 */
+export interface LocalPositionStore {
+  read(id: string): number | null
+  write(id: string, seconds: number): void
+}
+
+export type Connectivity = () => boolean
+
+export type DefaultSpeedSource = () => PlaybackSpeed
+
+export interface QueueEntryInput {
+  readonly id: string
+  readonly title: string | null
+  readonly intro: string
+}
+
+export type StartResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly notice: 'offline_uncached' | 'not_playable' | 'fetch_failed' }
 
 export type AudioElementEventType = 'loadedmetadata' | 'timeupdate' | 'ended' | 'error'
 

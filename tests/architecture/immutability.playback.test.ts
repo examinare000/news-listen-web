@@ -20,6 +20,7 @@ import {
   upNext,
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
+import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import { isPlayableEpisode } from '@/lib/playback/domain/session'
@@ -348,6 +349,7 @@ function makeEpisode(id: string): MutableEpisode {
     kind: 'playable',
     id,
     title: `title ${id}`,
+    label: { title: `title ${id}`, intro: `intro ${id}` },
     audioUrl: `https://example.com/${id}.mp3`,
     durationSeconds: 600,
     difficulty: 'toeic_600',
@@ -559,5 +561,97 @@ describe('web-check-06 4(d) Session の fail は ref と reason の写しを深�
     expectDeeplyFrozen('state()', state)
     expect(Object.isFrozen(reason)).toBe(false)
     expect(Object.isFrozen(failure)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// web-check-06 4(e): Coordinator の query が返すリードモデル（観点 2・3）と、addToQueue の入力の隔離
+// ---------------------------------------------------------------------------
+describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済みで毎回新しい。addToQueue の入力を後で書き換えても upNext() は変わらない', () => {
+  function makeCoordinator() {
+    const coordinatorSession = createPlaybackSession(new MockAudio())
+    const coordinator = createPlaybackCoordinator({
+      session: coordinatorSession,
+      offline: {
+        save: () => Promise.resolve({ ok: true, value: undefined }),
+        get: () => Promise.resolve(null),
+        has: () => Promise.resolve(false),
+        remove: () => Promise.resolve(),
+        clear: () => Promise.resolve(),
+        list: () => Promise.resolve([]),
+        usage: () => Promise.resolve(null),
+      },
+      positionReporter: { attach: () => undefined, detach: () => undefined, lastSyncFailure: () => null },
+      episodes: {
+        fetch: (id: string) => {
+          const fetched = makeEpisode(id)
+          delete fetched.audioHandle
+          return Promise.resolve({ ok: true, value: fetched })
+        },
+      },
+      localPositions: { read: () => null, write: () => undefined },
+      isOnline: () => true,
+      defaultSpeed: () => 1,
+    })
+    return coordinator
+  }
+
+  async function playingWithQueue() {
+    const coordinator = makeCoordinator()
+    await coordinator.startEpisode('a')
+    await coordinator.addToQueue({ id: 'b', title: 'B の題', intro: 'B のイントロ' })
+    await coordinator.addToQueue({ id: 'c', title: null, intro: 'あ'.repeat(60) })
+    return coordinator
+  }
+
+  test('verifies: CI-T39 (web-check-06) — nowPlaying()・upNext()・queueView()・playbackView() は深く凍結済み（非縮退: 値は実際に入っている）', async () => {
+    const coordinator = await playingWithQueue()
+    const results: Array<[string, unknown]> = [
+      ['nowPlaying()', coordinator.nowPlaying()],
+      ['upNext()', coordinator.upNext()],
+      ['queueView()', coordinator.queueView()],
+      ['playbackView()', coordinator.playbackView()],
+    ]
+    for (const [label, value] of results) expectDeeplyFrozen(label, value)
+
+    expect(coordinator.nowPlaying()?.episodeId).toBe('a')
+    expect(coordinator.upNext().map((item) => item.id)).toEqual(['b', 'c'])
+    expect(coordinator.upNext()[1].title).toBe('あ'.repeat(40))
+    expect(coordinator.queueView().canSkipNext).toBe(true)
+    expect(coordinator.playbackView().status).toBe('loading')
+  })
+
+  test('verifies: CI-T39 (web-check-06) — query は呼ぶたびに新しい object（!==）で内容は等しい。upNext の要素も新しい', async () => {
+    const coordinator = await playingWithQueue()
+    const pairs: Array<[string, unknown, unknown]> = [
+      ['nowPlaying()', coordinator.nowPlaying(), coordinator.nowPlaying()],
+      ['upNext()', coordinator.upNext(), coordinator.upNext()],
+      ['queueView()', coordinator.queueView(), coordinator.queueView()],
+      ['playbackView()', coordinator.playbackView(), coordinator.playbackView()],
+    ]
+    for (const [label, first, second] of pairs) {
+      expect(first, `${label} が非 null`).not.toBeNull()
+      expect(second, `${label} が毎回新しい object`).not.toBe(first)
+      expect(second).toEqual(first)
+    }
+    expect(coordinator.upNext()[0]).not.toBe(coordinator.upNext()[0])
+  })
+
+  test('verifies: CI-T39 (web-check-06) — addToQueue の後で入力の field を書き換えても upNext() は変わらず、入力は凍結されない', async () => {
+    const coordinator = makeCoordinator()
+    await coordinator.startEpisode('a')
+    const input = { id: 'b', title: 'B の題', intro: 'B のイントロ' } as { id: string; title: string | null; intro: string }
+
+    await coordinator.addToQueue(input)
+    const before = structuredClone(coordinator.upNext())
+    expect(before).toEqual([{ id: 'b', title: 'B の題' }])
+
+    input.id = 'changed'
+    input.title = 'changed'
+    input.intro = 'changed'
+
+    expect(coordinator.upNext()).toEqual(before)
+    expect(coordinator.queueView().upNext).toEqual(before)
+    expect(Object.isFrozen(input)).toBe(false)
   })
 })

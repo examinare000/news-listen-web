@@ -87,6 +87,7 @@ function playableInput(handle: { release: () => void }) {
   return {
     id: 'p1',
     title: 'T',
+    label: { title: 'T', intro: 'イントロ' },
     audioUrl: 'https://example.com/p1.mp3',
     durationSeconds: 600,
     difficulty: 'toeic_600' as const,
