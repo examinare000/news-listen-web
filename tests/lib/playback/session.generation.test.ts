@@ -11,6 +11,7 @@ const playable = (id: string): PlayableEpisode => ({
   kind: 'playable',
   id,
   title: 't',
+  label: { title: 't', intro: `i-${id}` },
   audioUrl: `u-${id}`,
   durationSeconds: 100,
   difficulty: 'toeic_600',

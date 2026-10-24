@@ -122,6 +122,7 @@ describe('web-rule-catalog-01 classifyEpisode: variant ごとの field の集合
         'kind',
         'id',
         'title',
+        'label',
         'audioUrl',
         'durationSeconds',
         'difficulty',
@@ -136,6 +137,7 @@ describe('web-rule-catalog-01 classifyEpisode: variant ごとの field の集合
     expect(episode).toMatchObject({
       kind: 'playable',
       id: full.id,
+      label: { title: full.title, intro: full.intro },
       audioUrl: full.audioUrl,
       durationSeconds: full.durationSeconds,
       difficulty: full.difficulty,
@@ -249,6 +251,7 @@ describe('playableEpisode: 空の audioUrl は Playable の不変条件の違反
   const input = {
     id: 'p1',
     title: 'T',
+    label: { title: 'T', intro: 'イントロ' },
     audioUrl: AUDIO,
     durationSeconds: 600,
     difficulty: 'toeic_600',

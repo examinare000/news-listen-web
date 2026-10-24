@@ -138,6 +138,7 @@ describe('decodeEpisode: 欠落の補完と名前の写像', () => {
       kind: 'playable',
       id: 'p1',
       title: 'タイトル',
+      label: { title: 'タイトル', intro: 'イントロの全文です' },
       audioUrl: AUDIO,
       durationSeconds: 600,
       difficulty: 'toeic_600',

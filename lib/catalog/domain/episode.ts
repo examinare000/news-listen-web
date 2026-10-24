@@ -43,6 +43,8 @@ export interface PlayableEpisode {
   readonly kind: 'playable'
   readonly id: string
   readonly title: string
+  /** 題の原文。表示の切り詰め長は利用側が displayTitle で決める。 */
+  readonly label: EpisodeLabel
   readonly audioUrl: string
   readonly durationSeconds: number
   readonly difficulty: DifficultyLevel
@@ -209,6 +211,7 @@ export function classifyEpisode(input: EpisodeReadout): Episode {
       return playableEpisode({
         id: input.id,
         title,
+        label: { title: input.title, intro: input.intro },
         audioUrl: input.audioUrl,
         durationSeconds: input.durationSeconds,
         difficulty: input.difficulty,

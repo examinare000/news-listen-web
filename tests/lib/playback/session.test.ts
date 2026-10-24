@@ -52,6 +52,7 @@ function makeEpisode(id: string, over: Partial<PlayableEpisode> = {}): PlayableE
     kind: 'playable',
     id,
     title: `title ${id}`,
+    label: { title: `title ${id}`, intro: `intro ${id}` },
     audioUrl: `https://example.com/${id}.mp3`,
     durationSeconds: 600,
     difficulty: 'toeic_600',
