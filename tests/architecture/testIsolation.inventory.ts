@@ -144,6 +144,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/components/ClientErrorReporter.test.tsx',
       'tests/components/lp/LandingPage.test.tsx',
       'tests/components/NavigationBar.test.tsx',
+      'tests/components/PlaybackToasts.test.tsx',
       'tests/components/PodcastCard.test.tsx',
       'tests/components/PushNotificationSection.test.tsx',
       'tests/components/PushRegistrar.test.tsx',
@@ -175,6 +176,10 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/AuthContext.passkey.test.tsx',
       'tests/contexts/AuthContext.push.test.tsx',
       'tests/contexts/AuthContext.test.tsx',
+      'tests/contexts/PlaybackProvider.completion.test.tsx',
+      'tests/contexts/PlaybackProvider.offline.test.tsx',
+      'tests/contexts/PlaybackProvider.queue.test.tsx',
+      'tests/contexts/PlaybackProvider.server.test.tsx',
       'tests/contexts/StreakContext.test.tsx',
     ],
   },
@@ -195,7 +200,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
   },
   {
     reason: '配布する静的ファイル（manifest・service worker）を、ファイルとして読み込み実行して検証する',
-    files: ['tests/public/manifest.test.ts', 'tests/public/sw.test.ts'],
+    files: ['tests/public/manifest.test.ts', 'tests/public/sw.prefix.test.ts', 'tests/public/sw.test.ts'],
   },
   {
     reason: 'ファイル・git・eslint を読み、リポジトリ全体の構造規約を検証する',
