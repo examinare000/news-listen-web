@@ -6,7 +6,8 @@ import { ApiError, createApiClient } from '@/lib/api'
 import { useApp } from '@/contexts/AppContext'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
-import { deleteAllAudio } from '@/lib/audioCache'
+import { clearOfflineAudio } from '@/lib/playback/infrastructure/offlineLibrary'
+import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
 import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
 import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
 import { createPushRegistration } from '@/lib/push/pushRegistration'
@@ -117,11 +118,11 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     }
     try {
       // issue #167 review指摘2: 共有端末でのユーザーデータ残留防止。
-      // deleteAllAudio()（オフライン音声 audio-v1）だけでは、SW 管理の api-v1
+      // clearOfflineAudio()（オフライン音声 audio-v1）だけでは、SW 管理の api-v1
       // （ユーザー固有 Podcast 一覧）・shell-pages-v1（閲覧済みページ）が残り、
       // ユーザー A のキャッシュがユーザー B に返りうる。両方ともベストエフォート
       // （失敗してもログアウト自体は完了させる — 上の方針と揃える）。
-      await Promise.all([deleteAllAudio(), clearManagedServiceWorkerCaches()])
+      await Promise.all([clearOfflineAudio(createBrowserCacheStore()), clearManagedServiceWorkerCaches()])
     } catch {
       // キャッシュ消去の失敗はログアウトを妨げない。
     }

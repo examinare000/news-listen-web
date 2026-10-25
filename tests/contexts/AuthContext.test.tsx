@@ -23,10 +23,10 @@ vi.mock('@/lib/api', () => ({
 // issue #167: 共有端末でのユーザーデータ残留防止のため、ログアウト時にオフラインキャッシュを全消去する。
 // WHY vi.hoisted: vi.mock() factories run before this file's own top-level statements
 // (hoisted above imports), so referencing a bare outer const would hit a TDZ ReferenceError.
-const { deleteAllAudio } = vi.hoisted(() => ({
-  deleteAllAudio: vi.fn().mockResolvedValue(undefined),
+const { clearOfflineAudio } = vi.hoisted(() => ({
+  clearOfflineAudio: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/audioCache', () => ({ deleteAllAudio }))
+vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ clearOfflineAudio }))
 
 // review指摘2: audio-v1 だけでなく、SW 管理の api-v1（ユーザー固有 Podcast 一覧）/
 // shell-pages-v1（閲覧済みページ）も共有端末での残留防止のため消す必要がある。
@@ -69,7 +69,7 @@ function renderAuth() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  deleteAllAudio.mockResolvedValue(undefined)
+  clearOfflineAudio.mockResolvedValue(undefined)
   clearManagedServiceWorkerCaches.mockResolvedValue(undefined)
   localStorage.clear()
 })
@@ -124,7 +124,7 @@ describe('login / logout', () => {
 
     await userEvent.click(screen.getByText('logout'))
 
-    await waitFor(() => expect(deleteAllAudio).toHaveBeenCalled())
+    await waitFor(() => expect(clearOfflineAudio).toHaveBeenCalled())
   })
 
   // review指摘2: audio-v1 のみでは api-v1 / shell-pages-v1 が残り、共有端末で
@@ -145,7 +145,7 @@ describe('login / logout', () => {
   test('logout still completes even if clearing the cache fails', async () => {
     getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
     logout.mockResolvedValue({ status: 'ok' })
-    deleteAllAudio.mockRejectedValueOnce(new Error('cache clear failed'))
+    clearOfflineAudio.mockRejectedValueOnce(new Error('cache clear failed'))
     renderAuth()
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
 
