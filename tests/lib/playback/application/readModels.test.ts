@@ -205,10 +205,10 @@ describe('web-deriv-12 toNowPlaying: 5 field だけを持つ。出所が無い�
     expect(toNowPlaying(entry('a', '   ', LONG), loadingA)?.title).toBe('あ'.repeat(50))
   })
 
-  test('verifies: CI-T09 (web-deriv-12) — null になるのは、entry が無い・idle・id だけの参照の errored・entry と session の episode の id が違うとき', () => {
+  test('verifies: CI-T09 (web-deriv-12) — null になるのは、entry が無い・idle・id が違う、id だけの参照の errored・entry と session の episode の id が違うとき', () => {
     const refErrored: PlaybackState = {
       status: 'errored',
-      episode: { id: 'a' },
+      episode: { id: 'b' },
       position: 0,
       speed: 1,
       reason: { kind: 'source_unavailable' },
@@ -219,9 +219,54 @@ describe('web-deriv-12 toNowPlaying: 5 field だけを持つ。出所が無い�
     expect(toNowPlaying(entry('b'), loadingA)).toBeNull()
     // 正方向対照: 同じ入口で、条件を外せば値が返る
     expect(toNowPlaying(entry('a'), loadingA)).not.toBeNull()
+    expect(toNowPlaying(entry('b'), refErrored)).not.toBeNull()
     expect(
       toNowPlaying(entry('a'), { status: 'errored', episode: A, position: 3, speed: 1, reason: { kind: 'media' } }),
     ).not.toBeNull()
+  })
+
+  describe('解決の前に失敗した errored (id だけの参照)', () => {
+    const refErrored = (id: string): PlaybackState => ({
+      status: 'errored',
+      episode: { id },
+      position: 0,
+      speed: 1,
+      reason: { kind: 'fetch_failed', failure: { kind: 'network' } },
+    })
+
+    test('verifies: CI-P4-08 (web-dec-38) — id が entry と同じなら、3 field が null の NowPlaying を深く凍結して返す。題は entry の label から導く', () => {
+      expect(toNowPlaying(entry('a', '題', LONG), refErrored('a'))).toEqual({
+        episodeId: 'a',
+        title: '題',
+        difficulty: null,
+        createdAt: null,
+        durationSeconds: null,
+      })
+      const untitled = toNowPlaying(entry('a', null, LONG), refErrored('a'))
+      expect(untitled?.title).toBe('あ'.repeat(50))
+      expect(unfrozenNodes(untitled)).toEqual([])
+    })
+
+    test('verifies: CI-P4-09 (web-dec-38) — id が違えば null。playable の errored は今までどおり 5 field が揃う', () => {
+      expect(toNowPlaying(entry('a'), refErrored('b'))).toBeNull()
+      expect(
+        toNowPlaying(entry('a'), { status: 'errored', episode: A, position: 3, speed: 1, reason: { kind: 'media' } }),
+      ).toEqual({
+        episodeId: 'a',
+        title: 'title a',
+        difficulty: 'toeic_600',
+        createdAt: '2026-05-31T06:00:00Z',
+        durationSeconds: 600,
+      })
+    })
+
+    test('verifies: CI-P4-10 (web-dec-38) — その値を渡した toPlaybackView は duration 0・retry・unavailable を返す', () => {
+      const state = refErrored('a')
+      const nowPlaying = toNowPlaying(entry('a'), state)
+      expect(nowPlaying).not.toBeNull()
+      const view = toPlaybackView(state, nowPlaying, DEFAULT_SPEED)
+      expect(view).toMatchObject({ status: 'errored', duration: 0, primaryAction: 'retry', failure: 'unavailable' })
+    })
   })
 
   test('verifies: CI-T09 (web-check-06) — 呼ぶたびに新しい深く凍結された値', () => {

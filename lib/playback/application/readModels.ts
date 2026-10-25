@@ -8,9 +8,9 @@ import type { DifficultyLevel } from '@/lib/shared/difficulty'
 export interface NowPlaying {
   readonly episodeId: string
   readonly title: string
-  readonly difficulty: DifficultyLevel
-  readonly createdAt: string
-  readonly durationSeconds: number
+  readonly difficulty: DifficultyLevel | null
+  readonly createdAt: string | null
+  readonly durationSeconds: number | null
 }
 
 export interface UpNextItem {
@@ -59,13 +59,23 @@ export interface StorageUsageView {
 export function toNowPlaying(entry: QueuedEpisode | null, state: PlaybackState): NowPlaying | null {
   if (entry === null || state.status === 'idle') return null
   const episode = state.episode
-  if (!isPlayableEpisode(episode) || episode.id !== entry.id) return null
+  if (episode.id !== entry.id) return null
+  if (isPlayableEpisode(episode)) {
+    return Object.freeze({
+      episodeId: episode.id,
+      title: nowPlayingTitle(entry.label),
+      difficulty: episode.difficulty,
+      createdAt: episode.createdAt,
+      durationSeconds: episode.durationSeconds,
+    })
+  }
+  // 取得の前に失敗した errored は id だけを持つ。バーに題と再試行を出すため、残りは null にして返す。
   return Object.freeze({
     episodeId: episode.id,
     title: nowPlayingTitle(entry.label),
-    difficulty: episode.difficulty,
-    createdAt: episode.createdAt,
-    durationSeconds: episode.durationSeconds,
+    difficulty: null,
+    createdAt: null,
+    durationSeconds: null,
   })
 }
 
