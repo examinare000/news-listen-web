@@ -310,13 +310,6 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
-    "specifier": "@/lib/audioCache",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-04"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/sfx",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
@@ -330,24 +323,10 @@
   },
   {
     "rule": "web-dep-05",
-    "file": "app/(app)/podcast/page.tsx",
-    "specifier": "@/lib/audioCache",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-04"
-  },
-  {
-    "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
     "specifier": "@/lib/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-prefs-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": "@/lib/audioCache",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-04"
   },
   {
     "rule": "web-dep-05",

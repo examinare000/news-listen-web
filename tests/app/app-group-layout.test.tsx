@@ -5,7 +5,7 @@ import AppGroupLayout from '@/app/(app)/layout'
 import { AppProvider } from '@/contexts/AppContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
-import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
+import { PlaybackProvider } from '@/contexts/PlaybackProvider'
 
 // NavigationBar は useAuth を参照する。AuthProvider 経由だと実 /auth/me fetch が走るため、
 // NavigationBar.test.tsx と同様にモックして分離する。
@@ -24,9 +24,9 @@ function renderGroupLayout(children: React.ReactNode = <p>page-content</p>) {
     <AppProvider>
       <ToastProvider>
         <ApiClientProvider>
-          <AudioPlayerProvider>
+          <PlaybackProvider>
             <AppGroupLayout>{children}</AppGroupLayout>
-          </AudioPlayerProvider>
+          </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
     </AppProvider>

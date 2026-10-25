@@ -1,68 +1,148 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
-import { AppProvider } from '@/contexts/AppContext'
-import { ApiClientProvider } from '@/contexts/ApiClientProvider'
-import { AudioPlayerProvider, useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
-import { ToastProvider } from '@/components/ui/Toast'
-import type { Podcast } from '@/types/index'
-import { setupMockAudio } from '../helpers/mockAudio'
+import { AppProvider, useApp } from '@/contexts/AppContext'
+import { formatDate } from '@/lib/format'
 
-let mockAudio: ReturnType<typeof setupMockAudio>
+// 再生バーは usePlayback / usePlaybackActions の値を表示し、操作を委譲するだけ。
+// 値の導出（題の切り詰め・総時間の代替・主操作の分岐表）は application の読み取りモデルが持つので、ここでは与えた値が見えること・
+// 操作が正しい委譲先に届くことを固定する。失敗の toast は PlaybackToasts.test.tsx、Provider を通した振る舞いは PlaybackProvider.*.test.tsx が持つ。
+
+const double = vi.hoisted(() => ({
+  pb: {},
+  actions: {},
+}))
+
+vi.mock('@/contexts/PlaybackProvider', () => ({ usePlayback: () => double.pb }))
+vi.mock('@/components/PlaybackToasts', () => ({ usePlaybackActions: () => double.actions }))
+
+interface NowPlayingValue {
+  episodeId: string
+  title: string
+  difficulty: string | null
+  createdAt: string | null
+  durationSeconds: number | null
+}
+
+interface PlaybackValue {
+  status: string
+  position: number
+  duration: number
+  speed: number
+  primaryAction: 'play' | 'pause' | 'retry' | 'replay' | 'none'
+  failure: 'media' | 'unavailable' | null
+}
+
+const CREATED_AT = '2026-06-10T00:00:00+00:00'
+
+const NOW_PLAYING: NowPlayingValue = {
+  episodeId: 'p1',
+  title: '今日のニュース',
+  difficulty: 'toeic_900',
+  createdAt: CREATED_AT,
+  durationSeconds: 300,
+}
+
+const UP_NEXT = [
+  { id: 'q1', title: 'First' },
+  { id: 'q2', title: 'Second' },
+  { id: 'q3', title: 'Third' },
+]
+
+interface Setup {
+  nowPlaying?: NowPlayingValue | null
+  playback?: Partial<PlaybackValue>
+  upNext?: ReadonlyArray<{ id: string; title: string }>
+  volume?: number
+}
+
+let fns: ReturnType<typeof install>
+
+function install(setup: Setup = {}) {
+  const nowPlaying = setup.nowPlaying === undefined ? NOW_PLAYING : setup.nowPlaying
+  const upNext = setup.upNext ?? []
+  const playback: PlaybackValue = {
+    status: 'paused',
+    position: 0,
+    duration: 300,
+    speed: 1,
+    primaryAction: 'play',
+    failure: null,
+    ...setup.playback,
+  }
+  const calls = {
+    play: vi.fn(),
+    pause: vi.fn(),
+    seek: vi.fn(),
+    seekRelative: vi.fn(),
+    setSpeed: vi.fn(),
+    setVolume: vi.fn(),
+    reorder: vi.fn(),
+    removeFromQueue: vi.fn(),
+    startEpisode: vi.fn(async () => ({ ok: true })),
+    retry: vi.fn(async () => undefined),
+    skipToNext: vi.fn(async () => ({ ok: true })),
+  }
+  double.pb = {
+    nowPlaying: () => nowPlaying,
+    queueView: () => ({ nowPlaying, upNext, canSkipNext: upNext.length > 0 }),
+    playback,
+    volume: setup.volume ?? 1,
+    play: calls.play,
+    pause: calls.pause,
+    seek: calls.seek,
+    seekRelative: calls.seekRelative,
+    setSpeed: calls.setSpeed,
+    setVolume: calls.setVolume,
+    reorder: calls.reorder,
+    removeFromQueue: calls.removeFromQueue,
+  }
+  double.actions = { startEpisode: calls.startEpisode, retry: calls.retry, skipToNext: calls.skipToNext }
+  return calls
+}
+
+function DefaultSpeedProbe() {
+  return <output data-testid="default-speed">{useApp().state.playbackSpeed}</output>
+}
+
+function renderBar(setup: Setup = {}, defaultSpeed = 1.5) {
+  fns = install(setup)
+  return render(
+    <AppProvider initialState={{ playbackSpeed: defaultSpeed }}>
+      <AudioPlayerBar />
+      <DefaultSpeedProbe />
+    </AppProvider>,
+  )
+}
 
 beforeEach(() => {
   localStorage.clear()
-  mockAudio = setupMockAudio()
 })
 
 afterEach(() => {
-  vi.unstubAllGlobals()
+  double.pb = {}
+  double.actions = {}
 })
-
-const SAMPLE_PODCAST: Podcast = {
-  id: 'p1',
-  type: 'single',
-  article_ids: ['a1'],
-  difficulty: 'toeic_900',
-  audio_url: 'https://storage.example.com/audio.mp3',
-  japanese_intro_text: 'これは日本語のイントロテキストです。テストのために書かれた文章です。長い文章でも先頭50文字だけが表示されることを確認します。',
-  duration_seconds: 300,
-  created_at: '2026-06-10T00:00:00+00:00',
-  status: 'completed',
-  error_message: null,
-  playback_position_seconds: 0,
-}
-
-function renderWithContext(currentPodcast: Podcast | null = null) {
-  return render(
-    <AppProvider initialState={{ currentPodcast }}>
-      <ToastProvider>
-        <ApiClientProvider>
-          <AudioPlayerProvider>
-            <AudioPlayerBar />
-          </AudioPlayerProvider>
-        </ApiClientProvider>
-      </ToastProvider>
-    </AppProvider>
-  )
-}
 
 // ==========================================================
 // 非表示条件
 // ==========================================================
 describe('AudioPlayerBar visibility', () => {
-  test('Given currentPodcast=null, does not render the player bar', () => {
-    renderWithContext(null)
-    expect(screen.queryByRole('region', { name: /player|プレイヤー/i })).not.toBeInTheDocument()
-    // 再生ボタンも表示されない
-    expect(screen.queryByRole('button', { name: /再生|play/i })).not.toBeInTheDocument()
+  test('nowPlaying() が null なら何も描かない (verifies: CI-P4-24)', () => {
+    const { container } = renderBar({ nowPlaying: null })
+
+    expect(screen.queryByTestId('audio-player-bar')).not.toBeInTheDocument()
+    expect(container.querySelector('.player-bar')).toBeNull()
+    expect(screen.queryByRole('button', { name: /再生|一時停止/ })).not.toBeInTheDocument()
   })
 
-  test('Given currentPodcast is set, renders the player bar', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
+  test('nowPlaying() があれば再生バーを描く (verifies: CI-P4-24)', () => {
+    renderBar()
+
+    expect(screen.getByRole('contentinfo', { name: 'プレイヤー' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '再生' })).toBeInTheDocument()
   })
 })
 
@@ -70,74 +150,103 @@ describe('AudioPlayerBar visibility', () => {
 // コンテンツ表示
 // ==========================================================
 describe('AudioPlayerBar content', () => {
-  test('Displays first 50 characters of japanese_intro_text, truncating the rest', () => {
-    // 60 字超の intro を使って "50 字で切られる" ことを実検証する
-    const longIntro = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをんあいうえお'
-    // longIntro は 45 字 × 以上あり確実に 50 字超
-    const podcast: Podcast = { ...SAMPLE_PODCAST, japanese_intro_text: longIntro }
-    renderWithContext(podcast)
-    const expected = longIntro.slice(0, 50)
-    // 正確に 50 字の文字列が表示されている（getByText は要素の全テキストと完全一致するため
-    // 全文が表示されていれば expected と一致せずここで失敗し、truncation を実証できる）
-    expect(screen.getByText(expected)).toBeInTheDocument()
-    // 全文（51 字以上）は要素テキストとして現れない
-    expect(screen.queryByText(longIntro)).not.toBeInTheDocument()
+  test('題は nowPlaying().title をそのまま出す (切り詰めは読み取りモデルの責務) (verifies: CI-P4-25)', () => {
+    const title = 'あ'.repeat(50)
+    renderBar({ nowPlaying: { ...NOW_PLAYING, title } })
+
+    expect(screen.getByText(title)).toBeInTheDocument()
   })
 
-  test('Renders DifficultyBadge for current podcast difficulty', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    // toeic_900 に対応するラベルが表示される
-    expect(screen.getByText(/TOEIC 900/)).toBeInTheDocument()
+  test('難易度と日付が揃っていれば、難易度のバッジと日付を出す (verifies: CI-P4-25)', () => {
+    renderBar()
+
+    expect(screen.getByText('TOEIC 900')).toBeInTheDocument()
+    expect(screen.getByText(formatDate(CREATED_AT))).toBeInTheDocument()
   })
 
-  test('Displays duration in formatDuration format (M:SS or H:MM:SS)', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    // 300 秒 → "5:00"
-    expect(screen.getByText(/5:00/)).toBeInTheDocument()
+  test('難易度・日付・総時間が null (解決の前に失敗した errored) なら、バッジも日付も出さず、題と再試行のボタンだけ見える (verifies: CI-P4-25, CI-P4-26; web-dec-38)', () => {
+    renderBar({
+      nowPlaying: { ...NOW_PLAYING, title: '次の回', difficulty: null, createdAt: null, durationSeconds: null },
+      playback: { status: 'errored', duration: 0, primaryAction: 'retry', failure: 'unavailable' },
+    })
+
+    const bar = screen.getByTestId('audio-player-bar')
+    expect(within(bar).getByText('次の回')).toBeInTheDocument()
+    expect(within(bar).queryByText(/TOEIC|IELTS|英検/)).not.toBeInTheDocument()
+    expect(bar.querySelector('.player-subtitle')?.textContent).toBe('')
+    expect(within(bar).getByRole('button', { name: '再生' })).toBeInTheDocument()
+  })
+
+  test.each([
+    ['総時間は playback.duration', { duration: 125 }, 300, '2:05', 125],
+    ['playback.duration が 0 なら nowPlaying().durationSeconds', { duration: 0 }, 300, '5:00', 300],
+    ['どちらも無ければ 0', { duration: 0 }, null, '0:00', 0],
+  ] as const)('%s (verifies: CI-P4-25)', (_name, playback, durationSeconds, total, max) => {
+    renderBar({ nowPlaying: { ...NOW_PLAYING, durationSeconds }, playback })
+
+    const seek = screen.getByRole('slider', { name: 'シーク' })
+    expect(seek).toHaveAttribute('max', String(max))
+    expect(screen.getAllByText(total).length).toBeGreaterThanOrEqual(1)
+  })
+
+  test('経過時間は playback.position を M:SS で出す (verifies: CI-P4-25)', () => {
+    renderBar({ playback: { position: 125 } })
+
+    expect(screen.getByText('2:05')).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'シーク' })).toHaveValue('125')
   })
 })
 
 // ==========================================================
-// 再生・一時停止
+// 主ボタン（primaryAction で分岐する）
 // ==========================================================
-describe('Play / Pause', () => {
-  test('Given play button clicked, toggles to pause state', async () => {
-    renderWithContext(SAMPLE_PODCAST)
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-    // 再生後は一時停止ボタンに変わる
-    expect(screen.getByRole('button', { name: /一時停止|pause/i })).toBeInTheDocument()
+describe('Primary button', () => {
+  const rows = [
+    ['pause', 'playing', '一時停止', 'pause'],
+    ['play', 'paused', '再生', 'play'],
+    ['retry', 'errored', '再生', 'retry'],
+    ['replay', 'ended', '再生', 'startEpisode'],
+    ['none', 'loading', '再生', null],
+  ] as const
+
+  test.each(rows)(
+    'primaryAction=%s (status=%s) のボタンは「%s」で、押すと %s だけを呼ぶ (verifies: CI-P4-26, CI-P4-51; web-deriv-14)',
+    async (primaryAction, status, label, expected) => {
+      renderBar({ playback: { status, primaryAction } })
+
+      await userEvent.click(screen.getByRole('button', { name: label }))
+
+      const all = ['play', 'pause', 'retry', 'startEpisode'] as const
+      for (const name of all) {
+        if (name === expected) expect(fns[name]).toHaveBeenCalledTimes(1)
+        else expect(fns[name]).not.toHaveBeenCalled()
+      }
+      if (expected === 'startEpisode') expect(fns.startEpisode).toHaveBeenCalledWith('p1')
+    },
+  )
+
+  test('一時停止中の「再生」は play() を呼ぶだけで、再生元の解決 (startEpisode) をやり直さない (verifies: CI-P4-26)', async () => {
+    renderBar({ playback: { status: 'paused', primaryAction: 'play', position: 120 } })
+
+    await userEvent.click(screen.getByRole('button', { name: '再生' }))
+
+    expect(fns.play).toHaveBeenCalledTimes(1)
+    expect(fns.startEpisode).not.toHaveBeenCalled()
   })
 
-  test('Given playing podcast paused at mid-position, resume does NOT reset currentTime to 0', async () => {
-    renderWithContext(SAMPLE_PODCAST)
+  test.each([
+    ['playing', 'pause', 'running'],
+    ['paused', 'play', 'paused'],
+    ['loading', 'none', 'paused'],
+    ['errored', 'retry', 'paused'],
+    ['ended', 'replay', 'paused'],
+  ] as const)('status=%s の波形は %s (verifies: CI-P4-26)', (status, primaryAction, state) => {
+    const { container } = renderBar({ playback: { status, primaryAction } })
 
-    // First play — correctly loads audio via handlePlayPause
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-
-    // Simulate audio advancing to 120 seconds
-    mockAudio.currentTime = 120
-
-    // Pause
-    await userEvent.click(screen.getByRole('button', { name: /一時停止|pause/i }))
-
-    // Resume — must NOT call load() (which would reset currentTime to 0)
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-
-    // Position should be preserved at 120, not reset to 0
-    expect(mockAudio.currentTime).toBe(120)
-  })
-
-  test('Given audio element fires error event, shows toast "音声を再生できません" (spec §9 L144)', async () => {
-    renderWithContext(SAMPLE_PODCAST)
-
-    // Start playing so audio element is active
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-
-    // Simulate native Audio error (network failure, codec error, etc.)
-    mockAudio.fireError()
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('音声を再生できません')
+    const bars = container.querySelectorAll('.player-art-waveform .player-art-bar')
+    expect(bars).toHaveLength(5)
+    bars.forEach((bar) => {
+      expect((bar as HTMLElement).style.animationPlayState).toBe(state)
     })
   })
 })
@@ -146,419 +255,155 @@ describe('Play / Pause', () => {
 // シーク操作
 // ==========================================================
 describe('Seek controls', () => {
-  test('-15 second button is present', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    expect(screen.getByRole('button', { name: /-15|15秒戻/i })).toBeInTheDocument()
+  test('-15 秒・+30 秒のボタンは seekRelative を呼ぶ', async () => {
+    renderBar()
+
+    await userEvent.click(screen.getByRole('button', { name: /-15|15秒戻/ }))
+    await userEvent.click(screen.getByRole('button', { name: /\+30|30秒進/ }))
+
+    expect(fns.seekRelative.mock.calls).toEqual([[-15], [30]])
   })
 
-  test('+30 second button is present', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    expect(screen.getByRole('button', { name: /\+30|30秒進/i })).toBeInTheDocument()
-  })
-
-  test('Seek slider has aria-label', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const seekSlider = screen.getByRole('slider', { name: /シーク|seek|再生位置/i })
-    expect(seekSlider).toBeInTheDocument()
+  test('シークバーを動かすと seek を呼ぶ', () => {
+    renderBar({ playback: { position: 10 } })
+    const seekSlider = screen.getByRole('slider', { name: 'シーク' })
     expect(seekSlider).toHaveAttribute('type', 'range')
+
+    fireEvent.change(seekSlider, { target: { value: '90' } })
+
+    expect(fns.seek).toHaveBeenCalledWith(90)
+  })
+
+  test.each([
+    ['位置 60・総時間 240 なら 25%', { position: 60, duration: 240 }, '25%'],
+    ['総時間 0 (未読込) ならゼロ除算せず 0%', { position: 0, duration: 0 }, '0%'],
+    ['位置が総時間を超えても 100% で止まる', { position: 150, duration: 100 }, '100%'],
+  ] as const)('シークバーの塗り: %s', (_name, playback, fill) => {
+    renderBar({ playback })
+
+    expect(screen.getByRole('slider', { name: 'シーク' }).style.getPropertyValue('--seek-fill')).toBe(fill)
   })
 })
 
 // ==========================================================
-// 音量スライダー（spec §9・§10.3。order.md タスク 6 の明示要求）
+// 音量
 // ==========================================================
 describe('Volume slider', () => {
-  test('Renders volume slider with aria-label="音量"', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-    expect(volumeSlider).toBeInTheDocument()
-    expect(volumeSlider).toHaveAttribute('type', 'range')
-  })
+  test('0 から 100 の範囲で、値は volume を 100 倍して丸めたもの (verifies: CI-P4-28)', () => {
+    renderBar({ volume: 0.6 })
 
-  test('Volume slider range is 0 to 100', () => {
-    renderWithContext(SAMPLE_PODCAST)
     const volumeSlider = screen.getByRole('slider', { name: '音量' })
+    expect(volumeSlider).toHaveAttribute('type', 'range')
     expect(volumeSlider).toHaveAttribute('min', '0')
     expect(volumeSlider).toHaveAttribute('max', '100')
-  })
-
-  test('Given volume slider changed to 50, calls setVolume with 0.5 (normalized from 0-100 range)', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-
-    fireEvent.change(volumeSlider, { target: { value: '50' } })
-
-    // Audio.volume が 0〜1 の範囲でセットされる
-    // 100スケールの50 → 0.5
-    expect(mockAudio.volume).toBeCloseTo(0.5, 1)
-  })
-
-  test('Given volume slider at 0, Audio.volume is 0', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-
-    fireEvent.change(volumeSlider, { target: { value: '0' } })
-
-    expect(mockAudio.volume).toBe(0)
-  })
-
-  test('Given volume slider at 100, Audio.volume is 1.0', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-
-    fireEvent.change(volumeSlider, { target: { value: '100' } })
-
-    expect(mockAudio.volume).toBe(1.0)
-  })
-
-  test('Volume slider initial value reflects saved player_volume', () => {
-    localStorage.setItem('player_volume', JSON.stringify(0.6))
-    renderWithContext(SAMPLE_PODCAST)
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-    // 0.6 → 60 に変換されて slider に反映
-    expect(Number(volumeSlider.getAttribute('value') ?? (volumeSlider as HTMLInputElement).value)).toBeCloseTo(60, 0)
-  })
-})
-
-// ==========================================================
-// リスタイル（T06: footer.player-bar / 波形アート / 時間表示）
-// ==========================================================
-describe('Restyled player bar (T06)', () => {
-  test('Given currentPodcast=null, renders no player elements at all', () => {
-    const { container } = renderWithContext(null)
-    // ToastProvider が .toast-container を常時描画するため「コンテナが空」ではなく
-    // プレイヤー由来の要素が一切存在しないことを検証する
-    expect(container.querySelector('.player-bar')).toBeNull()
-    expect(container.querySelector('.player-art-waveform')).toBeNull()
-    expect(screen.queryByRole('contentinfo', { name: 'プレイヤー' })).not.toBeInTheDocument()
-  })
-
-  test('Root is a footer.player-bar with accessible name "プレイヤー" (contentinfo role)', () => {
-    const { container } = renderWithContext(SAMPLE_PODCAST)
-    const bar = screen.getByRole('contentinfo', { name: 'プレイヤー' })
-    expect(bar.tagName).toBe('FOOTER')
-    expect(bar.classList.contains('player-bar')).toBe(true)
-    expect(container.querySelector('.player-track')).toBeInTheDocument()
-    expect(container.querySelector('.player-controls')).toBeInTheDocument()
-    expect(container.querySelector('.player-extra')).toBeInTheDocument()
-  })
-
-  test('Renders waveform art with 5 bars, paused while not playing', () => {
-    const { container } = renderWithContext(SAMPLE_PODCAST)
-    const bars = container.querySelectorAll('.player-art-waveform .player-art-bar')
-    expect(bars).toHaveLength(5)
-    bars.forEach((bar) => {
-      expect((bar as HTMLElement).style.animationPlayState).toBe('paused')
-    })
-  })
-
-  test('Waveform bars animate (running) while playing', async () => {
-    const { container } = renderWithContext(SAMPLE_PODCAST)
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-    const bars = container.querySelectorAll('.player-art-waveform .player-art-bar')
-    expect(bars).toHaveLength(5)
-    bars.forEach((bar) => {
-      expect((bar as HTMLElement).style.animationPlayState).toBe('running')
-    })
-  })
-
-  test('Displays currentTime ("0:00") and duration ("5:00") as progress times', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    // 初期 currentTime=0 → "0:00"、duration は podcast の 300 秒 → "5:00"
-    expect(screen.getByText('0:00')).toBeInTheDocument()
-    expect(screen.getByText('5:00')).toBeInTheDocument()
-  })
-
-  test('currentTime display updates in formatDuration format on timeupdate', async () => {
-    renderWithContext(SAMPLE_PODCAST)
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-    act(() => {
-      mockAudio.fireTimeUpdate(125)
-    })
-    // 125 秒 → "2:05"
-    expect(screen.getByText('2:05')).toBeInTheDocument()
-  })
-})
-
-// ==========================================================
-// シークバー再生済みフィル（T02: --seek-fill カスタムプロパティ）
-// ==========================================================
-describe('Seekbar progress fill (T02)', () => {
-  test('Given currentTime=60 and duration=240, seek slider has --seek-fill of 25%', async () => {
-    renderWithContext(SAMPLE_PODCAST)
-
-    // 再生を開始し、loadedmetadata で duration を確定させてから timeupdate で位置を更新
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-    act(() => {
-      mockAudio.fireLoadedMetadata(240)
-      mockAudio.fireTimeUpdate(60)
-    })
-
-    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
-    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('25%')
-  })
-
-  test('Given duration=0 (not loaded), seek slider has --seek-fill of 0% (no NaN%)', () => {
-    renderWithContext(SAMPLE_PODCAST)
-
-    // duration が 0 の初期状態（再生前）でのゼロ除算ガード確認
-    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
-    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('0%')
-  })
-
-  test('Given currentTime exceeds duration, --seek-fill is clamped to 100%', async () => {
-    renderWithContext(SAMPLE_PODCAST)
-
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-    act(() => {
-      mockAudio.fireLoadedMetadata(100)
-      // currentTime が duration を超える場合（保存値ズレなど）
-      mockAudio.fireTimeUpdate(150)
-    })
-
-    const seekSlider = screen.getByRole('slider', { name: /シーク/i })
-    expect(seekSlider.style.getPropertyValue('--seek-fill')).toBe('100%')
-  })
-
-  test('Volume slider does NOT have --seek-fill property', () => {
-    renderWithContext(SAMPLE_PODCAST)
-
-    const volumeSlider = screen.getByRole('slider', { name: '音量' })
-    // 音量スライダーには --seek-fill を付与しない（スコープ外）
+    expect(volumeSlider).toHaveValue('60')
     expect(volumeSlider.style.getPropertyValue('--seek-fill')).toBe('')
   })
-})
 
-// ==========================================================
-// title フィールドによるタイトル表示切替（issue: podcast-title-display）
-// ==========================================================
-describe('AudioPlayerBar title display (podcastTitle fallback)', () => {
-  test('Given podcast with title, player-title shows title instead of japanese_intro_text slice', () => {
-    const podcast: Podcast = {
-      ...SAMPLE_PODCAST,
-      title: 'AIが要約した今日のニュース',
-      japanese_intro_text: 'これは長い日本語のイントロテキストです。テストのために書かれた文章です。',
-    }
-    renderWithContext(podcast)
-    expect(screen.getByText('AIが要約した今日のニュース')).toBeInTheDocument()
-  })
+  test.each([
+    ['50', 0.5],
+    ['0', 0],
+    ['100', 1],
+  ])('スライダーを %s にすると setVolume(%s) を呼ぶ (verifies: CI-P4-28)', (value, expected) => {
+    renderBar({ volume: 0.3 })
 
-  test('Given podcast with empty title, player-title falls back to first 50 chars of japanese_intro_text', () => {
-    const intro = 'あいうえおかきくけこさしすせそたちつてとなにぬねのはひふへほまみむめもやゆよらりるれろわをん'
-    const podcast: Podcast = {
-      ...SAMPLE_PODCAST,
-      title: '',
-      japanese_intro_text: intro,
-    }
-    renderWithContext(podcast)
-    expect(screen.getByText(intro.slice(0, 50))).toBeInTheDocument()
-  })
+    fireEvent.change(screen.getByRole('slider', { name: '音量' }), { target: { value } })
 
-  test('Given podcast without title field, player-title falls back to first 50 chars of japanese_intro_text', () => {
-    const intro = 'いいいいいいいいいいうううううううううううえええええええええええおおおおおおおおおおあああああああああああ'
-    const podcast: Podcast = {
-      ...SAMPLE_PODCAST,
-      japanese_intro_text: intro,
-    }
-    // title フィールドなし（SAMPLE_PODCAST に title を追加していない）
-    renderWithContext(podcast)
-    expect(screen.getByText(intro.slice(0, 50))).toBeInTheDocument()
-  })
-
-  test('Given queue item has title, queue panel shows title via podcastTitle(p, 40)', async () => {
-    const queuePodcast: Podcast = {
-      ...SAMPLE_PODCAST,
-      id: 'q1',
-      title: 'キューに追加されたタイトル',
-      // japanese_intro_text は 40 字を超える長文（title があるので表示されないはず）
-      japanese_intro_text: 'これはキューに入ったポッドキャストのイントロテキストです。四十字を超えているためタイトルがない場合は切り詰められます。',
-    }
-
-    // addToQueue → playById → gateway の既定の fetch が呼ばれるが
-    // テスト環境にサーバはないため失敗させる。
-    // setQueueState は fetch より先に同期実行されるため upNext は fetch 失敗後も残る。
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
-
-    // QueuePrimer: AudioPlayerProvider 内でキューにアイテムを追加するラッパー
-    function QueuePrimer() {
-      const player = useAudioPlayerContext()
-      React.useEffect(() => {
-        void player.addToQueue(queuePodcast)
-      }, []) // eslint-disable-line react-hooks/exhaustive-deps
-      return null
-    }
-
-    render(
-      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
-        <ToastProvider>
-          <ApiClientProvider>
-            <AudioPlayerProvider>
-            <QueuePrimer />
-            <AudioPlayerBar />
-            </AudioPlayerProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </AppProvider>
-    )
-
-    // setQueueState が反映されてキューボタン "☰ 1" が現れるまで待つ
-    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
-    await userEvent.click(queueBtn)
-
-    // キューパネルに title が表示されることを確認（japanese_intro_text.slice(0,40) ではない）
-    expect(screen.getByText('キューに追加されたタイトル')).toBeInTheDocument()
+    expect(fns.setVolume).toHaveBeenCalledWith(expected)
   })
 })
 
 // ==========================================================
-// 速度セレクタ（8 段階）
+// 速度（shared-session-10）
 // ==========================================================
 describe('Speed selector', () => {
-  test('Renders speed selector with 8 options', () => {
-    renderWithContext(SAMPLE_PODCAST)
-    const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
-    expect(speedSelect).toBeInTheDocument()
-    const options = screen.getAllByRole('option')
-    expect(options.length).toBeGreaterThanOrEqual(8)
+  test('8 段の選択肢を出し、値は既定速度でなく playback.speed (verifies: CI-P4-27; shared-session-10)', () => {
+    renderBar({ playback: { speed: 2 } }, 1.5)
+
+    const speedSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: '速度' })
+    expect(within(speedSelect).getAllByRole('option')).toHaveLength(8)
+    expect(Number(speedSelect.value)).toBe(2)
   })
 
-  test('Speed selector initial value reflects AppContext.playbackSpeed (spec §10.3 "初期値はデフォルト速度")', () => {
-    // Render with a non-default playback speed in AppContext (simulates restored default)
-    render(
-      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST, playbackSpeed: 1.5 }}>
-        <ToastProvider>
-          <ApiClientProvider>
-            <AudioPlayerProvider>
-            <AudioPlayerBar />
-            </AudioPlayerProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </AppProvider>
-    )
+  test('変更すると setSpeed(数値) を呼び、既定速度 (AppContext.playbackSpeed) は書き換えない (verifies: CI-P4-27, CI-P4-45; shared-session-10)', async () => {
+    renderBar({ playback: { speed: 2 } }, 1.5)
 
-    const speedSelect = screen.getByRole<HTMLSelectElement>('combobox', { name: /速度|speed/i })
-    expect(Number(speedSelect.value)).toBe(1.5)
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: '速度' }), '1.25')
+
+    expect(fns.setSpeed).toHaveBeenCalledTimes(1)
+    expect(fns.setSpeed).toHaveBeenCalledWith(1.25)
+    expect(screen.getByTestId('default-speed')).toHaveTextContent('1.5')
+  })
+
+  test('既定速度が変わっても、バーは再生中の回の速度に何も流さない (verifies: CI-P4-27; shared-session-10)', () => {
+    renderBar({ playback: { speed: 2 } }, 1.5)
+
+    expect(fns.setSpeed).not.toHaveBeenCalled()
   })
 })
 
 // ==========================================================
-// キューの並べ替えボタン（回帰テスト：削除前オフセット意味論）
-// issue #138: reorderUpNext の意味論を SwiftUI onMove 準拠（削除前オフセット）に変更
-// 「上へ」= from i → toOffset i-1（後方移動、両意味論一致）
-// 「下へ」= from i → toOffset i+2（前方移動、削除前オフセット方式）
-// テスト検証: キュー状態の実際の順序変化を観察
+// 次へ・再生待ち
 // ==========================================================
-describe('Queue reordering buttons (spec issue #138, onMove semantics)', () => {
-  test('UP button moves item 1 position upward (backward move, both semantics agree)', async () => {
-    const queuePodcast1: Podcast = { ...SAMPLE_PODCAST, id: 'q1', title: 'First' }
-    const queuePodcast2: Podcast = { ...SAMPLE_PODCAST, id: 'q2', title: 'Second' }
-    const queuePodcast3: Podcast = { ...SAMPLE_PODCAST, id: 'q3', title: 'Third' }
+describe('Up next', () => {
+  test('canSkipNext が false なら「次へ」を出さない (verifies: CI-P4-29)', () => {
+    renderBar({ upNext: [] })
 
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
-
-    function QueueSetup() {
-      const player = useAudioPlayerContext()
-      React.useEffect(() => {
-        void player.addToQueue(queuePodcast1)
-        void player.addToQueue(queuePodcast2)
-        void player.addToQueue(queuePodcast3)
-      }, []) // eslint-disable-line react-hooks/exhaustive-deps
-      return null
-    }
-
-    render(
-      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
-        <ToastProvider>
-          <ApiClientProvider>
-            <AudioPlayerProvider>
-            <QueueSetup />
-            <AudioPlayerBar />
-            </AudioPlayerProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </AppProvider>
-    )
-
-    // キューボタンをクリックしてキューパネルを開く
-    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
-    await userEvent.click(queueBtn)
-
-    // 初期状態: First, Second, Third
-    expect(screen.getByText('First')).toBeInTheDocument()
-    expect(screen.getByText('Second')).toBeInTheDocument()
-    expect(screen.getByText('Third')).toBeInTheDocument()
-
-    // Second の UP ボタンをクリック → First, Second が swap
-    const upButtons = screen.getAllByRole('button', { name: /上へ/ })
-    await userEvent.click(upButtons[1]) // Second の UP ボタン
-
-    // 期待値: Second, First, Third（Second が1つ上へ）
-    await waitFor(() => {
-      const items = screen.getAllByRole('listitem')
-      // queue-item が複数あるため、テキストの順序で確認
-      const titles = Array.from(items)
-        .map((li) => li.textContent)
-        .filter((text) => text && (text.includes('First') || text.includes('Second') || text.includes('Third')))
-      // Second が First より前に来ることを確認
-      const secondIdx = titles.findIndex((t) => t?.includes('Second'))
-      const firstIdx = titles.findIndex((t) => t?.includes('First'))
-      expect(secondIdx).toBeLessThan(firstIdx)
-    })
+    expect(screen.queryByRole('button', { name: '次のエピソードへ' })).not.toBeInTheDocument()
   })
 
-  test('DOWN button moves item 1 position downward (forward move, onMove delete-before-offset semantics)', async () => {
-    const queuePodcast1: Podcast = { ...SAMPLE_PODCAST, id: 'q1', title: 'Item_A' }
-    const queuePodcast2: Podcast = { ...SAMPLE_PODCAST, id: 'q2', title: 'Item_B' }
-    const queuePodcast3: Podcast = { ...SAMPLE_PODCAST, id: 'q3', title: 'Item_C' }
+  test('canSkipNext が true なら「次へ」を出し、押すと skipToNext を呼ぶ (verifies: CI-P4-29)', async () => {
+    renderBar({ upNext: UP_NEXT })
 
-    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no network in test')))
+    await userEvent.click(screen.getByRole('button', { name: '次のエピソードへ' }))
 
-    function QueueSetup() {
-      const player = useAudioPlayerContext()
-      React.useEffect(() => {
-        void player.addToQueue(queuePodcast1)
-        void player.addToQueue(queuePodcast2)
-        void player.addToQueue(queuePodcast3)
-      }, []) // eslint-disable-line react-hooks/exhaustive-deps
-      return null
-    }
+    expect(fns.skipToNext).toHaveBeenCalledTimes(1)
+  })
 
-    render(
-      <AppProvider initialState={{ currentPodcast: SAMPLE_PODCAST }}>
-        <ToastProvider>
-          <ApiClientProvider>
-            <AudioPlayerProvider>
-            <QueueSetup />
-            <AudioPlayerBar />
-            </AudioPlayerProvider>
-          </ApiClientProvider>
-        </ToastProvider>
-      </AppProvider>
-    )
+  test('プレイリストの件数と、各題 (そのまま) を出す (verifies: CI-P4-29)', async () => {
+    renderBar({ upNext: UP_NEXT })
+    const toggle = screen.getByRole('button', { name: 'プレイリスト' })
+    expect(toggle).toHaveTextContent('3')
 
-    // キューボタンをクリックしてキューパネルを開く
-    const queueBtn = await screen.findByRole('button', { name: /プレイリスト/ })
-    await userEvent.click(queueBtn)
+    await userEvent.click(toggle)
 
-    // 初期状態: Item_A, Item_B, Item_C
-    expect(screen.getByText('Item_A')).toBeInTheDocument()
-    expect(screen.getByText('Item_B')).toBeInTheDocument()
-    expect(screen.getByText('Item_C')).toBeInTheDocument()
+    const panel = screen.getByRole('region', { name: 'プレイリスト' })
+    expect(within(panel).getAllByRole('listitem').map((li) => li.textContent?.replace(/[↑↓✕]/g, ''))).toEqual([
+      'First',
+      'Second',
+      'Third',
+    ])
+  })
 
-    // Item_A の DOWN ボタンをクリック → deleteBeforeOffset 意味論で Item_B, Item_A, Item_C に
-    const downButtons = screen.getAllByRole('button', { name: /下へ/ })
-    await userEvent.click(downButtons[0]) // Item_A の DOWN ボタン
+  test('再生待ちが無ければ空の表示 (verifies: CI-P4-29)', async () => {
+    renderBar({ upNext: [] })
 
-    // 期待値: Item_B, Item_A, Item_C（Item_A が1つ下へ、削除前オフセット = i+2）
-    await waitFor(() => {
-      const items = screen.getAllByRole('listitem')
-      const titles = Array.from(items)
-        .map((li) => li.textContent)
-        .filter((text) => text && (text.includes('Item_A') || text.includes('Item_B') || text.includes('Item_C')))
-      // Item_A が Item_B より後ろに来ることを確認
-      const aIdx = titles.findIndex((t) => t?.includes('Item_A'))
-      const bIdx = titles.findIndex((t) => t?.includes('Item_B'))
-      expect(aIdx).toBeGreaterThan(bIdx)
-    })
+    await userEvent.click(screen.getByRole('button', { name: 'プレイリスト' }))
+
+    expect(screen.getByText('再生待ちはありません')).toBeInTheDocument()
+  })
+
+  test('↑ は reorder(i, i-1)、↓ は reorder(i, i+2)、✕ は removeFromQueue(id) を呼ぶ (verifies: CI-P4-29; 削除前オフセットの意味論)', async () => {
+    renderBar({ upNext: UP_NEXT })
+    await userEvent.click(screen.getByRole('button', { name: 'プレイリスト' }))
+
+    await userEvent.click(screen.getAllByRole('button', { name: '上へ' })[1])
+    await userEvent.click(screen.getAllByRole('button', { name: '下へ' })[0])
+    await userEvent.click(screen.getAllByRole('button', { name: 'キューから削除' })[2])
+
+    expect(fns.reorder.mock.calls).toEqual([
+      [1, 0],
+      [0, 2],
+    ])
+    expect(fns.removeFromQueue).toHaveBeenCalledWith('q3')
+  })
+
+  test('先頭の ↑ と末尾の ↓ は押せない (verifies: CI-P4-29)', async () => {
+    renderBar({ upNext: UP_NEXT })
+    await userEvent.click(screen.getByRole('button', { name: 'プレイリスト' }))
+
+    expect(screen.getAllByRole('button', { name: '上へ' })[0]).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: '下へ' })[2]).toBeDisabled()
+    expect(screen.getAllByRole('button', { name: '上へ' })[1]).toBeEnabled()
   })
 })

@@ -1,15 +1,13 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useApp } from '@/contexts/AppContext'
 import { useToast } from '@/components/ui/Toast'
 import { PodcastCard } from '@/components/PodcastCard'
-import { getSavedPosition } from '@/hooks/useAudioPlayer'
 import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
-import { useStartPodcast } from '@/hooks/useStartPodcast'
-import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
+import { usePlayback } from '@/contexts/PlaybackProvider'
+import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { createApiClient, ApiError } from '@/lib/api'
-import { isCached, downloadAudio } from '@/lib/audioCache'
+import type { QueueEntryInput } from '@/lib/playback/application/ports'
 import type { Podcast } from '@/types/index'
 
 function RefreshIcon() {
@@ -43,12 +41,19 @@ function SkeletonCard() {
   )
 }
 
+// 一覧の DTO から、キューに積む入力への写し（暫定。カードの表示モデルができたら置き換える）。
+const toQueueEntry = (podcast: Podcast): QueueEntryInput => ({
+  id: podcast.id,
+  title: podcast.title ?? null,
+  intro: podcast.japanese_intro_text,
+})
+
 export default function PodcastPage() {
-  const { state } = useApp()
   const { showToast } = useToast()
-  const startPodcast = useStartPodcast()
-  // 連続再生のキュー操作（issue #81）。
-  const { playNextInQueue, addToQueue } = useAudioPlayerContext()
+  const playback = usePlayback()
+  const { offline } = playback
+  const actions = usePlaybackActions()
+  const playingId = playback.nowPlaying()?.episodeId
 
   const [podcasts, setPodcasts] = useState<Podcast[]>([])
   const [loading, setLoading] = useState(true)
@@ -125,7 +130,7 @@ export default function PodcastPage() {
   useEffect(() => {
     if (podcasts.length === 0) return
     let cancelled = false
-    Promise.all(podcasts.map((p) => isCached(p.id).then((c) => (c ? p.id : null))))
+    Promise.all(podcasts.map((p) => offline.has(p.id).then((c) => (c ? p.id : null))))
       .then((ids) => {
         if (cancelled) return
         setCachedIds(new Set(ids.filter((id): id is string => id !== null)))
@@ -140,7 +145,11 @@ export default function PodcastPage() {
 
   async function handleDownload(podcast: Podcast) {
     try {
-      await downloadAudio(podcast.id, (id) => createApiClient().getPodcast(id))
+      const saved = await offline.save(podcast.id)
+      if (!saved.ok) {
+        showToast('オフライン保存に失敗しました', 'error')
+        return
+      }
       setCachedIds((prev) => new Set(prev).add(podcast.id))
     } catch {
       showToast('オフライン保存に失敗しました', 'error')
@@ -159,7 +168,7 @@ export default function PodcastPage() {
   })
 
   function handlePlay(podcast: Podcast) {
-    startPodcast(podcast.id)
+    void actions.startEpisode(podcast.id)
   }
 
   function renderContent() {
@@ -186,17 +195,17 @@ export default function PodcastPage() {
     return (
       <div className="podcast-grid">
         {podcasts.map((podcast) => {
-          const savedPosition = getSavedPosition(podcast.id)
+          const position = playback.savedPosition(podcast.id)
           return (
             <PodcastCard
               key={podcast.id}
               podcast={podcast}
               onPlay={handlePlay}
-              onPlayNext={(p) => { void playNextInQueue(p) }}
-              onAddToQueue={(p) => { void addToQueue(p) }}
-              savedPosition={savedPosition > 0 ? savedPosition : undefined}
+              onPlayNext={(p) => { void actions.playNext(toQueueEntry(p)) }}
+              onAddToQueue={(p) => { void actions.addToQueue(toQueueEntry(p)) }}
+              savedPosition={position !== null && position > 0 ? position : undefined}
               // 再生中強調（D24）: 判定はページ責務（PodcastCard を Context 非依存に保つ）
-              playing={state.currentPodcast?.id === podcast.id}
+              playing={playingId === podcast.id}
               // オフライン保存（issue #167）: 状態・ハンドラもページ責務として注入する
               cached={cachedIds.has(podcast.id)}
               onDownload={(p) => void handleDownload(p)}
