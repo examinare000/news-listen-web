@@ -28,25 +28,16 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-// issue #167: オフラインキャッシュセクション用。既定は「未キャッシュ・容量取得不可」に倒す
-// （lib/audioCache.ts の graceful degradation と同じデフォルト）。
-const {
-  listCachedEpisodes,
-  estimateUsage,
-  deleteAudio: mockDeleteAudio,
-  deleteAllAudio: mockDeleteAllAudio,
-} = vi.hoisted(() => ({
-  listCachedEpisodes: vi.fn().mockResolvedValue([]),
-  estimateUsage: vi.fn().mockResolvedValue(null),
-  deleteAudio: vi.fn().mockResolvedValue(undefined),
-  deleteAllAudio: vi.fn().mockResolvedValue(undefined),
-}))
+// issue #167: オフラインキャッシュセクション用。保存庫は usePlayback().offline の公開面だけを使う。
+// 既定は「未保存・容量取得不可」に倒す（port の usage が null を返す graceful degradation と同じ）。
+const { list, usage, remove, clear, playback } = vi.hoisted(() => {
+  const offline = { list: vi.fn(), usage: vi.fn(), remove: vi.fn(), clear: vi.fn() }
+  // 実の Provider が返す offline は再描画をまたいで同じ object なので、double も毎回同じものを返す。
+  return { ...offline, playback: { offline } }
+})
 
-vi.mock('@/lib/audioCache', () => ({
-  listCachedEpisodes,
-  estimateUsage,
-  deleteAudio: mockDeleteAudio,
-  deleteAllAudio: mockDeleteAllAudio,
+vi.mock('@/contexts/PlaybackProvider', () => ({
+  usePlayback: () => playback,
 }))
 
 // AccountSection が useAuth を使うためモックする（管理者ユーザーでログイン中とする）。
@@ -75,6 +66,10 @@ function renderSettingsPage() {
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  list.mockResolvedValue([])
+  usage.mockResolvedValue(null)
+  remove.mockResolvedValue(undefined)
+  clear.mockResolvedValue(undefined)
 })
 
 // ==========================================================
@@ -1045,6 +1040,14 @@ describe('SettingsPage — difficulty change race condition', () => {
 // Settings 画面 — オフラインキャッシュ（issue #167）
 // ==========================================================
 describe('SettingsPage — offline cache (issue #167)', () => {
+  const view = (episodeId: string, title: string, durationSeconds: number) => ({
+    episodeId,
+    title,
+    durationSeconds,
+    sizeBytes: null,
+    savedAt: null,
+  })
+
   test('shows an empty state when nothing is cached', async () => {
     renderSettingsPage()
 
@@ -1054,11 +1057,8 @@ describe('SettingsPage — offline cache (issue #167)', () => {
     })
   })
 
-  test('lists cached episodes with title and duration', async () => {
-    listCachedEpisodes.mockResolvedValue([
-      { id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 },
-      { id: 'p2', title: 'オフライン用イントロ2', duration_seconds: 65 },
-    ])
+  test('offline.list() の episodeId・title・durationSeconds で一覧を作り、行の testid は episodeId を使う (verifies: CI-P4-32)', async () => {
+    list.mockResolvedValue([view('p1', 'オフライン用イントロ1', 125), view('p2', 'オフライン用イントロ2', 65)])
 
     renderSettingsPage()
 
@@ -1066,12 +1066,12 @@ describe('SettingsPage — offline cache (issue #167)', () => {
       expect(screen.getByText('オフライン用イントロ1')).toBeInTheDocument()
       expect(screen.getByText('オフライン用イントロ2')).toBeInTheDocument()
     })
-    expect(screen.getByText('2:05')).toBeInTheDocument()
-    expect(screen.getByText('1:05')).toBeInTheDocument()
+    expect(within(screen.getByTestId('offline-cache-item-p1')).getByText('2:05')).toBeInTheDocument()
+    expect(within(screen.getByTestId('offline-cache-item-p2')).getByText('1:05')).toBeInTheDocument()
   })
 
-  test('shows storage usage when estimateUsage succeeds', async () => {
-    estimateUsage.mockResolvedValue({ usage: 5 * 1024 * 1024, quota: 100 * 1024 * 1024 })
+  test('shows storage usage when offline.usage() succeeds (verifies: CI-P4-32)', async () => {
+    usage.mockResolvedValue({ usage: 5 * 1024 * 1024, quota: 100 * 1024 * 1024 })
 
     renderSettingsPage()
 
@@ -1080,8 +1080,8 @@ describe('SettingsPage — offline cache (issue #167)', () => {
     })
   })
 
-  test('hides the usage row when estimateUsage is unavailable (graceful degradation)', async () => {
-    estimateUsage.mockResolvedValue(null)
+  test('hides the usage row when offline.usage() is unavailable (graceful degradation)', async () => {
+    usage.mockResolvedValue(null)
 
     renderSettingsPage()
 
@@ -1091,10 +1091,8 @@ describe('SettingsPage — offline cache (issue #167)', () => {
     expect(screen.queryByText(/MB \//)).not.toBeInTheDocument()
   })
 
-  test('deletes a single cached episode and refreshes the list', async () => {
-    listCachedEpisodes
-      .mockResolvedValueOnce([{ id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 }])
-      .mockResolvedValueOnce([])
+  test('deletes a single cached episode via offline.remove(episodeId) and refreshes the list (verifies: CI-P4-32)', async () => {
+    list.mockResolvedValueOnce([view('p1', 'オフライン用イントロ1', 125)]).mockResolvedValueOnce([])
 
     renderSettingsPage()
 
@@ -1103,19 +1101,17 @@ describe('SettingsPage — offline cache (issue #167)', () => {
     const row = screen.getByTestId('offline-cache-item-p1')
     await userEvent.click(within(row).getByRole('button', { name: '削除' }))
 
-    expect(mockDeleteAudio).toHaveBeenCalledWith('p1')
+    expect(remove).toHaveBeenCalledTimes(1)
+    expect(remove).toHaveBeenCalledWith('p1')
     await waitFor(() => {
       expect(screen.queryByText('オフライン用イントロ1')).not.toBeInTheDocument()
       expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
     })
   })
 
-  test('deletes every cached episode via "すべて削除"', async () => {
-    listCachedEpisodes
-      .mockResolvedValueOnce([
-        { id: 'p1', title: 'オフライン用イントロ1', duration_seconds: 125 },
-        { id: 'p2', title: 'オフライン用イントロ2', duration_seconds: 65 },
-      ])
+  test('deletes every cached episode via offline.clear() ("すべて削除") and refreshes the list (verifies: CI-P4-32)', async () => {
+    list
+      .mockResolvedValueOnce([view('p1', 'オフライン用イントロ1', 125), view('p2', 'オフライン用イントロ2', 65)])
       .mockResolvedValueOnce([])
 
     renderSettingsPage()
@@ -1124,7 +1120,7 @@ describe('SettingsPage — offline cache (issue #167)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'すべて削除' }))
 
-    expect(mockDeleteAllAudio).toHaveBeenCalled()
+    expect(clear).toHaveBeenCalledTimes(1)
     await waitFor(() => {
       expect(screen.getByText('キャッシュ済みのエピソードはありません')).toBeInTheDocument()
     })

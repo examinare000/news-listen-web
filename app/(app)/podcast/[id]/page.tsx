@@ -6,8 +6,8 @@ import { useToast } from '@/components/ui/Toast'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
 import { createApiClient, ApiError } from '@/lib/api'
-import { useStartPodcast } from '@/hooks/useStartPodcast'
-import { isCached, downloadAudio } from '@/lib/audioCache'
+import { usePlayback } from '@/contexts/PlaybackProvider'
+import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { highlightTerms } from '@/lib/highlightTerms'
 import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { Podcast, QuizAnswerResponse } from '@/types/index'
@@ -37,7 +37,8 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const { showToast } = useToast()
-  const startPodcast = useStartPodcast()
+  const { offline } = usePlayback()
+  const { startEpisode } = usePlaybackActions()
 
   const [podcast, setPodcast] = useState<Podcast | null>(null)
   const [notFound, setNotFound] = useState(false)
@@ -71,9 +72,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
   async function handlePlay() {
     if (!podcast) return
-    // Delegate to shared hook: re-fetches fresh URL (spec §9 L151),
-    // restores saved position (spec §10.3 L201/L209 "一覧と同フロー").
-    await startPodcast(podcast.id)
+    await startEpisode(podcast.id)
   }
 
   // オフライン保存（issue #167）。読み込み後にキャッシュ済みかを確認し、
@@ -82,15 +81,19 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
   useEffect(() => {
     if (!podcast) return
-    isCached(podcast.id).then(setDownloaded).catch(() => {
+    offline.has(podcast.id).then(setDownloaded).catch(() => {
       // 確認に失敗しても致命的ではない（未保存として扱い、ボタンは表示し続ける）。
     })
-  }, [podcast])
+  }, [podcast, offline])
 
   async function handleDownload() {
     if (!podcast) return
     try {
-      await downloadAudio(podcast.id, (id) => createApiClient().getPodcast(id))
+      const saved = await offline.save(podcast.id)
+      if (!saved.ok) {
+        showToast('オフライン保存に失敗しました', 'error')
+        return
+      }
       setDownloaded(true)
     } catch {
       showToast('オフライン保存に失敗しました', 'error')

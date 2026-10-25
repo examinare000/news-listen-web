@@ -1,42 +1,48 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
-import { useApp } from '@/contexts/AppContext'
-import { useAudioPlayerContext } from '@/contexts/AudioPlayerContext'
-import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
+import React, { useState } from 'react'
+import { usePlayback } from '@/contexts/PlaybackProvider'
+import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
-import { podcastTitle } from '@/lib/podcastTitle'
+import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
+import type { PlaybackSpeed } from '@/lib/playback/domain/session'
 
 // 波形アートのバー本数（デザイン正本 app-ui.html L1944〜1950 と同じ 5 本）
 const WAVEFORM_BAR_COUNT = 5
 
-export function AudioPlayerBar() {
-  const { state, dispatch } = useApp()
-  const { currentPodcast } = state
+const isPlaybackSpeed = (value: number): value is PlaybackSpeed => PLAYBACK_SPEEDS.some((speed) => speed === value)
 
-  const player = useAudioPlayerContext()
+export function AudioPlayerBar() {
+  const pb = usePlayback()
+  const actions = usePlaybackActions()
+  const { playback } = pb
+  const nowPlaying = pb.nowPlaying()
+  const queue = pb.queueView()
   // 再生待ちキューパネルの開閉（issue #81）。
   const [showQueue, setShowQueue] = useState(false)
 
-  // Sync AppContext.playbackSpeed → audio.playbackRate whenever the speed changes
-  // (includes initial mount with restored default speed and settings-page updates).
-  useEffect(() => {
-    player.setSpeed(state.playbackSpeed)
-  }, [state.playbackSpeed]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (nowPlaying === null) return null
 
-  if (!currentPodcast) return null
+  const isPlaying = playback.primaryAction === 'pause'
+  const duration = playback.duration || (nowPlaying.durationSeconds ?? 0)
 
-  const trackTitle = podcastTitle(currentPodcast, 50)
-
-  async function handlePlayPause() {
-    if (player.isPlaying) {
-      player.pause()
-    } else {
-      // Resume from current position — the Audio element retains src and
-      // currentTime across pause, so re-loading would destructively reset
-      // the playhead to 0. Just call play().
-      await player.play()
+  const handlePrimary = (): void => {
+    switch (playback.primaryAction) {
+      case 'pause':
+        pb.pause()
+        return
+      case 'play':
+        void pb.play()
+        return
+      case 'retry':
+        void actions.retry()
+        return
+      case 'replay':
+        void actions.startEpisode(nowPlaying.episodeId)
+        return
+      case 'none':
+        return
     }
   }
 
@@ -53,17 +59,17 @@ export function AudioPlayerBar() {
                 // globals.css に paused 用クラスがないため、インラインの
                 // animation-play-state で再生/停止に同期させる（指示書 T06）
                 style={{
-                  animationPlayState: player.isPlaying ? 'running' : 'paused',
+                  animationPlayState: playback.status === 'playing' ? 'running' : 'paused',
                 }}
               />
             ))}
           </div>
         </div>
         <div className="player-info">
-          <div className="player-title">{trackTitle}</div>
+          <div className="player-title">{nowPlaying.title}</div>
           <div className="player-subtitle">
-            <DifficultyBadge difficulty={currentPodcast.difficulty} />
-            <span>{formatDate(currentPodcast.created_at)}</span>
+            {nowPlaying.difficulty !== null && <DifficultyBadge difficulty={nowPlaying.difficulty} />}
+            {nowPlaying.createdAt !== null && <span>{formatDate(nowPlaying.createdAt)}</span>}
           </div>
         </div>
       </div>
@@ -73,7 +79,7 @@ export function AudioPlayerBar() {
         <div className="player-buttons">
           <button
             className="ctrl-btn"
-            onClick={() => player.seekRelative(-15)}
+            onClick={() => pb.seekRelative(-15)}
             aria-label="-15秒戻る"
           >
             -15
@@ -81,10 +87,10 @@ export function AudioPlayerBar() {
 
           <button
             className="ctrl-btn-main"
-            onClick={handlePlayPause}
-            aria-label={player.isPlaying ? '一時停止' : '再生'}
+            onClick={handlePrimary}
+            aria-label={isPlaying ? '一時停止' : '再生'}
           >
-            {player.isPlaying ? (
+            {isPlaying ? (
               <svg
                 width="16"
                 height="16"
@@ -112,17 +118,17 @@ export function AudioPlayerBar() {
 
           <button
             className="ctrl-btn"
-            onClick={() => player.seekRelative(30)}
+            onClick={() => pb.seekRelative(30)}
             aria-label="+30秒進む"
           >
             +30
           </button>
 
           {/* 次へ（連続再生・issue #81）。待機列があるときのみ表示。 */}
-          {player.upNext.length > 0 && (
+          {queue.canSkipNext && (
             <button
               className="ctrl-btn"
-              onClick={() => void player.skipToNext()}
+              onClick={() => void actions.skipToNext()}
               aria-label="次のエピソードへ"
               title="次へ"
             >
@@ -132,13 +138,13 @@ export function AudioPlayerBar() {
         </div>
 
         <div className="player-progress">
-          <span className="progress-time">{formatDuration(player.currentTime)}</span>
+          <span className="progress-time">{formatDuration(playback.position)}</span>
           <input
             type="range"
             min={0}
-            max={player.duration || currentPodcast.duration_seconds}
-            value={player.currentTime}
-            onChange={(e) => player.seek(Number(e.target.value))}
+            max={duration}
+            value={playback.position}
+            onChange={(e) => pb.seek(Number(e.target.value))}
             aria-label="シーク"
             // a11y を守るため div 化せず range 入力のまま .progress-track 風に装飾
             className="progress-track seek-slider"
@@ -149,15 +155,15 @@ export function AudioPlayerBar() {
             // currentTime が duration を超える保存値ズレにも 0〜100 で clamp する。
             style={{
               '--seek-fill': (() => {
-                const dur = player.duration
+                const dur = duration
                 if (!dur || !isFinite(dur) || dur <= 0) return '0%'
-                const pct = Math.min(100, Math.max(0, (player.currentTime / dur) * 100))
+                const pct = Math.min(100, Math.max(0, (playback.position / dur) * 100))
                 return `${pct}%`
               })(),
             } as React.CSSProperties}
           />
           <span className="progress-time end">
-            {formatDuration(player.duration || currentPodcast.duration_seconds)}
+            {formatDuration(duration)}
           </span>
         </div>
       </div>
@@ -173,22 +179,22 @@ export function AudioPlayerBar() {
           aria-expanded={showQueue}
           title="プレイリスト"
         >
-          ☰{player.upNext.length > 0 ? ` ${player.upNext.length}` : ''}
+          ☰{queue.upNext.length > 0 ? ` ${queue.upNext.length}` : ''}
         </button>
         {showQueue && (
           <div className="queue-panel" role="region" aria-label="プレイリスト">
-            {player.upNext.length === 0 ? (
+            {queue.upNext.length === 0 ? (
               <p className="queue-empty">再生待ちはありません</p>
             ) : (
               <ol className="queue-list">
-                {player.upNext.map((p, i) => (
+                {queue.upNext.map((p, i) => (
                   <li key={p.id} className="queue-item">
-                    <span className="queue-item-title">{podcastTitle(p, 40)}</span>
+                    <span className="queue-item-title">{p.title}</span>
                     <span className="queue-item-actions">
                       <button
                         type="button"
                         className="ctrl-btn"
-                        onClick={() => player.reorderQueue(i, i - 1)}
+                        onClick={() => pb.reorder(i, i - 1)}
                         disabled={i === 0}
                         aria-label="上へ"
                       >
@@ -198,8 +204,8 @@ export function AudioPlayerBar() {
                       <button
                         type="button"
                         className="ctrl-btn"
-                        onClick={() => player.reorderQueue(i, i + 2)}
-                        disabled={i === player.upNext.length - 1}
+                        onClick={() => pb.reorder(i, i + 2)}
+                        disabled={i === queue.upNext.length - 1}
                         aria-label="下へ"
                       >
                         ↓
@@ -207,7 +213,7 @@ export function AudioPlayerBar() {
                       <button
                         type="button"
                         className="ctrl-btn"
-                        onClick={() => player.removeFromQueue(p.id)}
+                        onClick={() => pb.removeFromQueue(p.id)}
                         aria-label="キューから削除"
                       >
                         ✕
@@ -224,8 +230,8 @@ export function AudioPlayerBar() {
           type="range"
           min={0}
           max={100}
-          value={Math.round(player.volume * 100)}
-          onChange={(e) => player.setVolume(Number(e.target.value) / 100)}
+          value={Math.round(pb.volume * 100)}
+          onChange={(e) => pb.setVolume(Number(e.target.value) / 100)}
           aria-label="音量"
           className="volume-slider"
         />
@@ -233,10 +239,11 @@ export function AudioPlayerBar() {
         <select
           aria-label="速度"
           className="speed-pill"
-          value={state.playbackSpeed}
+          value={playback.speed}
           onChange={(e) => {
-            // Dispatch to AppContext; the useEffect above syncs state.playbackSpeed → player.setSpeed()
-            dispatch({ type: 'SET_SPEED', speed: Number(e.target.value) })
+            // この回の速度だけを変える。既定速度（設定）は書き換えない。
+            const speed = Number(e.target.value)
+            if (isPlaybackSpeed(speed)) pb.setSpeed(speed)
           }}
         >
           {PLAYBACK_SPEEDS.map((s) => (

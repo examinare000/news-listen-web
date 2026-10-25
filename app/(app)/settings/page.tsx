@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useApp } from '@/contexts/AppContext'
 import { useStreak } from '@/contexts/StreakContext'
-import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
+import { usePlayback } from '@/contexts/PlaybackProvider'
+import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
 import { createApiClient, ApiError } from '@/lib/api'
@@ -14,7 +15,7 @@ import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { DEFAULT_DIFFICULTY } from '@/types/index'
 import type { DifficultyLevel, GenerationQuota, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
-import { listCachedEpisodes, estimateUsage, deleteAudio, deleteAllAudio, type CachedEpisodeMeta, type StorageEstimate } from '@/lib/audioCache'
+import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 
 type TimeFormat = 'absolute' | 'relative'
 
@@ -118,26 +119,27 @@ export default function SettingsPage() {
   }
 
   // issue #167: オフラインキャッシュ（ダウンロード済みエピソード）の一覧・使用量・削除。
-  const [cachedEpisodes, setCachedEpisodes] = useState<CachedEpisodeMeta[]>([])
-  const [usage, setUsage] = useState<StorageEstimate | null>(null)
+  const { offline } = usePlayback()
+  const [cachedEpisodes, setCachedEpisodes] = useState<ReadonlyArray<OfflineEpisodeView>>([])
+  const [usage, setUsage] = useState<StorageUsageView | null>(null)
 
   const loadOfflineCache = useCallback(async () => {
-    const [episodes, estimate] = await Promise.all([listCachedEpisodes(), estimateUsage()])
+    const [episodes, estimate] = await Promise.all([offline.list(), offline.usage()])
     setCachedEpisodes(episodes)
     setUsage(estimate)
-  }, [])
+  }, [offline])
 
   useEffect(() => {
     void loadOfflineCache()
   }, [loadOfflineCache])
 
   async function handleDeleteCachedEpisode(id: string) {
-    await deleteAudio(id)
+    await offline.remove(id)
     await loadOfflineCache()
   }
 
   async function handleDeleteAllCachedEpisodes() {
-    await deleteAllAudio()
+    await offline.clear()
     await loadOfflineCache()
   }
 
@@ -479,16 +481,16 @@ export default function SettingsPage() {
           ) : (
             <>
               {cachedEpisodes.map((ep) => (
-                <div className="settings-row" key={ep.id} data-testid={`offline-cache-item-${ep.id}`}>
+                <div className="settings-row" key={ep.episodeId} data-testid={`offline-cache-item-${ep.episodeId}`}>
                   <div>
                     <div className="settings-row-label">{ep.title}</div>
-                    <div className="settings-row-desc">{formatDuration(ep.duration_seconds)}</div>
+                    <div className="settings-row-desc">{formatDuration(ep.durationSeconds)}</div>
                   </div>
                   <button
                     type="button"
                     className="btn btn-ghost"
                     aria-label="削除"
-                    onClick={() => void handleDeleteCachedEpisode(ep.id)}
+                    onClick={() => void handleDeleteCachedEpisode(ep.episodeId)}
                   >
                     削除
                   </button>

@@ -3,7 +3,7 @@
  * デザイン正本からの意図的な差分（docs/adr/003-web-pure-css-design-tokens.md）:
  *   1. font-family リテラル → next/font が注入する CSS 変数（--font-display / --font-body / --font-mono）
  *   2. .app-shell の grid-template-rows: 1fr var(--player-h) → 1fr auto
- *      WHY: プレイヤーバーは currentPodcast が null の間描画されないため、固定高だと空行が残る
+ *      WHY: プレイヤーバーは 再生中のエピソード（nowPlaying）が null の間描画されないため、固定高だと空行が残る
  *   3. .player-bar に height: var(--player-h) を追加（2 の変更後も描画時の高さを担保するため）
  *   4. UX brief（2026-07-29）に従い accent を #A8402E、Star を #C8902E へ調停
  *   5. ADR-088 に従い全アニメーションへ prefers-reduced-motion の静的表示を追加

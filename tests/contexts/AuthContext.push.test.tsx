@@ -24,10 +24,10 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-const { deleteAllAudio } = vi.hoisted(() => ({
-  deleteAllAudio: vi.fn().mockResolvedValue(undefined),
+const { clearOfflineAudio } = vi.hoisted(() => ({
+  clearOfflineAudio: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/audioCache', () => ({ deleteAllAudio }))
+vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ clearOfflineAudio }))
 
 const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
   clearManagedServiceWorkerCaches: vi.fn().mockResolvedValue(undefined),
@@ -95,7 +95,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   fakePortHolder.port = null
   logout.mockResolvedValue({ status: 'ok' })
-  deleteAllAudio.mockResolvedValue(undefined)
+  clearOfflineAudio.mockResolvedValue(undefined)
   clearManagedServiceWorkerCaches.mockResolvedValue(undefined)
 })
 
@@ -140,7 +140,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     expect(unsubscribePush).toHaveBeenCalledTimes(1)
     expect(unsubscribePush.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
     expect(logout).toHaveBeenCalledTimes(1)
-    expect(deleteAllAudio).toHaveBeenCalledTimes(1)
+    expect(clearOfflineAudio).toHaveBeenCalledTimes(1)
     expect(clearManagedServiceWorkerCaches).toHaveBeenCalledTimes(1)
     expect(isSupported).toHaveBeenCalledTimes(1)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)

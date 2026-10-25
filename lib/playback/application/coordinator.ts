@@ -137,6 +137,24 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
   function begin(episode: PlayableEpisode): void {
     const candidate = episode.serverPositionSeconds > 0 ? episode.serverPositionSeconds : (localPositions.read(episode.id) ?? 0)
     session.start(episode, resolveResumePosition(candidate, episode.durationSeconds), defaultSpeed())
+    playWhenLoaded(episode.id)
+  }
+
+  // 開始した回が loading から paused に移ったとき 1 回だけ play する。domain は loadedmetadata で paused に止まる。
+  // loading の間は待ち続け（loading 中の setSpeed は loading のまま）、それ以外で loading を出たら購読を解く。
+  // 利用者の pause や置き換え・失敗・停止で終わった回では play しない。
+  function playWhenLoaded(id: string): void {
+    const started = session.state()
+    if (started.status !== 'loading' || started.episode.id !== id) return
+    let done = false
+    const unsubscribe = session.subscribe((event) => {
+      if (done || event.type !== 'stateChanged') return
+      const state = event.state
+      if (state.status === 'loading' && state.episode.id === id) return
+      done = true
+      unsubscribe()
+      if (state.status === 'paused' && state.episode.id === id) void session.play()
+    })
   }
 
   // キューを整えてから開始する。キューにあればその要素を現在にし、無ければ現在の次に挿入する。

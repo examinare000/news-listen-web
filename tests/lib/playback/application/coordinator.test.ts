@@ -74,7 +74,8 @@ function createWorld(options: { readonly online?: boolean } = {}) {
   const fail = vi.fn((ref: Parameters<PlaybackSession['fail']>[0], reason: Parameters<PlaybackSession['fail']>[1]): void => {
     real.fail(ref, reason)
   })
-  const session: PlaybackSession = { ...real, start, fail }
+  const play = vi.fn((): Promise<void> => real.play())
+  const session: PlaybackSession = { ...real, start, fail, play }
 
   const env = { online: options.online ?? true, speed: 1.0 as PlaybackSpeed }
   const saved = new Set<string>()
@@ -154,6 +155,7 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     positions,
     start,
     fail,
+    play,
     fetch,
     has,
     get,
@@ -172,8 +174,8 @@ function createWorld(options: { readonly online?: boolean } = {}) {
 type World = ReturnType<typeof createWorld>
 
 async function beginPlayback(w: World): Promise<void> {
+  // 再生への移行は Coordinator が行う（手で play() を呼ばない）。
   w.audio.fireLoadedMetadata(100)
-  await w.session.play()
   await settle()
 }
 
@@ -1071,5 +1073,187 @@ describe('query と subscribe', () => {
     w.audio.fireTimeUpdate(6)
     expect(listener).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 開始の後の再生 (web-dec-40): 開始した回が paused に移ったら Coordinator が play() を 1 回呼ぶ
+// ---------------------------------------------------------------------------
+
+describe('開始の後の自動再生', () => {
+  const routes: ReadonlyArray<readonly [string, (w: World) => Promise<void>]> = [
+    ['startEpisode', async (w) => void (await w.coordinator.startEpisode('a'))],
+    ['addToQueue (空のキュー)', async (w) => void (await w.coordinator.addToQueue(entry('a')))],
+    ['playNext (空のキュー)', async (w) => void (await w.coordinator.playNext(entry('a')))],
+    [
+      'skipToNext',
+      async (w) => {
+        await playingWithQueue(w, 'z', 'a')
+        w.play.mockClear()
+        await w.coordinator.skipToNext()
+      },
+    ],
+    [
+      '自動の次へ送り',
+      async (w) => {
+        await playingWithQueue(w, 'z', 'a')
+        w.play.mockClear()
+        await endPlayback(w)
+      },
+    ],
+    [
+      'retry',
+      async (w) => {
+        await playingWithQueue(w, 'z', 'a')
+        w.fetchFailures.add('a')
+        await endPlayback(w)
+        expect(stateOf(w)).toEqual({ status: 'errored', id: 'a' })
+        w.fetchFailures.delete('a')
+        w.play.mockClear()
+        await w.coordinator.retry()
+      },
+    ],
+  ]
+
+  test.each(routes)(
+    '%s のどの経路でも、loadedmetadata の後に play が 1 回呼ばれて playing になる。テストは手で play() を呼ばない (verifies: CI-P4-01; web-dec-40, T-P4-01)',
+    async (_name, start) => {
+      const w = createWorld()
+      await start(w)
+      expect(stateOf(w).status).toBe('loading')
+
+      w.audio.fireLoadedMetadata(100)
+      await settle()
+
+      expect(w.play).toHaveBeenCalledTimes(1)
+      expect(stateOf(w)).toEqual({ status: 'playing', id: 'a' })
+      await expectSharedInvariant(w)
+    },
+  )
+
+  test('一度 playing になった回で利用者が pause・seek しても、Coordinator は play を呼ばず paused のまま (verifies: CI-P4-02; web-dec-40, T-P4-02)', async () => {
+    const w = createWorld()
+    await startPlaying(w, 'a')
+    expect(stateOf(w).status).toBe('playing')
+    expect(w.play).toHaveBeenCalledTimes(1)
+
+    w.session.pause()
+    w.session.seek(10)
+    await settle()
+
+    expect(w.play).toHaveBeenCalledTimes(1)
+    expect(stateOf(w)).toEqual({ status: 'paused', id: 'a' })
+    await expectSharedInvariant(w)
+  })
+
+  test('置き換えられた開始では play を呼ばず、新しい開始だけが loadedmetadata の後に 1 回呼ぶ (verifies: CI-P4-03; web-dec-40, T-P4-03)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+    expect(await w.coordinator.startEpisode('b')).toEqual({ ok: true })
+    expect(w.play).not.toHaveBeenCalled()
+
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(w.play).toHaveBeenCalledTimes(1)
+    expect(stateOf(w)).toEqual({ status: 'playing', id: 'b' })
+    await expectSharedInvariant(w)
+  })
+
+  test('loading が音声の error で errored になった開始では play を呼ばない (verifies: CI-P4-03; web-dec-40, T-P4-03)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.audio.fireError()
+    await settle()
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(w.play).not.toHaveBeenCalled()
+    expect(stateOf(w)).toEqual({ status: 'errored', id: 'a' })
+    const state = w.session.state()
+    expect(state.status === 'errored' && state.reason.kind).toBe('media')
+  })
+
+  test('loading の間に stop (idle) になった開始では、その後の loadedmetadata でも play を呼ばない (verifies: CI-P4-03; web-dec-40, T-P4-03)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.session.stop()
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(w.play).not.toHaveBeenCalled()
+    expect(stateOf(w)).toEqual({ status: 'idle', id: null })
+  })
+
+  test('loading の間に fail (errored) になった開始では play を呼ばない (verifies: CI-P4-03; web-dec-40, T-P4-03)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.session.fail({ id: 'a' }, { kind: 'source_unavailable' })
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(w.play).not.toHaveBeenCalled()
+    expect(stateOf(w)).toEqual({ status: 'errored', id: 'a' })
+  })
+
+  test('loading 中の setSpeed (loading → loading) では待ちが解けず、loadedmetadata で play が 1 回呼ばれ、速度は setSpeed の値 (verifies: CI-P4-04; web-dec-40, T-P4-04)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.session.setSpeed(1.5)
+    expect(stateOf(w).status).toBe('loading')
+    expect(w.play).not.toHaveBeenCalled()
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(w.play).toHaveBeenCalledTimes(1)
+    expect(stateOf(w)).toEqual({ status: 'playing', id: 'a' })
+    expect(w.coordinator.playbackView().speed).toBe(1.5)
+  })
+
+  test.each([
+    { name: 'NotAllowedError', rejection: new DOMException('', 'NotAllowedError'), kind: 'autoplay_blocked' },
+    { name: 'それ以外の Error', rejection: new Error('x'), kind: 'media' },
+  ])('play() が $name で reject されると reason は $kind になり、failure は media・主操作は retry で、fail は呼ばない (verifies: CI-P4-05; web-dec-41, T-P4-05)', async ({ rejection, kind }) => {
+    const w = createWorld()
+    vi.spyOn(w.audio, 'play').mockRejectedValueOnce(rejection)
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    const state = w.session.state()
+    expect(state.status).toBe('errored')
+    expect(state.status === 'errored' && state.reason.kind).toBe(kind)
+    expect(w.coordinator.playbackView()).toMatchObject({ failure: 'media', primaryAction: 'retry' })
+    expect(w.fail).not.toHaveBeenCalled()
+  })
+
+  test('自動で再生に進めても位置の送信は増えない (verifies: CI-P4-06; shared-session-05, T-P4-06)', async () => {
+    const w = createWorld()
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(stateOf(w).status).toBe('playing')
+    expect(w.updatePosition).not.toHaveBeenCalled()
+  })
+
+  test('loadedmetadata から入れ子で通知されるとき、Coordinator の購読者が最後に読む playbackView().status は playing (verifies: CI-P4-07; web-dec-40, T-P4-07)', async () => {
+    const w = createWorld()
+    const observed: string[] = []
+    w.coordinator.subscribe(() => {
+      observed.push(w.coordinator.playbackView().status)
+    })
+    expect(await w.coordinator.startEpisode('a')).toEqual({ ok: true })
+
+    w.audio.fireLoadedMetadata(100)
+    await settle()
+
+    expect(observed.at(-1)).toBe('playing')
   })
 })

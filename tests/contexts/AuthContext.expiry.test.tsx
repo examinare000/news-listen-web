@@ -8,7 +8,7 @@ import { setupMockCaches } from '../helpers/mockCaches'
 
 // web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
 // 消す。audio-v1 は失効経路では消さない（棄却済み: 主体付き key・SW 一元化）。
-// C4: 既存 tests/contexts/AuthContext.test.tsx は @/lib/swCacheCleanup・@/lib/audioCache を
+// C4: 既存 tests/contexts/AuthContext.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api のみ
 // createApiClient を差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
 const getMe = vi.fn()

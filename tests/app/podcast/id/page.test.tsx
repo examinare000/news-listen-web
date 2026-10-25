@@ -4,13 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import PodcastDetailPage from '@/app/(app)/podcast/[id]/page'
 import { AppProvider } from '@/contexts/AppContext'
-import { ApiClientProvider } from '@/contexts/ApiClientProvider'
-import { AudioPlayerProvider } from '@/contexts/AudioPlayerContext'
 import { ToastProvider } from '@/components/ui/Toast'
-import type { MockAudio } from '../../../helpers/mockAudio'
-import { setupMockAudio } from '../../../helpers/mockAudio'
-import { createGatewayDouble } from '../../../helpers/gatewayDouble'
-import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 
 const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx: vi.fn() }))
 
@@ -28,18 +22,19 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-// issue #167: オフライン保存ボタン用。既定は「未キャッシュ」に倒す。
-// WHY the mock also stubs getCachedAudioUrl/getCachedPodcast (unused by this test file's
-// assertions): AudioPlayerContext imports them from the same module, and a partial mock
-// would leave them undefined — breaking the (real, unmocked) play flow these tests exercise.
-const { isCached, downloadAudio, getCachedAudioUrl, getCachedPodcast } = vi.hoisted(() => ({
-  isCached: vi.fn().mockResolvedValue(false),
-  downloadAudio: vi.fn().mockResolvedValue(undefined),
-  getCachedAudioUrl: vi.fn().mockResolvedValue(null),
-  getCachedPodcast: vi.fn().mockResolvedValue(null),
+// ページは usePlayback() / usePlaybackActions() の公開面だけを使う。再生の振る舞いは PlaybackProvider.*.test.tsx が持つので、
+// ここでは「どの操作がどの引数で委譲されるか」と「保存の表示」を double で固定する。
+const double = vi.hoisted(() => ({
+  pb: {},
+  actions: {},
 }))
 
-vi.mock('@/lib/audioCache', () => ({ isCached, downloadAudio, getCachedAudioUrl, getCachedPodcast }))
+vi.mock('@/contexts/PlaybackProvider', () => ({ usePlayback: () => double.pb }))
+vi.mock('@/components/PlaybackToasts', () => ({ usePlaybackActions: () => double.actions }))
+
+const has = vi.fn<(id: string) => Promise<boolean>>()
+const save = vi.fn<(id: string) => Promise<unknown>>()
+const startEpisode = vi.fn()
 
 const SAMPLE_PODCAST = {
   id: 'p1',
@@ -55,29 +50,22 @@ const SAMPLE_PODCAST = {
   playback_position_seconds: 0,
 }
 
-let mockAudio: MockAudio
-let gateway: GatewayDouble
-
 beforeEach(() => {
   vi.clearAllMocks()
-  // WHY reset here (not rely on vi.clearAllMocks): clearAllMocks wipes call history but
-  // keeps whatever resolved value a previous test's mockResolvedValue() left behind.
-  isCached.mockResolvedValue(false)
-  downloadAudio.mockResolvedValue(undefined)
   localStorage.clear()
-  mockAudio = setupMockAudio()
-  gateway = createGatewayDouble()
+  // 既定は「未保存」に倒す。
+  has.mockResolvedValue(false)
+  save.mockResolvedValue({ ok: true, value: undefined })
+  startEpisode.mockResolvedValue({ ok: true })
+  double.pb = { offline: { has, save } }
+  double.actions = { startEpisode }
 })
 
 function renderDetailPage(params = { id: 'p1' }) {
   return render(
     <AppProvider>
       <ToastProvider>
-        <ApiClientProvider gateway={gateway}>
-          <AudioPlayerProvider>
-            <PodcastDetailPage params={Promise.resolve(params)} />
-          </AudioPlayerProvider>
-        </ApiClientProvider>
+        <PodcastDetailPage params={Promise.resolve(params)} />
       </ToastProvider>
     </AppProvider>
   )
@@ -174,58 +162,25 @@ describe('PodcastDetailPage — normal', () => {
 })
 
 // ==========================================================
-// Podcast 詳細 — 再生フロー (spec §9 L151 / §10.3 L209)
+// Podcast 詳細 — 再生（取り直し・位置の復元は usePlaybackActions().startEpisode と Coordinator の責務）
 // ==========================================================
-describe('PodcastDetailPage — play flow', () => {
-  test('handlePlay re-fetches fresh podcast via gateway GET podcasts/{id} (spec §9 L151: signed-URL must not be reused)', async () => {
+describe('PodcastDetailPage — play', () => {
+  test('再生ボタンは usePlaybackActions().startEpisode(id) を呼ぶ (verifies: CI-P4-31)', async () => {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
       getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
     } as unknown as ReturnType<typeof createApiClient>)
-    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCAST.id}`, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
-
-    // Wait for initial page load (page 自身の getPodcast() 呼出)
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
-    })
-
-    // Click play — AudioPlayerContext が gateway 経由で署名付き URL を取り直す
-    await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
-
-    await waitFor(() => {
-      expect(gateway.calls).toContainEqual({
-        method: 'GET',
-        path: `/api/backend/podcasts/${SAMPLE_PODCAST.id}`,
-        body: undefined,
-      })
-    })
-  })
-
-  test('handlePlay restores saved playback position from localStorage (spec §10.3 L201)', async () => {
-    localStorage.setItem('podcast_position:p1', JSON.stringify(90))
-
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
-    gateway.respond('GET', `/api/backend/podcasts/${SAMPLE_PODCAST.id}`, { ok: true, value: SAMPLE_PODCAST })
-
-    renderDetailPage()
-
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /再生|play/i })).toBeInTheDocument()
     })
 
     await userEvent.click(screen.getByRole('button', { name: /再生|play/i }))
 
-    // Audio currentTime should reflect saved position 90, not 0
-    await waitFor(() => {
-      expect(mockAudio.currentTime).toBe(90)
-    })
+    expect(startEpisode).toHaveBeenCalledTimes(1)
+    expect(startEpisode).toHaveBeenCalledWith('p1')
   })
 })
 
@@ -682,63 +637,58 @@ describe('PodcastDetailPage — 404', () => {
 // Podcast 詳細 — オフライン保存（issue #167）
 // ==========================================================
 describe('PodcastDetailPage — offline download (issue #167)', () => {
-  test('shows an オフライン保存 button once the episode is loaded (not yet cached)', async () => {
+  async function loadSample() {
     const { createApiClient } = await import('@/lib/api')
     vi.mocked(createApiClient).mockReturnValue({
       getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
       getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
     } as unknown as ReturnType<typeof createApiClient>)
+  }
+
+  test('shows an オフライン保存 button once the episode is loaded (not yet saved)', async () => {
+    await loadSample()
 
     renderDetailPage()
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
     })
+    expect(has).toHaveBeenCalledWith('p1')
   })
 
-  test('clicking it downloads the audio and switches to a "保存済み" state', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
-
+  test('保存に成功すると offline.save(id) を呼び、「保存済み」に切り替える (verifies: CI-P4-31)', async () => {
+    await loadSample()
     renderDetailPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
     await userEvent.click(screen.getByRole('button', { name: 'オフライン保存' }))
 
-    expect(downloadAudio).toHaveBeenCalledWith('p1', expect.any(Function))
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save).toHaveBeenCalledWith('p1')
     await waitFor(() => {
       expect(screen.getByText('保存済み')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'オフライン保存' })).not.toBeInTheDocument()
     })
   })
 
-  test('shows "保存済み" immediately when the episode is already cached (no re-download)', async () => {
-    isCached.mockResolvedValue(true)
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+  test('offline.has が true なら最初から「保存済み」で、再保存しない (verifies: CI-P4-31)', async () => {
+    has.mockResolvedValue(true)
+    await loadSample()
 
     renderDetailPage()
 
     await waitFor(() => {
       expect(screen.getByText('保存済み')).toBeInTheDocument()
     })
-    expect(downloadAudio).not.toHaveBeenCalled()
+    expect(save).not.toHaveBeenCalled()
   })
 
-  test('given the download fails, shows an error toast and keeps the button retryable', async () => {
-    downloadAudio.mockRejectedValueOnce(new Error('network error'))
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
-
+  test.each([
+    ['{ ok: false } を返す', () => save.mockResolvedValue({ ok: false, failure: { kind: 'storage_full' } })],
+    ['reject する', () => save.mockRejectedValue(new Error('network error'))],
+  ])('保存が %s と、エラー toast を出し、再試行できるまま (verifies: CI-P4-31)', async (_name, arrange) => {
+    arrange()
+    await loadSample()
     renderDetailPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
@@ -748,7 +698,19 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/オフライン保存に失敗しました/)
     })
     // 失敗時は保存済みにならず、再試行できる
+    expect(screen.queryByText('保存済み')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+  })
+
+  test('offline.has が reject しても、保存ボタンは表示され続ける (verifies: CI-P4-31)', async () => {
+    has.mockRejectedValue(new Error('cache open failed'))
+    await loadSample()
+
+    renderDetailPage()
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+    })
   })
 })
 
