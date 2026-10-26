@@ -6,7 +6,6 @@ import SettingsPage from '@/app/(app)/settings/page'
 import { AppProvider, useApp } from '@/contexts/AppContext'
 import { StreakProvider } from '@/contexts/StreakContext'
 import { ToastProvider } from '@/components/ui/Toast'
-import { PLAYBACK_SPEEDS } from '@/hooks/useAudioPlayer'
 import type { createApiClient } from '@/lib/api'
 import type { UserPreferences, UserPreferencesPatch } from '@/types/index'
 
@@ -389,7 +388,7 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
     const options = within(speedSelect).getAllByRole('option')
-    expect(options.map((o) => o.getAttribute('value'))).toEqual(PLAYBACK_SPEEDS.map(String))
+    expect(options.map((o) => o.getAttribute('value'))).toEqual(['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2', '2.5'])
     // デザインの連続値スライダーは採用しない
     expect(document.querySelector('input[type="range"]')).not.toBeInTheDocument()
   })

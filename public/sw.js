@@ -2,7 +2,7 @@
  * Service Worker: Web Push 通知 + PWA オフラインキャッシュ（issue #167）。
  *
  * 設計方針: 薄く保つ。
- * ロジックはクライアント側（hooks/useWebPushSubscription.ts, lib/audioCache.ts）に寄せており、
+ * ロジックはクライアント側（hooks/useWebPushSubscription.ts, lib/playback/infrastructure/offlineLibrary.ts）に寄せており、
  * Service Worker は Push イベントの受信・通知表示と、shell/API のキャッシュ戦略配線のみを担当する。
  */
 
@@ -15,7 +15,7 @@ const CURRENT_CACHES = new Set([STATIC_CACHE, PAGES_CACHE, API_CACHE])
 
 // review指摘1: 世代交代の削除対象は SW が管理する「shell-」「api-」名前空間のみに限定する。
 // 「CURRENT_CACHES に無い名前を無差別に消す」実装だと、SW とは無関係な audio-v1
-// （lib/audioCache.ts が単独管理するオフライン音声キャッシュ）まで SW_VERSION 更新のたびに
+// （lib/playback/infrastructure/offlineLibrary.ts が単独管理するオフライン音声キャッシュ）まで SW_VERSION 更新のたびに
 // 消えてしまう。prefix ホワイトリストにすることで audio- 名前空間を構造的に保護する。
 // lib/swCacheCleanup.ts 側にも同じ 'shell-' / 'api-' prefix が重複定義されている
 // （sw.js はクラシックスクリプトのため import できない）。変更する際は両方を揃えること。
@@ -67,7 +67,7 @@ self.addEventListener('fetch', (event) => {
   // クロスオリジン（署名付き音声 URL 等）は SW では扱わず素通し。
   if (url.origin !== self.location.origin) return
 
-  // オフライン再生用の音声/メタデータは lib/audioCache.ts が Cache Storage を単独管理する。
+  // オフライン再生用の音声/メタデータは lib/playback/infrastructure/offlineLibrary.ts が Cache Storage を単独管理する。
   // SW が横取りすると二重管理になるため素通しする。
   if (url.pathname.startsWith('/_audio/') || url.pathname.startsWith('/_audio-meta/')) return
 

@@ -9,7 +9,7 @@ const mockUnsubscribePush = vi.fn().mockResolvedValue({})
 
 vi.mock('@/contexts/AppContext', () => ({
   useApp: vi.fn(() => ({
-    state: { baseUrl: 'https://api.example.com', apiKey: 'test-key', isConfigured: true, isRestoring: false, currentPodcast: null, playbackSpeed: 1.0 },
+    state: { baseUrl: 'https://api.example.com', apiKey: 'test-key', isConfigured: true, isRestoring: false, playbackSpeed: 1.0 },
     dispatch: vi.fn(),
     configure: vi.fn(),
   })),

@@ -1,7 +1,6 @@
 'use client'
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react'
-import type { Podcast } from '@/types/index'
 import { KEY_DEFAULT_PLAYBACK_SPEED, KEY_TIME_FORMAT } from '@/lib/config'
 
 // ---------------------------------------------------------------------------
@@ -11,17 +10,15 @@ import { KEY_DEFAULT_PLAYBACK_SPEED, KEY_TIME_FORMAT } from '@/lib/config'
 export interface AppState {
   /** True until the localStorage restore effect has completed (prevents flash of UI). */
   isRestoring: boolean
-  currentPodcast: Podcast | null
   playbackSpeed: number
   /** Time format for article dates: 'absolute' (M/D HH:MM) or 'relative' (3時間前) */
   timeFormat: 'absolute' | 'relative'
-  // NOTE: volume is intentionally NOT here — managed by useAudioPlayer (spec §9)
-  // NOTE: isPlaying/currentTime/duration are intentionally NOT here — managed by useAudioPlayer (single source of truth)
+  // NOTE: volume is intentionally NOT here — managed by PlaybackProvider (spec §9)
+  // NOTE: isPlaying/currentTime/duration are intentionally NOT here — managed by PlaybackProvider (single source of truth)
 }
 
 const DEFAULT_STATE: AppState = {
   isRestoring: true,
-  currentPodcast: null,
   playbackSpeed: 1.0,
   timeFormat: 'absolute',
 }
@@ -32,7 +29,6 @@ const DEFAULT_STATE: AppState = {
 
 type Action =
   | { type: 'RESTORE_DONE' }
-  | { type: 'SET_PODCAST'; podcast: Podcast }
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'SET_TIME_FORMAT'; timeFormat: 'absolute' | 'relative' }
 
@@ -40,8 +36,6 @@ function reducer(state: AppState, action: Action): AppState {
   switch (action.type) {
     case 'RESTORE_DONE':
       return { ...state, isRestoring: false }
-    case 'SET_PODCAST':
-      return { ...state, currentPodcast: action.podcast }
     case 'SET_SPEED':
       return { ...state, playbackSpeed: action.speed }
     case 'SET_TIME_FORMAT':

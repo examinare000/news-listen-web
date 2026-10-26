@@ -9,7 +9,7 @@ import type { Result } from '@/lib/api/gateway'
  * WHY string keys only (Request を生成しない): 本物の `Cache.put(url, res)` は文字列を
  * 受け取れる（内部で URL 解決される）。`new Request('/relative/path')` は Node の undici 実装だと
  * base URL 無しで相対パスを解決できず例外になるため、キーは常に文字列で扱い、
- * audioCache.ts 側も `new Request()` を使わず文字列をそのまま渡す設計にしている。
+ * offlineLibrary.ts 側も `new Request()` を使わず文字列をそのまま渡す設計にしている。
  */
 export class MockCache {
   private store: Map<string, Response> = new Map()

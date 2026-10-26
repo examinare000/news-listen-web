@@ -9,7 +9,7 @@ interface PodcastCardProps {
   podcast: Podcast
   onPlay: (podcast: Podcast) => void
   savedPosition?: number
-  // 再生中判定は親ページの責務（currentPodcast?.id === podcast.id）。
+  // 再生中判定は親ページの責務（nowPlaying()?.episodeId === podcast.id）。
   // WHY: Context 非依存の純粋コンポーネントに保ちテストを軽くする（ArticleCard と同方針）
   playing?: boolean
   // 連続再生の導線（issue #81）。親ページがキュー操作を注入する（未指定なら非表示）。
