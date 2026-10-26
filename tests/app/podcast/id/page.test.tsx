@@ -653,7 +653,8 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
     })
-    expect(has).toHaveBeenCalledWith('p1')
+    // offline.has は podcast 確定後の passive effect で呼ばれるため、ボタンの出現より遅れうる
+    await waitFor(() => expect(has).toHaveBeenCalledWith('p1'))
   })
 
   test('保存に成功すると offline.save(id) を呼び、「保存済み」に切り替える (verifies: CI-P4-31)', async () => {
