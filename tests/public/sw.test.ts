@@ -83,7 +83,7 @@ describe('public/sw.js', () => {
       await expect(caches.has('shell-static-v1')).resolves.toBe(true)
     })
 
-    // review指摘1（must-fix）: audio-v1 は lib/audioCache.ts が単独管理する別名前空間であり、
+    // review指摘1（must-fix）: audio-v1 は lib/playback/infrastructure/offlineLibrary.ts が単独管理する別名前空間であり、
     // shell/api の世代交代（SW_VERSION 更新）の対象外でなければならない。
     // CURRENT_CACHES に無い名前を無差別に消す実装だと、SW_VERSION を上げた瞬間に
     // ダウンロード済みオフライン音声が丸ごと消えてしまう。
@@ -214,7 +214,7 @@ describe('public/sw.js', () => {
       expect(respondWith).not.toHaveBeenCalled()
     })
 
-    test('/_audio/ and /_audio-meta/ requests are left untouched (owned by lib/audioCache.ts)', async () => {
+    test('/_audio/ and /_audio-meta/ requests are left untouched (owned by lib/playback/infrastructure/offlineLibrary.ts)', async () => {
       await loadSw(fakeSelf)
       const respondWith = vi.fn()
 

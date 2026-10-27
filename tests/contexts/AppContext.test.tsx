@@ -2,7 +2,6 @@ import { describe, test, expect, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import React from 'react'
 import { AppProvider, useApp } from '@/contexts/AppContext'
-import type { Podcast } from '@/types/index'
 
 beforeEach(() => {
   localStorage.clear()
@@ -11,30 +10,6 @@ beforeEach(() => {
 function wrapper({ children }: { children: React.ReactNode }) {
   return <AppProvider>{children}</AppProvider>
 }
-
-const SAMPLE_PODCAST: Podcast = {
-  id: 'p1',
-  type: 'single',
-  article_ids: ['a1'],
-  difficulty: 'toeic_900',
-  audio_url: 'https://storage.example.com/audio.mp3',
-  japanese_intro_text: 'これはテストです',
-  duration_seconds: 300,
-  created_at: '2026-06-10T00:00:00+00:00',
-  status: 'completed',
-  error_message: null,
-  playback_position_seconds: 0,
-}
-
-// ==========================================================
-// 初期状態
-// ==========================================================
-describe('Initial state', () => {
-  test('currentPodcast is null initially', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-    expect(result.current.state.currentPodcast).toBeNull()
-  })
-})
 
 // ==========================================================
 // useApp() — Provider 外で呼ぶと throw
@@ -59,21 +34,6 @@ describe('localStorage restore on mount', () => {
 
     // RESTORE_DONE clears isRestoring
     expect(result.current.state.isRestoring).toBe(false)
-  })
-})
-
-// ==========================================================
-// Reducer actions — 再生状態
-// ==========================================================
-describe('SET_PODCAST action', () => {
-  test('sets currentPodcast when SET_PODCAST is dispatched', () => {
-    const { result } = renderHook(() => useApp(), { wrapper })
-
-    act(() => {
-      result.current.dispatch({ type: 'SET_PODCAST', podcast: SAMPLE_PODCAST })
-    })
-
-    expect(result.current.state.currentPodcast).toEqual(SAMPLE_PODCAST)
   })
 })
 

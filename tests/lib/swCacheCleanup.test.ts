@@ -43,9 +43,9 @@ describe('lib/swCacheCleanup', () => {
     await expect(caches.has('shell-pages-v2')).resolves.toBe(false)
   })
 
-  // audio-v1 は lib/audioCache.ts が単独管理する別名前空間。deleteAllAudio() の責務であり、
+  // audio-v1 は lib/playback/infrastructure/offlineLibrary.ts が単独管理する別名前空間。clearOfflineAudio() の責務であり、
   // このヘルパーが誤って触れてはならない（sw.js の activate 保護と同じ意図）。
-  test('does not touch the audio-v1 cache (owned by lib/audioCache.ts)', async () => {
+  test('does not touch the audio-v1 cache (owned by lib/playback/infrastructure/offlineLibrary.ts)', async () => {
     await caches.open('audio-v1')
 
     await clearManagedServiceWorkerCaches()

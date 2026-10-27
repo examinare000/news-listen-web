@@ -32,14 +32,10 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/playback/session.test.ts',
   'tests/lib/playback/source.test.ts',
   'tests/lib/playback/transition.test.ts',
-  'tests/lib/playbackPosition.test.ts',
-  'tests/lib/playbackQueue.conformance.test.ts',
-  'tests/lib/playbackQueue.test.ts',
   'tests/lib/podcastPolling.test.ts',
   'tests/lib/podcastTitle.test.ts',
   'tests/lib/push/pushRegistration.test.ts',
   'tests/lib/relativeTime.conformance.test.ts',
-  'tests/lib/resolvePlayback.test.ts',
   'tests/lib/webpush.test.ts',
   'tests/next.config.test.ts',
   'tests/types/index.test.ts',
@@ -69,7 +65,6 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
   {
     reason: 'ブラウザ API（cache・storage・cookie・service worker・音声・WebAuthn・Push）を包む adapter の挙動を検証する',
     files: [
-      'tests/lib/audioCache.test.ts',
       'tests/lib/cookie.test.ts',
       'tests/lib/platform/adapters.test.ts',
       'tests/lib/platform/playbackBrowserAdapters.test.ts',
@@ -168,10 +163,6 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
     files: [
       'tests/contexts/ApiClientProvider.test.tsx',
       'tests/contexts/AppContext.test.tsx',
-      'tests/contexts/AudioPlayerContext.completion.test.tsx',
-      'tests/contexts/AudioPlayerContext.gateway.test.tsx',
-      'tests/contexts/AudioPlayerContext.offline.test.tsx',
-      'tests/contexts/AudioPlayerContext.queue.test.tsx',
       'tests/contexts/AuthContext.expiry.test.tsx',
       'tests/contexts/AuthContext.passkey.test.tsx',
       'tests/contexts/AuthContext.push.test.tsx',
@@ -187,7 +178,6 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
     reason: 'hook を描画環境で動かし、DOM・storage・タイマーとの結合を検証する',
     files: [
       'tests/hooks/focusableElements.test.ts',
-      'tests/hooks/useAudioPlayer.test.ts',
       'tests/hooks/useFocusTrap.test.tsx',
       'tests/hooks/useLocalStorage.test.ts',
       'tests/hooks/usePodcastListPolling.test.ts',

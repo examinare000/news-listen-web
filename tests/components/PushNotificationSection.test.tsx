@@ -12,7 +12,6 @@ vi.mock('@/contexts/AppContext', () => ({
       baseUrl: 'https://api.example.com',
       apiKey: 'test-key',
       isRestoring: false,
-      currentPodcast: null,
       playbackSpeed: 1.0,
     },
     dispatch: vi.fn(),

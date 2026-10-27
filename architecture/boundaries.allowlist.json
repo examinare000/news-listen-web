@@ -162,20 +162,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "contexts/AppContext.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "contexts/AudioPlayerContext.tsx",
-    "specifier": "@/types",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "contexts/AuthContext.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -197,13 +183,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "lib/audioCache.ts",
-    "specifier": "@/types",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "lib/format.ts",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -222,13 +201,6 @@
     "specifier": "PasskeyOptionsResponse",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "lib/playbackQueue.ts",
-    "specifier": "@/types",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
   },
   {
     "rule": "web-dep-04",
@@ -442,13 +414,6 @@
   },
   {
     "rule": "web-dep-05",
-    "file": "hooks/useAudioPlayer.ts",
-    "specifier": "@/lib/config",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
-  },
-  {
-    "rule": "web-dep-05",
     "file": "hooks/useWebPushSubscription.ts",
     "specifier": "@/lib/api",
     "introducedBy": "web-slice-skeleton-01",
@@ -460,13 +425,6 @@
     "specifier": "@/lib/pushBrowserPort",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-notify-01"
-  },
-  {
-    "rule": "web-dep-06",
-    "file": "contexts/AudioPlayerContext.tsx",
-    "specifier": "@/components/ui/Toast",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
   },
   {
     "rule": "web-dep-07",
@@ -565,13 +523,6 @@
     "specifier": "localStorage",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "hooks/useAudioPlayer.ts",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
   },
   {
     "rule": "web-dep-11",
@@ -733,13 +684,6 @@
     "specifier": "slice(0, 3)",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-02"
-  },
-  {
-    "rule": "web-rule-playback-02",
-    "file": "hooks/useAudioPlayer.ts",
-    "specifier": "速度の配列",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-playback-05"
   },
   {
     "rule": "web-rule-prefs-01",

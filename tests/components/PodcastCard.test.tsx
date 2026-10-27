@@ -159,7 +159,7 @@ describe('PodcastCard saved position', () => {
 
 // ==========================================================
 // PodcastCard — オフライン保存（issue #167）
-// WHY prop injection (not a Context/lib/audioCache import here): PodcastCard is kept
+// WHY prop injection (not a Context/offlineLibrary import here): PodcastCard is kept
 // context-free by design (mirrors onPlayNext/onAddToQueue) so it stays a cheap,
 // isolated unit to test — the page decides download state/handler and injects them.
 // ==========================================================

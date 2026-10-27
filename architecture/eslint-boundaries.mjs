@@ -230,5 +230,14 @@ export function createBoundaryConfigs() {
     const globalExempt = new Set(rows.filter((r) => r.rule === 'web-dep-03').map((r) => r.specifier))
     configs.push({ files: [escapeGlob(file)], rules: buildRules(spec, importExempt, globalExempt) })
   }
+  configs.push({
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-properties': [
+        'error',
+        { property: 'currentPodcast', message: 'AppContext.currentPodcast は削除済み。usePlayback().nowPlaying() を使う' },
+      ],
+    },
+  })
   return tseslint.config(...configs)
 }

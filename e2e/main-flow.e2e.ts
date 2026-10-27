@@ -197,8 +197,9 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
   })
 
   // Stub the audio file itself. WHY a real, valid silent WAV (not an empty/garbage
-  // body): useStartPodcast awaits player.play() BEFORE dispatching SET_PODCAST; an
-  // undecodable body makes play() reject → error toast → the player bar never mounts.
+  // body): startEpisode starts the session as loading, and play() is only called once the
+  // audio metadata has loaded (loading → paused); an undecodable body never gets there,
+  // so playback does not start.
   // Chromium decodes PCM WAV natively; served as audio/wav regardless of the .mp3 URL.
   const audioFilePath = path.join(__dirname, 'fixtures', 'silence.wav')
   const audioBuffer = fs.readFileSync(audioFilePath)
