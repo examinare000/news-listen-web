@@ -200,7 +200,8 @@ const only = (kind: string, detail: string, file: string = TEST): string => `${k
 // 実ツリー
 // ---------------------------------------------------------------------------
 
-describe('web-check-08 実ツリー: 全テストの分類・全 subject の対応・隔離', () => {
+// 実ツリー走査は負荷時に 5 秒を超える。2026-10-29 takt baseline で timeout した
+describe('web-check-08 実ツリー: 全テストの分類・全 subject の対応・隔離', { timeout: 30_000 }, () => {
   test('違反 0 件: 全テストが分類済みで、全 subject が対応済みで、対象テストが禁止依存を持たない', () => {
     const result = evaluateTestIsolation(realInput())
     expect(brief(result.findings)).toEqual([])
