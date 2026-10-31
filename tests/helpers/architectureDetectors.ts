@@ -466,6 +466,18 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-catalog-11',
+    allowed: only(
+      'lib/catalog/domain/episode.ts',
+      'lib/catalog/presentation/failureMessage.ts',
+      'lib/catalog/infrastructure/episodeMapper.ts',
+    ),
+    patterns: [
+      { label: "'generation_failed'", find: (ctx) => regexStarts(ctx.body, /(['"`])generation_failed\1/) },
+      { label: "'quota_exhausted'", find: (ctx) => regexStarts(ctx.body, /(['"`])quota_exhausted\1/) },
+    ],
+  },
+  {
     rule: 'web-rule-account-03',
     allowed: only('lib/account/domain/password.ts'),
     patterns: [

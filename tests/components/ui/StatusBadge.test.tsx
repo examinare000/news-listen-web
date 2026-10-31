@@ -1,30 +1,25 @@
 import { describe, test, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import type { PodcastStatus } from '@/types/index'
+import type { Episode } from '@/lib/catalog/domain/episode'
+
+// 入力は Episode['kind']（playable / generating / failed）。partial_failed は decodeEpisode が failed に畳むので、
+// バッジには「一部失敗」の表示も未知値の fallback も存在しない（web-deriv-31・shared-dec-18）。
+const CASES: Array<[Episode['kind'], string, string]> = [
+  ['playable', '完成', 'badge-easy'],
+  ['generating', '生成中', 'badge-medium'],
+  ['failed', '失敗', 'badge-hard'],
+]
+
+const TONES = ['badge-easy', 'badge-medium', 'badge-hard']
 
 // ==========================================================
 // StatusBadge — ラベル表示
 // ==========================================================
 describe('StatusBadge — labels', () => {
-  test('Given status=processing, displays "生成中"', () => {
-    render(<StatusBadge status="processing" />)
-    expect(screen.getByText('生成中')).toBeInTheDocument()
-  })
-
-  test('Given status=completed, displays "完成"', () => {
-    render(<StatusBadge status="completed" />)
-    expect(screen.getByText('完成')).toBeInTheDocument()
-  })
-
-  test('Given status=failed, displays "失敗"', () => {
-    render(<StatusBadge status="failed" />)
-    expect(screen.getByText('失敗')).toBeInTheDocument()
-  })
-
-  test('Given status=partial_failed, displays "一部失敗"', () => {
-    render(<StatusBadge status="partial_failed" />)
-    expect(screen.getByText('一部失敗')).toBeInTheDocument()
+  test.each(CASES)('Given kind=%s, displays "%s"', (kind, label) => {
+    render(<StatusBadge status={kind} />)
+    expect(screen.getByText(label)).toBeInTheDocument()
   })
 })
 
@@ -32,48 +27,14 @@ describe('StatusBadge — labels', () => {
 // StatusBadge — トーン（CSS クラス）
 // ==========================================================
 describe('StatusBadge — tone classes', () => {
-  test('Given status=processing, has badge and badge-medium classes', () => {
-    const { container } = render(<StatusBadge status="processing" />)
+  test.each(CASES.map(([kind, , tone]) => [kind, tone] as const))('Given kind=%s, has badge and %s class only', (kind, tone) => {
+    const { container } = render(<StatusBadge status={kind} />)
     const badge = container.firstElementChild
     expect(badge?.classList.contains('badge')).toBe(true)
-    expect(badge?.classList.contains('badge-medium')).toBe(true)
-  })
-
-  test('Given status=completed, has badge and badge-easy classes', () => {
-    const { container } = render(<StatusBadge status="completed" />)
-    const badge = container.firstElementChild
-    expect(badge?.classList.contains('badge')).toBe(true)
-    expect(badge?.classList.contains('badge-easy')).toBe(true)
-  })
-
-  test('Given status=failed, has badge and badge-hard classes', () => {
-    const { container } = render(<StatusBadge status="failed" />)
-    const badge = container.firstElementChild
-    expect(badge?.classList.contains('badge')).toBe(true)
-    expect(badge?.classList.contains('badge-hard')).toBe(true)
-  })
-
-  test('Given status=partial_failed, has badge and badge-hard classes', () => {
-    const { container } = render(<StatusBadge status="partial_failed" />)
-    const badge = container.firstElementChild
-    expect(badge?.classList.contains('badge')).toBe(true)
-    expect(badge?.classList.contains('badge-hard')).toBe(true)
-  })
-})
-
-// ==========================================================
-// StatusBadge — 未知値
-// ==========================================================
-describe('StatusBadge — unknown status', () => {
-  test('Given unknown status, displays raw value with badge class only', () => {
-    const unknownStatus = 'unknown_status' as PodcastStatus
-    const { container } = render(<StatusBadge status={unknownStatus} />)
-    const badge = container.firstElementChild
-    expect(badge?.textContent).toBe('unknown_status')
-    expect(badge?.classList.contains('badge')).toBe(true)
-    // トーンクラスなし
-    expect(badge?.classList.contains('badge-easy')).toBe(false)
-    expect(badge?.classList.contains('badge-medium')).toBe(false)
-    expect(badge?.classList.contains('badge-hard')).toBe(false)
+    expect(badge?.classList.contains(tone)).toBe(true)
+    // 他のトーンは付かない（kind ごとの写像が取り違えられていないこと）
+    for (const other of TONES.filter((t) => t !== tone)) {
+      expect(badge?.classList.contains(other)).toBe(false)
+    }
   })
 })

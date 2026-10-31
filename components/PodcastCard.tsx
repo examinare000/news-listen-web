@@ -4,10 +4,15 @@ import type { Podcast } from '@/types/index'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDuration, formatDate } from '@/lib/format'
+import type { Episode, PlayableEpisode } from '@/lib/catalog/domain/episode'
+import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 
 interface PodcastCardProps {
+  // 表示 field は DTO から読み、種別（再生可否・失敗の理由）は episode から読む。
+  // episode は呼出元が decodeEpisode(podcast) で作る（component は mapper を import しない）。
   podcast: Podcast
-  onPlay: (podcast: Podcast) => void
+  episode: Episode
+  onPlay: (episode: PlayableEpisode) => void
   savedPosition?: number
   // 再生中判定は親ページの責務（nowPlaying()?.episodeId === podcast.id）。
   // WHY: Context 非依存の純粋コンポーネントに保ちテストを軽くする（ArticleCard と同方針）
@@ -24,6 +29,7 @@ interface PodcastCardProps {
 
 export function PodcastCard({
   podcast,
+  episode,
   onPlay,
   savedPosition,
   playing = false,
@@ -33,6 +39,7 @@ export function PodcastCard({
   justCompleted = false,
   onDownload,
 }: PodcastCardProps) {
+  const playable = episode.kind === 'playable' ? episode : null
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
   return (
@@ -43,32 +50,37 @@ export function PodcastCard({
       <div className="podcast-card-top">
         <div className="podcast-badges">
           <DifficultyBadge difficulty={podcast.difficulty} />
-          <StatusBadge status={podcast.status} />
+          <StatusBadge status={episode.kind} />
           {podcast.type === 'digest' && <span className="badge">DIGEST</span>}
         </div>
+        {episode.kind === 'failed' && (
+          <p data-testid={`podcast-failure-message-${podcast.id}`}>{failureMessage(episode.reason)}</p>
+        )}
         {/* 再生ボタンはリンク外に配置し、カード内クリックの伝播も止める
-            （詳細ページ遷移と再生操作を干渉させないため） */}
-        <button
-          type="button"
-          className="podcast-play-btn"
-          aria-label="再生"
-          onClick={(event) => {
-            event.stopPropagation()
-            onPlay(podcast)
-          }}
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            aria-hidden="true"
+            （詳細ページ遷移と再生操作を干渉させないため）。再生できるエピソードにだけ出す */}
+        {playable && (
+          <button
+            type="button"
+            className="podcast-play-btn"
+            aria-label="再生"
+            onClick={(event) => {
+              event.stopPropagation()
+              onPlay(playable)
+            }}
           >
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-        </button>
-        {/* 連続再生（issue #81）・オフライン保存（issue #167）の導線。注入時のみ表示。 */}
-        {(onPlayNext || onAddToQueue || onDownload) && (
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              aria-hidden="true"
+            >
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+          </button>
+        )}
+        {/* 連続再生（issue #81）・オフライン保存（issue #167）の導線。再生できるエピソードで、注入時のみ表示。 */}
+        {playable && (onPlayNext || onAddToQueue || onDownload) && (
           <div className="podcast-queue-actions">
             {onPlayNext && (
               <button

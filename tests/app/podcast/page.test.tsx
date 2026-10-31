@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import PodcastPage from '@/app/(app)/podcast/page'
@@ -407,3 +407,96 @@ describe('PodcastPage — offline download (issue #167)', () => {
       expect(card).not.toHaveClass('just-completed')
     })
   })
+
+// ==========================================================
+// Podcast 一覧 — Episode 種別の描き分け（verifies: web-contract-14; web-test-15）
+// page が各 DTO から decodeEpisode で Episode を作り、種別ごとに▶・操作・失敗の文言を描き分ける。
+// 生成中（processing）の DTO を含むので、既存のポーリングのテストと同じく fake timer は使わない
+// （getPodcasts の mock は常に同じ fixture を返すので、待ちの間にポーリングが割り込んでも描画は変わらない）。
+// ==========================================================
+describe('PodcastPage — Episode kinds (web-contract-14)', () => {
+  const base = SAMPLE_PODCASTS[0]
+  const KIND_PODCASTS = [
+    { ...base, id: 'ok-1', japanese_intro_text: '完成した回のイントロです。' },
+    { ...base, id: 'gen-1', japanese_intro_text: '生成中の回のイントロです。', status: 'processing' as const, audio_url: '' },
+    {
+      ...base,
+      id: 'quota-1',
+      japanese_intro_text: '上限で失敗した回のイントロです。',
+      status: 'failed' as const,
+      error_message: 'quota_exhausted',
+    },
+    {
+      ...base,
+      id: 'part-1',
+      japanese_intro_text: '一部失敗した回のイントロです。',
+      status: 'partial_failed' as const,
+      error_message: 'free text from backend',
+    },
+    { ...base, id: 'empty-1', japanese_intro_text: '音声が空の回のイントロです。', audio_url: '' },
+  ]
+
+  async function renderKinds() {
+    await givenPodcasts(KIND_PODCASTS)
+    renderPodcastPage()
+    await waitFor(() => screen.getByText(/完成した回のイントロ/))
+    return (id: string) => within(screen.getByTestId(`podcast-card-${id}`))
+  }
+
+  test('shared-session-08: 生成中・失敗・矛盾 DTO のカードに▶・次に再生・キューに追加・オフライン保存が無い', async () => {
+    const card = await renderKinds()
+
+    for (const id of ['gen-1', 'quota-1', 'part-1', 'empty-1']) {
+      expect(card(id).queryByRole('button', { name: '再生' }), `${id}: 再生`).not.toBeInTheDocument()
+      expect(card(id).queryByRole('button', { name: '次に再生' }), `${id}: 次に再生`).not.toBeInTheDocument()
+      expect(card(id).queryByRole('button', { name: 'キューに追加' }), `${id}: キューに追加`).not.toBeInTheDocument()
+      expect(card(id).queryByRole('button', { name: 'オフライン保存' }), `${id}: オフライン保存`).not.toBeInTheDocument()
+    }
+  })
+
+  test('正方向対照: 完成したカードには▶・次に再生・キューに追加・オフライン保存が出る。画面全体でも▶は 1 つだけ', async () => {
+    const card = await renderKinds()
+
+    expect(card('ok-1').getByRole('button', { name: '再生' })).toBeInTheDocument()
+    expect(card('ok-1').getByRole('button', { name: '次に再生' })).toBeInTheDocument()
+    expect(card('ok-1').getByRole('button', { name: 'キューに追加' })).toBeInTheDocument()
+    expect(card('ok-1').getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: '再生' })).toHaveLength(1)
+  })
+
+  test('完成したカードの▶は、他のカードが並んでいても自分の id で startEpisode を呼ぶ', async () => {
+    const card = await renderKinds()
+
+    await userEvent.click(card('ok-1').getByRole('button', { name: '再生' }))
+
+    expect(startEpisode).toHaveBeenCalledTimes(1)
+    expect(startEpisode).toHaveBeenCalledWith('ok-1')
+  })
+
+  test('shared-session-08・shared-session-09: 失敗系のカードに、その DTO の id の失敗の文言が出る（quota_exhausted・partial_failed・矛盾 DTO）', async () => {
+    const card = await renderKinds()
+
+    expect(card('quota-1').getByTestId('podcast-failure-message-quota-1')).toHaveTextContent(
+      '生成の上限に達したため、生成できませんでした',
+    )
+    expect(card('part-1').getByTestId('podcast-failure-message-part-1')).toHaveTextContent('生成に失敗しました')
+    expect(card('empty-1').getByTestId('podcast-failure-message-empty-1')).toHaveTextContent('生成に失敗しました')
+  })
+
+  test('完成・生成中のカードには失敗の文言が無い。失敗の文言は全体で 3 つだけ', async () => {
+    const card = await renderKinds()
+
+    expect(card('ok-1').queryByTestId('podcast-failure-message-ok-1')).not.toBeInTheDocument()
+    expect(card('gen-1').queryByTestId('podcast-failure-message-gen-1')).not.toBeInTheDocument()
+    expect(screen.getAllByTestId(/^podcast-failure-message-/)).toHaveLength(3)
+  })
+
+  test('shared-session-09: partial_failed のバッジは「失敗」で、「一部失敗」は画面のどこにも出ない', async () => {
+    const card = await renderKinds()
+
+    expect(card('part-1').getByText('失敗')).toBeInTheDocument()
+    expect(screen.queryByText('一部失敗')).not.toBeInTheDocument()
+    expect(card('gen-1').getByText('生成中')).toBeInTheDocument()
+    expect(card('ok-1').getByText('完成')).toBeInTheDocument()
+  })
+})

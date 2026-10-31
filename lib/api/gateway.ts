@@ -174,7 +174,7 @@ function statusToFailure(raw: { status: number; detail: string; retryAfterSecond
     case 409:
       return { kind: 'conflict' }
     case 429:
-      return { kind: 'rate_limited', retryAfterSeconds: raw.retryAfterSeconds, scope: 'unknown' }
+      return { kind: 'rate_limited', retryAfterSeconds: raw.retryAfterSeconds, scope: 'unknown', detail: raw.detail }
     case 400:
     case 422:
       return { kind: 'validation', detail: raw.detail }

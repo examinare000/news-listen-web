@@ -13,6 +13,7 @@ import {
   queuedEpisode,
   sourceCredit,
 } from '@/lib/catalog/domain/episode'
+import { classifyGenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { Podcast } from '@/types'
 
@@ -300,5 +301,31 @@ describe('web-check-06 decodeEpisode: 戻り値は DTO と参照を共有せず�
     expectDeeplyFrozen('playable', decodeEpisode(podcastDto()))
     expectDeeplyFrozen('generating', decodeEpisode({ ...podcastDto(), status: 'processing' }))
     expectDeeplyFrozen('failed', decodeEpisode({ ...podcastDto(), status: 'partial_failed' }))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// classifyGenerationLimit: 戻り値は凍結され、書き換えを試みても次の呼出の結果は変わらない（入力はプリミティブだけ）
+// ---------------------------------------------------------------------------
+describe('web-check-06 classifyGenerationLimit: 戻り値は深く凍結され、書き換えを試みても再呼出の結果は変わらない', () => {
+  test('戻り値は全深さで凍結され、strict mode の書込みは throw し、再呼出は同じ値を返す', () => {
+    const result = classifyGenerationLimit('Monthly generation limit reached', 90000) as DeepMutable<
+      ReturnType<typeof classifyGenerationLimit>
+    >
+    expectDeeplyFrozen('classifyGenerationLimit', result)
+
+    expect(() => {
+      result.period = 'daily'
+    }).toThrow(TypeError)
+    expect(() => {
+      result.retryAfterSeconds = null
+    }).toThrow(TypeError)
+
+    // 正方向対照: 書込みが throw した後も値は元のまま、再呼出も同じ値
+    expect(result).toEqual({ period: 'monthly', retryAfterSeconds: 90000 })
+    expect(classifyGenerationLimit('Monthly generation limit reached', 90000)).toEqual({
+      period: 'monthly',
+      retryAfterSeconds: 90000,
+    })
   })
 })

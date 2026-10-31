@@ -8,6 +8,8 @@ import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { createApiClient, ApiError } from '@/lib/api'
 import type { QueueEntryInput } from '@/lib/playback/application/ports'
+import type { PlayableEpisode } from '@/lib/catalog/domain/episode'
+import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { Podcast } from '@/types/index'
 
 function RefreshIcon() {
@@ -167,8 +169,8 @@ export default function PodcastPage() {
     enabled: pollingEnabled,
   })
 
-  function handlePlay(podcast: Podcast) {
-    void actions.startEpisode(podcast.id)
+  function handlePlay(episode: PlayableEpisode) {
+    void actions.startEpisode(episode.id)
   }
 
   function renderContent() {
@@ -200,6 +202,7 @@ export default function PodcastPage() {
             <PodcastCard
               key={podcast.id}
               podcast={podcast}
+              episode={decodeEpisode(podcast)}
               onPlay={handlePlay}
               onPlayNext={(p) => { void actions.playNext(toQueueEntry(p)) }}
               onAddToQueue={(p) => { void actions.addToQueue(toQueueEntry(p)) }}

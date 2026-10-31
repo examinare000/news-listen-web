@@ -33,7 +33,8 @@ function statusToFailure(status: number): ApiFailure {
     case 409:
       return { kind: 'conflict' }
     case 429:
-      return { kind: 'rate_limited', retryAfterSeconds: undefined, scope: 'unknown' }
+      // WHY: 音声 URL の取得の失敗は backend のエラー本文を持たない。validation の detail: '' と同じ扱い（web-dec-47）
+      return { kind: 'rate_limited', retryAfterSeconds: undefined, scope: 'unknown', detail: '' }
     case 400:
     case 422:
       return { kind: 'validation', detail: '' }

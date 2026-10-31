@@ -9,6 +9,7 @@ export type ApiFailure =
       readonly kind: 'rate_limited'
       readonly retryAfterSeconds: number | undefined
       readonly scope: 'monthly' | 'daily' | 'unknown'
+      readonly detail: string
     }
   | { readonly kind: 'validation'; readonly detail: string }
   | { readonly kind: 'server'; readonly status: number }
