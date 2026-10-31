@@ -63,7 +63,7 @@ describe('CacheStore#putFromUrl（gateway と同じ写像）', () => {
     [403, { kind: 'forbidden' }],
     [404, { kind: 'not_found' }],
     [409, { kind: 'conflict' }],
-    [429, { kind: 'rate_limited', retryAfterSeconds: undefined, scope: 'unknown' }],
+    [429, { kind: 'rate_limited', retryAfterSeconds: undefined, scope: 'unknown', detail: '' }],
     [400, { kind: 'validation', detail: '' }],
     [422, { kind: 'validation', detail: '' }],
     [503, { kind: 'server', status: 503 }],

@@ -89,7 +89,7 @@ export async function request<T>(
     case 'validation':
       throw new ApiError(422, failure.detail)
     case 'rate_limited':
-      throw new ApiError(429, 'Unknown error', failure.retryAfterSeconds)
+      throw new ApiError(429, failure.detail, failure.retryAfterSeconds)
     case 'server':
       throw new ApiError(failure.status, 'Unknown error')
     case 'unknown':

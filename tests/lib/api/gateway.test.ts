@@ -123,6 +123,7 @@ describe('ApiGateway.request — verifies: web-contract-15', () => {
       if (withRetry.failure.kind === 'rate_limited') {
         expect(withRetry.failure.retryAfterSeconds).toBe(30)
         expect(withRetry.failure.scope).toBe('unknown')
+        expect(withRetry.failure.detail).toBe('too many')
       }
     }
 

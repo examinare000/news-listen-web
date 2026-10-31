@@ -83,11 +83,11 @@ describe('web-temp-01 factory mock pin: verifies: [CI-W19, CI-W7, CI-W18]', () =
 
   test('rate_limited は retryAfterSeconds を伴って ApiError(429) に逆写像される', async () => {
     fake.request.mockResolvedValue(
-      failureOf({ kind: 'rate_limited', retryAfterSeconds: 42, scope: 'unknown' }),
+      failureOf({ kind: 'rate_limited', retryAfterSeconds: 42, scope: 'unknown', detail: 'too many' }),
     )
 
     await expect(createApiClient().getFeed()).rejects.toMatchObject(
-      expect.objectContaining(new ApiError(429, 'Unknown error', 42)) as object,
+      expect.objectContaining(new ApiError(429, 'too many', 42)) as object,
     )
   })
 
