@@ -2,7 +2,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { useEffect } from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
@@ -13,6 +14,21 @@ import { MockAudio } from '../helpers/mockAudio'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 import type { Podcast } from '@/types'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 // 実の PlaybackProvider・再生バー・Toaster を並べ、再生の終わり方（完聴・取得失敗・再生の拒否・オフライン）が
 // 利用者に見える形（状態・バー・toast）でどうなるかを固定する。旧 AudioPlayerContext.completion の観点を新しい入口に対して書く。
@@ -64,7 +80,7 @@ let audio: TestAudio
 
 function renderApp() {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <ToastProvider>
         <ApiClientProvider gateway={gateway}>
           <PlaybackProvider>
@@ -74,7 +90,7 @@ function renderApp() {
           </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
-    </AppProvider>,
+    </PreferencesProvider>,
   )
 }
 

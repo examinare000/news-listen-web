@@ -214,7 +214,10 @@ describe('web-check-08 実ツリー: 全テストの分類・全 subject の対�
 
   test('DOMAIN・APP に到達する unit 以外のテストは、閉じた集合と完全に一致する', () => {
     const result = evaluateTestIsolation(realInput())
-    expect(result.domainImportingNonUnit).toEqual(['tests/architecture/immutability.catalog.test.ts'])
+    expect(result.domainImportingNonUnit).toEqual([
+      'tests/architecture/immutability.catalog.test.ts',
+      'tests/architecture/immutability.preferences.test.ts',
+    ])
   })
 
   test('移行許可は形を満たす: 各欄が空でない、removeBy と task が値域の中、file が列挙にある、重複が無い', () => {

@@ -2,10 +2,26 @@ import { describe, test, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import React from 'react'
 import AppGroupLayout from '@/app/(app)/layout'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider } from '@/contexts/PlaybackProvider'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 // NavigationBar は useAuth を参照する。AuthProvider 経由だと実 /auth/me fetch が走るため、
 // NavigationBar.test.tsx と同様にモックして分離する。
@@ -21,7 +37,7 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 function renderGroupLayout(children: React.ReactNode = <p>page-content</p>) {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <ToastProvider>
         <ApiClientProvider>
           <PlaybackProvider>
@@ -29,7 +45,7 @@ function renderGroupLayout(children: React.ReactNode = <p>page-content</p>) {
           </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

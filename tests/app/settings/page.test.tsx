@@ -3,7 +3,8 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import SettingsPage from '@/app/(app)/settings/page'
-import { AppProvider, useApp } from '@/contexts/AppContext'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { StreakProvider } from '@/contexts/StreakContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { createApiClient } from '@/lib/api'
@@ -52,13 +53,13 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 function renderSettingsPage() {
   return render(
-    <AppProvider>
+    <PreferencesProvider>
       <StreakProvider>
         <ToastProvider>
           <SettingsPage />
         </ToastProvider>
       </StreakProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 
@@ -127,32 +128,49 @@ describe('SettingsPage — save settings', () => {
     expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.5))
   })
 
-  test('Given speed changed, dispatches SET_SPEED to AppContext immediately (spec §10.5)', async () => {
-    // Wrap SettingsPage with AppProvider and read back state to verify dispatch
-    let capturedState: { playbackSpeed: number } | null = null
+  test('保存された速度が 8 段の外（1.2）なら、速度の選択欄は 1x を表示する', async () => {
+    localStorage.setItem('default_playback_speed', '1.2')
+
+    renderSettingsPage()
+
+    const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
+    expect(speedSelect).toHaveValue('1')
+  })
+
+  test('sfx_enabled の保存値が壊れていても効果音スイッチは on になる（false のときだけ無効）', async () => {
+    localStorage.setItem('sfx_enabled', '"abc"')
+
+    renderSettingsPage()
+
+    expect(screen.getByRole('switch', { name: '効果音' })).toHaveAttribute('aria-checked', 'true')
+  })
+
+  test('速度を変えると、既定速度が Preferences の consumer へ即座に届く', async () => {
+    // Wrap SettingsPage with PreferencesProvider and read back the value to verify the single set
+    let capturedSpeed: number | null = null
 
     function TestConsumer() {
-      const { state } = useApp()
-      capturedState = { playbackSpeed: state.playbackSpeed }
+      const { get } = usePreferences()
+      capturedSpeed = get(LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting)
       return null
     }
 
     render(
-      <AppProvider>
+      <PreferencesProvider>
         <StreakProvider>
           <ToastProvider>
             <SettingsPage />
             <TestConsumer />
           </ToastProvider>
         </StreakProvider>
-      </AppProvider>
+      </PreferencesProvider>
     )
 
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
     await userEvent.selectOptions(speedSelect, '1.75')
 
     await waitFor(() => {
-      expect(capturedState?.playbackSpeed).toBe(1.75)
+      expect(capturedSpeed).toBe(1.75)
     })
   })
 })

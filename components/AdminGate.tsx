@@ -13,8 +13,8 @@ interface AdminGateProps {
 }
 
 // admin 4 ページの重複 gating を集約する単一 policy（web-contract-19）。`granted` 以外は
-// children を mount しない（ページ内 useEffect ロードを走らせない）。useApp には
-// 依存しない（metrics ページのテストは AppProvider 無しで描画するため）。
+// children を mount しない（ページ内 useEffect ロードを走らせない）。usePreferences には
+// 依存しない（metrics ページのテストは PreferencesProvider 無しで描画するため）。
 export function AdminGate({ title, children }: AdminGateProps) {
   const { status, user } = useAuth()
   const access = adminAccess({ status, user })

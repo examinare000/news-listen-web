@@ -2,10 +2,11 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
 import React from 'react'
 import { renderToString } from 'react-dom/server'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 
 // server render（window が無い）の Provider。配線を組まず、query は idle の値、操作は決まった Error を投げる stub になる (web-dec-36)。
 // jsdom の renderToString (tests/app/layout.test.tsx) は window があり client の分岐を通るので、stub はここでだけ検査される。
@@ -65,9 +66,24 @@ function Consumer() {
   )
 }
 
+// server render でも、注入した store の保存値は正規化して読まれる（既定速度の保存形式は JSON の数値）。
+function memoryStore(initial: Record<string, string>): KeyValueStore {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
+
 function renderOnServer(playbackSpeed = 1.0): string {
   return renderToString(
-    <AppProvider initialState={{ playbackSpeed }}>
+    <PreferencesProvider store={memoryStore({ default_playback_speed: JSON.stringify(playbackSpeed) })}>
       <ToastProvider>
         <ApiClientProvider>
           <PlaybackProvider>
@@ -75,7 +91,7 @@ function renderOnServer(playbackSpeed = 1.0): string {
           </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
-    </AppProvider>,
+    </PreferencesProvider>,
   )
 }
 

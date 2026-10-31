@@ -10,9 +10,25 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const FAKE_OPTIONS = { challenge_id: 'cid-test', options: '{"challenge":"abc"}' }
 const FAKE_USER = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
@@ -66,12 +82,11 @@ function PasskeyConsumer() {
 
 function renderAuth() {
   return render(
-    <AppProvider
-    >
+    <PreferencesProvider store={memoryStore()}>
       <AuthProvider>
         <PasskeyConsumer />
       </AuthProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

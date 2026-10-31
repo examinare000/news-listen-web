@@ -1,14 +1,20 @@
 'use client'
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useApp } from '@/contexts/AppContext'
+import { usePreferences } from '@/contexts/PreferencesProvider'
 import { useStreak } from '@/contexts/StreakContext'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
-import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useToast } from '@/components/ui/Toast'
 import { createApiClient, ApiError } from '@/lib/api'
-import { KEY_DEFAULT_PLAYBACK_SPEED, KEY_SFX_ENABLED } from '@/lib/config'
+import { DIFFICULTY_LEVELS } from '@/lib/shared/difficulty'
+import {
+  WEEKLY_GOALS,
+  defaultPlaybackSpeed,
+  sfxEnabled,
+  timeFormat,
+} from '@/lib/preferences/domain/settings'
+import type { WeeklyGoal } from '@/lib/preferences/domain/settings'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
@@ -17,29 +23,13 @@ import type { DifficultyLevel, GenerationQuota, DifficultySuggestion } from '@/t
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 
-type TimeFormat = 'absolute' | 'relative'
-
-const DIFFICULTY_OPTIONS: Array<DifficultyLevel> = [
-  'toeic_600',
-  'toeic_900',
-  'ielts_55',
-  'ielts_7',
-  'eiken_2',
-  'eiken_p1',
-]
-const WEEKLY_GOALS = [3, 5, 7, 10] as const
-
 export default function SettingsPage() {
-  const { state, dispatch, setTimeFormat } = useApp()
+  const { get, set } = usePreferences()
   const { streak } = useStreak()
   const { showToast } = useToast()
 
-  const [defaultSpeed, setDefaultSpeed] = useLocalStorage<number>(KEY_DEFAULT_PLAYBACK_SPEED, 1.0)
-  // WHY: 効果音は端末の利用環境に依存する好みなので、サーバーのユーザー設定や
-  // 消去分類を増やさず、この端末の localStorage だけに保存する（ADR-088）。
-  const [sfxEnabled, setSfxEnabled] = useLocalStorage<boolean>(KEY_SFX_ENABLED, true)
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
-  const [weeklyGoal, setWeeklyGoal] = useState<(typeof WEEKLY_GOALS)[number]>(3)
+  const [weeklyGoal, setWeeklyGoal] = useState<WeeklyGoal>(3)
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト + 再試行導線を出すための状態。
   const [preferencesLoadError, setPreferencesLoadError] = useState(false)
   const weeklyGoalTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -173,7 +163,7 @@ export default function SettingsPage() {
     }
   }
 
-  function handleWeeklyGoalChange(goal: (typeof WEEKLY_GOALS)[number]) {
+  function handleWeeklyGoalChange(goal: WeeklyGoal) {
     const previousGoal = weeklyGoal
     setWeeklyGoal(goal)
 
@@ -223,8 +213,8 @@ export default function SettingsPage() {
             <select
               id="time-format"
               className="select-input"
-              value={state.timeFormat}
-              onChange={(e) => setTimeFormat(e.target.value as TimeFormat)}
+              value={get(timeFormat)}
+              onChange={(e) => set(timeFormat, timeFormat.normalize(e.target.value))}
             >
               <option value="absolute">絶対表記（M/D HH:MM）</option>
               <option value="relative">相対表記（3時間前）</option>
@@ -236,13 +226,15 @@ export default function SettingsPage() {
               <div className="settings-row-label">効果音</div>
               <div className="settings-row-desc">クイズの採点や Star 確定時の控えめな操作音</div>
             </div>
+            {/* WHY: 効果音は端末の利用環境に依存する好みなので、サーバーのユーザー設定や
+                消去分類を増やさず、この端末だけに保存する（ADR-088）。 */}
             <button
               type="button"
-              className={sfxEnabled ? 'preference-toggle on' : 'preference-toggle'}
+              className={get(sfxEnabled) ? 'preference-toggle on' : 'preference-toggle'}
               role="switch"
               aria-label="効果音"
-              aria-checked={sfxEnabled}
-              onClick={() => setSfxEnabled((enabled) => !enabled)}
+              aria-checked={get(sfxEnabled)}
+              onClick={() => set(sfxEnabled, !get(sfxEnabled))}
             >
               <span className="preference-toggle-thumb" aria-hidden="true" />
             </button>
@@ -345,14 +337,8 @@ export default function SettingsPage() {
             <select
               id="default-speed"
               className="select-input"
-              value={defaultSpeed}
-              onChange={(e) => {
-                const speed = Number(e.target.value)
-                setDefaultSpeed(speed)
-                // Reflect the new default speed in AppContext so AudioPlayerBar
-                // selector and subsequent playback pick it up immediately (spec §10.5).
-                dispatch({ type: 'SET_SPEED', speed })
-              }}
+              value={get(defaultPlaybackSpeed)}
+              onChange={(e) => set(defaultPlaybackSpeed, defaultPlaybackSpeed.normalize(Number(e.target.value)))}
             >
               {PLAYBACK_SPEEDS.map((s) => (
                 <option key={s} value={s}>
@@ -376,7 +362,7 @@ export default function SettingsPage() {
               value={defaultDifficulty}
               onChange={(e) => handleDifficultyChange(e.target.value as DifficultyLevel)}
             >
-              {DIFFICULTY_OPTIONS.map((d) => (
+              {DIFFICULTY_LEVELS.map((d) => (
                 <option key={d} value={d}>
                   {DIFFICULTY_LABELS[d]}
                 </option>

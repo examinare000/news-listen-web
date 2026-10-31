@@ -41,7 +41,7 @@ const FEATURES: Feature[] = [
 ]
 
 // 未接続/未ログイン時のランディングページ。root gate（app/page.tsx）が
-// unknown/unauthenticated のときに即座に描画する（LP は静的なので isRestoring を待たない）。
+// unknown/unauthenticated のときに即座に描画する（LP は静的なので PreferencesProvider の ready を待たない）。
 export function LandingPage({ onLoginClick }: LandingPageProps) {
   return (
     <div className="lp-page">

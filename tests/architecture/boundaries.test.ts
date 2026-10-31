@@ -122,6 +122,11 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-context-01')).toHaveLength(0)
   })
+
+  test('removeBy が web-slice-context-02 の行は 0 件（web-slice-context-02 で消した）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-context-02')).toHaveLength(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -360,6 +365,12 @@ const importCases: readonly ImportCase[] = [
     file: 'lib/account/domain/x.ts',
     source: "import type { S } from '@/lib/playback/domain/session'",
     expected: ['web-dep-12 | lib/account/domain/x.ts | @/lib/playback/domain/session'],
+  },
+  {
+    name: 'web-dep-12 負例: preferences → playback（設定の値域が再生速度の一覧を使う）',
+    file: 'lib/preferences/domain/settings.ts',
+    source: "import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'",
+    expected: [],
   },
   {
     name: 'web-dep-12 負例: admin → account・admin → catalog',
@@ -602,7 +613,7 @@ const lintExamples: readonly LintExample[] = [
   { name: 'web-dep-05 負例: PLAYBACK_SPEEDS だけ', filePath: 'hooks/useFocusTrap.ts', source: `import { PLAYBACK_SPEEDS } from '${SESSION}'`, flagged: false },
   { name: 'web-dep-05 負例: PLAYBACK_SPEEDS と型', filePath: 'hooks/useFocusTrap.ts', source: `import { PLAYBACK_SPEEDS, type PlaybackState } from '${SESSION}'`, flagged: false },
   { name: 'web-dep-05 負例: 対象外（account の純関数）', filePath: 'components/AdminGate.tsx', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: false },
-  { name: 'web-dep-05 負例: ROOT（contexts）は対象外', filePath: 'contexts/AppContext.tsx', source: `import { start } from '${QUEUE}'`, flagged: false },
+  { name: 'web-dep-05 負例: ROOT（contexts）は対象外', filePath: 'contexts/PreferencesProvider.tsx', source: `import { start } from '${QUEUE}'`, flagged: false },
 ]
 
 describe('web-check-01 eslint の禁止項目の効き目（反例を実際に lint に通す）', () => {

@@ -5,20 +5,6 @@ import userEvent from '@testing-library/user-event'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 
-// AppContext の mock
-vi.mock('@/contexts/AppContext', () => ({
-  useApp: vi.fn(() => ({
-    state: {
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      isRestoring: false,
-      playbackSpeed: 1.0,
-    },
-    dispatch: vi.fn(),
-    configure: vi.fn(),
-  })),
-}))
-
 // API の mock
 const mockGetVapidPublicKey = vi.fn().mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
 const mockSubscribePush = vi.fn().mockResolvedValue({})

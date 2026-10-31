@@ -1,7 +1,7 @@
 import React from 'react'
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import { AuthProvider } from '@/contexts/AuthContext'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider } from '@/contexts/PlaybackProvider'
@@ -42,7 +42,7 @@ const dmMono = localFont({
 
 // FOUC（テーマのちらつき）防止のため、初回描画前に同期実行されるインラインスクリプトで
 // html[data-theme] を確定する。外部スクリプトや useEffect では初回描画後の適用になり一瞬ちらつく。
-// 内容は docs/design/app-ui.html L10〜16 と同等。キー 'theme' は lib/config.ts の KEY_THEME と一致させること
+// 内容は docs/design/app-ui.html L10〜16 と同等。キー 'theme' は lib/preferences/infrastructure/localSettingsStore.ts の KEY_THEME と一致させること
 const themeInitScript = `
 (function(){
   var saved = localStorage.getItem('theme');
@@ -82,7 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className={`${playfairDisplay.variable} ${dmSans.variable} ${dmMono.variable}`}>
-        <AppProvider>
+        <PreferencesProvider>
           <AuthProvider>
             <ToastProvider>
               <ApiClientProvider>
@@ -97,7 +97,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </ApiClientProvider>
             </ToastProvider>
           </AuthProvider>
-        </AppProvider>
+        </PreferencesProvider>
       </body>
     </html>
   )

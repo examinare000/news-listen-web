@@ -2,8 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useReducer, useState } from 'react'
 import { useApiClient } from '@/contexts/ApiClientProvider'
-import { useApp } from '@/contexts/AppContext'
-import { KEY_PLAYER_VOLUME } from '@/lib/config'
+import { usePreferences } from '@/contexts/PreferencesProvider'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { createEpisodeGateway } from '@/lib/catalog/infrastructure/episodeGateway'
 import type { OfflineLibrary } from '@/lib/playback/application/ports'
@@ -13,7 +12,6 @@ import { createPositionReporter } from '@/lib/playback/application/positionRepor
 import type { PlaybackView } from '@/lib/playback/application/readModels'
 import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
-import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type { PlaybackSpeed } from '@/lib/playback/domain/session'
 import { createPositionSync } from '@/lib/playback/infrastructure/gatewayFns'
 import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
@@ -21,9 +19,9 @@ import { createOfflineLibrary } from '@/lib/playback/infrastructure/offlineLibra
 import { createBrowserAudioElement } from '@/lib/platform/audioElement'
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
 import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
-import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { createBrowserObjectUrl } from '@/lib/platform/objectUrl'
 import { createBrowserStorageEstimate } from '@/lib/platform/storageEstimate'
+import { defaultPlaybackSpeed, volume as volumeSetting } from '@/lib/preferences/domain/settings'
 
 type SessionOperations = Pick<PlaybackSession, 'play' | 'pause' | 'seek' | 'seekRelative' | 'setSpeed'>
 
@@ -42,11 +40,6 @@ const PlaybackContext = createContext<PlaybackContextValue | null>(null)
 const SERVER_ERROR = 'PlaybackProvider is not available during server rendering'
 const DEFAULT_VOLUME = 1.0
 
-// 8 段に含まれる値はそのまま、含まれなければ 1.0。Session が丸めるのは start のときだけなので、idle・ended の表示のためにここで狭める。
-function narrowSpeed(value: number): PlaybackSpeed {
-  return PLAYBACK_SPEEDS.find((speed) => speed === value) ?? 1.0
-}
-
 // 閉包の値を読み書きする小さな入れ物。Coordinator は生成時に関数を 1 回だけ受け取るので、最新の既定速度をここ経由で渡す。
 function createSpeedHolder(initial: PlaybackSpeed): { get: () => PlaybackSpeed; set: (next: PlaybackSpeed) => void } {
   let current = initial
@@ -58,19 +51,7 @@ function createSpeedHolder(initial: PlaybackSpeed): { get: () => PlaybackSpeed; 
   }
 }
 
-// 音量の codec（暫定。設定の登録簿へ移すまで Provider が持つ）。範囲外・型違い・壊れた値は 1.0。
-function readVolume(kv: KeyValueStore): number {
-  const raw = kv.get(KEY_PLAYER_VOLUME)
-  if (raw === null) return DEFAULT_VOLUME
-  try {
-    const parsed: unknown = JSON.parse(raw)
-    return typeof parsed === 'number' && parsed >= 0 && parsed <= 1 ? parsed : DEFAULT_VOLUME
-  } catch {
-    return DEFAULT_VOLUME
-  }
-}
-
-function createWiring(gateway: ApiGateway, defaultSpeed: PlaybackSpeed) {
+function createWiring(gateway: ApiGateway, defaultSpeed: PlaybackSpeed, initialVolume: number) {
   const session = createPlaybackSession(createBrowserAudioElement())
   const kv = createBrowserKeyValueStore()
   const localPositions = createLocalPositionStore(kv)
@@ -90,18 +71,8 @@ function createWiring(gateway: ApiGateway, defaultSpeed: PlaybackSpeed) {
     isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
     defaultSpeed: speed.get,
   })
-  const volume = readVolume(kv)
-  session.setVolume(volume)
-  return {
-    session,
-    coordinator,
-    offline,
-    speed,
-    volume,
-    saveVolume: (value: number) => {
-      kv.set(KEY_PLAYER_VOLUME, JSON.stringify(value))
-    },
-  }
+  session.setVolume(initialVolume)
+  return { session, coordinator, offline, speed, volume: initialVolume }
 }
 
 type Wiring = ReturnType<typeof createWiring>
@@ -155,12 +126,15 @@ function createServerValue(defaultSpeed: PlaybackSpeed): PlaybackContextValue {
 
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const gateway = useApiClient()
-  const { state } = useApp()
-  const defaultSpeed = narrowSpeed(state.playbackSpeed)
-  const [wiring] = useState<Wiring | null>(() => (typeof window === 'undefined' ? null : createWiring(gateway, defaultSpeed)))
+  const { get, set } = usePreferences()
+  const defaultSpeed = get(defaultPlaybackSpeed)
+  // 音量は wiring の生成時に 1 回だけ読み、以後は変更を set で書くだけにする。
+  const [wiring] = useState<Wiring | null>(() =>
+    typeof window === 'undefined' ? null : createWiring(gateway, defaultSpeed, get(volumeSetting)),
+  )
   const [volume, setVolume] = useState(() => wiring?.volume ?? DEFAULT_VOLUME)
   // 関数の同一性を保つため、操作の束は 1 回だけ作る。
-  const [operations] = useState(() => (wiring === null ? null : createOperations(wiring, setVolume)))
+  const [operations] = useState(() => (wiring === null ? null : createOperations(wiring, setVolume, (next) => set(volumeSetting, next))))
   const [, tick] = useReducer((count: number) => count + 1, 0)
 
   useEffect(() => {
@@ -183,7 +157,11 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>
 }
 
-function createOperations(wiring: Wiring, setVolume: (volume: number) => void): Omit<PlaybackContextValue, 'playback' | 'volume'> {
+function createOperations(
+  wiring: Wiring,
+  setVolume: (volume: number) => void,
+  saveVolume: (volume: number) => void,
+): Omit<PlaybackContextValue, 'playback' | 'volume'> {
   const { coordinator, session, offline } = wiring
   return {
     startEpisode: (id) => coordinator.startEpisode(id),
@@ -206,7 +184,7 @@ function createOperations(wiring: Wiring, setVolume: (volume: number) => void): 
     setVolume: (next) => {
       session.setVolume(next)
       setVolume(next)
-      wiring.saveVolume(next)
+      saveVolume(next)
     },
     offline,
   }

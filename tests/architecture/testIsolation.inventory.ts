@@ -36,6 +36,7 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/playback/transition.test.ts',
   'tests/lib/podcastPolling.test.ts',
   'tests/lib/podcastTitle.test.ts',
+  'tests/lib/preferences/domain/settings.test.ts',
   'tests/lib/push/pushRegistration.test.ts',
   'tests/lib/relativeTime.conformance.test.ts',
   'tests/lib/webpush.test.ts',
@@ -95,6 +96,10 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
     ],
   },
   {
+    reason: 'infrastructure の設定の key と codec を、`KeyValueStore` の double と結んで検証する',
+    files: ['tests/lib/preferences/infrastructure/localSettingsStore.test.ts'],
+  },
+  {
     reason: 'route handler（app/api）が backend へ中継する挙動を検証する',
     files: ['tests/app/api/proxy.test.ts'],
   },
@@ -103,6 +108,12 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'infrastructure の mapper（decodeEpisode）の不変性そのものを検証の対象とする。禁止依存を避けるための分類ではない。' +
       'DOMAIN の episode にも到達するので、閉じた集合 domainImportingNonUnit で固定される',
     files: ['tests/architecture/immutability.catalog.test.ts'],
+  },
+  {
+    reason:
+      'infrastructure の codec（localSettingsStore）の不変性そのものを検証の対象とする。禁止依存を避けるための分類ではない。' +
+      'DOMAIN の settings にも到達するので、閉じた集合 domainImportingNonUnit で固定される',
+    files: ['tests/architecture/immutability.preferences.test.ts'],
   },
 ]
 
@@ -164,7 +175,6 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
     reason: 'React context を provider ごと描画し、状態遷移と外部ポートの結合を検証する',
     files: [
       'tests/contexts/ApiClientProvider.test.tsx',
-      'tests/contexts/AppContext.test.tsx',
       'tests/contexts/AuthContext.expiry.test.tsx',
       'tests/contexts/AuthContext.passkey.test.tsx',
       'tests/contexts/AuthContext.push.test.tsx',
@@ -173,6 +183,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/PlaybackProvider.offline.test.tsx',
       'tests/contexts/PlaybackProvider.queue.test.tsx',
       'tests/contexts/PlaybackProvider.server.test.tsx',
+      'tests/contexts/PreferencesProvider.test.tsx',
       'tests/contexts/StreakContext.test.tsx',
     ],
   },
@@ -181,7 +192,6 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
     files: [
       'tests/hooks/focusableElements.test.ts',
       'tests/hooks/useFocusTrap.test.tsx',
-      'tests/hooks/useLocalStorage.test.ts',
       'tests/hooks/usePodcastListPolling.test.ts',
       'tests/hooks/useWebPushSubscription.test.ts',
     ],
@@ -258,6 +268,7 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
     'tests/lib/playback/transition.test.ts',
   ],
   'lib/playback/domain/source.ts': ['tests/lib/playback/source.test.ts'],
+  'lib/preferences/domain/settings.ts': ['tests/lib/preferences/domain/settings.test.ts'],
   'lib/push/pushRegistration.ts': ['tests/lib/push/pushRegistration.test.ts'],
 }
 

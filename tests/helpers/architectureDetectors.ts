@@ -21,6 +21,7 @@ const ALLOWED_CROSS_CONTEXT: ReadonlyArray<readonly [string, string]> = [
   ['learning', 'catalog'],
   ['admin', 'catalog'],
   ['admin', 'account'],
+  ['preferences', 'playback'],
 ]
 
 const FORBIDDEN_FRAMEWORK_PACKAGES = (specifier: string): boolean =>

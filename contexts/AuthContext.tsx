@@ -3,7 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { AuthUser, RegisterInput } from '@/types/index'
 import { ApiError, createApiClient } from '@/lib/api'
-import { useApp } from '@/contexts/AppContext'
+import { usePreferences } from '@/contexts/PreferencesProvider'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import { clearOfflineAudio } from '@/lib/playback/infrastructure/offlineLibrary'
@@ -50,7 +50,7 @@ interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, initialUser = null, initialStatus }: AuthProviderProps) {
-  const { state } = useApp()
+  const { ready } = usePreferences()
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [status, setStatus] = useState<AuthStatus>(initialStatus ?? 'unknown')
 
@@ -145,9 +145,9 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   // restore 完了後に /auth/me で認証状態を解決する。
   useEffect(() => {
     if (initialStatus) return // テスト時の固定状態を尊重
-    if (state.isRestoring) return // restore 中は待つ
+    if (!ready) return // restore 中は待つ
     void refreshMe() // eslint-disable-line @typescript-eslint/no-floating-promises
-  }, [state.isRestoring, refreshMe, initialStatus])
+  }, [ready, refreshMe, initialStatus])
 
   return (
     <AuthContext.Provider value={{ status, user, login, register, logout, refreshMe, loginWithPasskey }}>
