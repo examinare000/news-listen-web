@@ -815,3 +815,75 @@ describe('PodcastDetailPage — attribution', () => {
     expect(screen.queryByText(/CC BY-SA 4\.0/)).not.toBeInTheDocument()
   })
 })
+
+// ==========================================================
+// Podcast 詳細 — Episode 種別の描き分け（verifies: web-contract-14; web-test-15）
+// 再生ボタン・オフライン保存は PlayableEpisode のときだけ。Failed は同じ位置に失敗の理由の文言を描く。
+// 導入文・文字起こし・語彙・クイズ・出典は種別に関係なく、DTO に値があるかで決まる（現行のまま）。
+// ==========================================================
+describe('PodcastDetailPage — Episode kinds (web-contract-14)', () => {
+  async function loadPodcast(podcast: unknown) {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
+      getPodcast: vi.fn().mockResolvedValue(podcast),
+    } as unknown as ReturnType<typeof createApiClient>)
+    renderDetailPage()
+    await waitFor(() => screen.getByText(/これは日本語のイントロ全文です/))
+  }
+
+  const NOT_PLAYABLE: Array<[string, unknown, string | null]> = [
+    ['shared-session-08: processing', { ...SAMPLE_PODCAST, status: 'processing', audio_url: '' }, null],
+    [
+      'shared-session-08: failed（quota_exhausted）',
+      { ...SAMPLE_PODCAST, status: 'failed', error_message: 'quota_exhausted' },
+      '生成の上限に達したため、生成できませんでした',
+    ],
+    [
+      'shared-session-08: failed（自由文・generation_failed に畳む）',
+      { ...SAMPLE_PODCAST, status: 'failed', error_message: 'something went wrong' },
+      '生成に失敗しました',
+    ],
+    ['shared-session-09: partial_failed', { ...SAMPLE_PODCAST, status: 'partial_failed' }, '生成に失敗しました'],
+    ['shared-session-08: 矛盾 DTO（completed なのに audio_url が空）', { ...SAMPLE_PODCAST, audio_url: '' }, '生成に失敗しました'],
+    [
+      'shared-session-08: 矛盾 DTO（completed なのに error_message が識別子）',
+      { ...SAMPLE_PODCAST, error_message: 'quota_exhausted' },
+      '生成の上限に達したため、生成できませんでした',
+    ],
+  ]
+
+  test.each(NOT_PLAYABLE)('%s は再生ボタンとオフライン保存（保存済み）を描かない', async (_label, podcast) => {
+    await loadPodcast(podcast)
+
+    expect(screen.queryByRole('button', { name: '再生' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'オフライン保存' })).not.toBeInTheDocument()
+    expect(screen.queryByText('保存済み')).not.toBeInTheDocument()
+  })
+
+  test.each(NOT_PLAYABLE)('%s の失敗の文言は、Failed のときだけ podcast-failure-message に描く', async (_label, podcast, message) => {
+    await loadPodcast(podcast)
+
+    if (message === null) {
+      expect(screen.queryByTestId('podcast-failure-message')).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByTestId('podcast-failure-message')).toHaveTextContent(message)
+    }
+  })
+
+  test('正方向対照: 完成した DTO は再生ボタンとオフライン保存を描き、失敗の文言は描かない', async () => {
+    await loadPodcast(SAMPLE_PODCAST)
+
+    expect(screen.getByRole('button', { name: '再生' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'オフライン保存' })).toBeInTheDocument()
+    expect(screen.queryByTestId('podcast-failure-message')).not.toBeInTheDocument()
+  })
+
+  test('導入文・難易度・長さは種別に関係なく描く（失敗のエピソードでも）', async () => {
+    await loadPodcast({ ...SAMPLE_PODCAST, status: 'failed', error_message: 'quota_exhausted' })
+
+    expect(screen.getByText(/追加のテキストも含まれています/)).toBeInTheDocument()
+    expect(screen.getByText(/IELTS 7/)).toBeInTheDocument()
+    expect(screen.getByText(/30:20/)).toBeInTheDocument()
+  })
+})

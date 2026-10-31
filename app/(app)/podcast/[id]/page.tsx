@@ -8,6 +8,8 @@ import { formatDuration, formatDate } from '@/lib/format'
 import { createApiClient, ApiError } from '@/lib/api'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
+import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
+import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 import { highlightTerms } from '@/lib/highlightTerms'
 import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { Podcast, QuizAnswerResponse } from '@/types/index'
@@ -197,6 +199,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
       </>
     )
   }
+
+  // decodeEpisode は純関数なので hook にせず、描画の分岐の直前で求める
+  const episode = decodeEpisode(podcast)
 
   // トランスクリプト中の語彙用語ハイライト用（issue: 語彙グロッサリ表示）。vocabulary が
   // null/欠落なら空配列 → highlightTerms は原文をそのまま返す。
@@ -434,22 +439,29 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            再生
-          </button>
+          {episode.kind === 'failed' && (
+            <p data-testid="podcast-failure-message">{failureMessage(episode.reason)}</p>
+          )}
+          {episode.kind === 'playable' && (
+            <>
+              <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                再生
+              </button>
 
-          {/* オフライン保存（issue #167）。保存済みなら状態表示に切り替える。 */}
-          {downloaded ? (
-            <span className="btn btn-ghost" aria-label="オフライン保存済み">
-              保存済み
-            </span>
-          ) : (
-            <button type="button" className="btn btn-ghost" onClick={() => void handleDownload()}>
-              オフライン保存
-            </button>
+              {/* オフライン保存（issue #167）。保存済みなら状態表示に切り替える。 */}
+              {downloaded ? (
+                <span className="btn btn-ghost" aria-label="オフライン保存済み">
+                  保存済み
+                </span>
+              ) : (
+                <button type="button" className="btn btn-ghost" onClick={() => void handleDownload()}>
+                  オフライン保存
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>
