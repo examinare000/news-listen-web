@@ -129,7 +129,8 @@ describe('AdminMetricsPage', () => {
     renderPage()
 
     await waitFor(() => expect(getMetrics).toHaveBeenCalled())
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    // 描画は getMetrics の解決より後に来るので、'—' の出現も待つ（2026-10-31 takt verify で負荷時に落ちた）
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThan(0))
   })
 
   test('renders "—" without crashing when unknown/missing fields are returned by backend (schema drift)', async () => {
@@ -146,7 +147,7 @@ describe('AdminMetricsPage', () => {
 
     expect(() => renderPage()).not.toThrow()
     await waitFor(() => expect(getMetrics).toHaveBeenCalled())
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0)
+    await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThan(0))
   })
 
   test('shows a graceful error message on load failure (non-404)', async () => {
