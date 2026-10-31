@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（12 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（13 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -14,6 +14,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-02',
   'web-rule-catalog-03',
   'web-rule-catalog-06',
+  'web-rule-catalog-11',
   'web-rule-account-03',
   'web-rule-account-06',
   'web-rule-playback-02',
@@ -31,7 +32,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 12 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 13 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -92,6 +93,27 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "if (user.role === 'admin') {}")).toEqual([`web-rule-account-06 | ${F} | role === 'admin'`])
     expect(rows(F, 'const g = 5 * 60 * 1000')).toEqual([`web-rule-learning-01 | ${F} | 5 * 60 * 1000`])
     expect(rows(F, 'if (score >= 0.5) {}')).toEqual([`web-rule-learning-02 | ${F} | >= 0.5`])
+  })
+
+  test('web-rule-catalog-11: 失敗の理由の識別子のリテラルは、引用符（\'・"・`）の種類を問わず出てよいファイル以外で拾う。2 つの label はそれぞれ拾う', () => {
+    expect(rows(F, "const r = 'generation_failed'")).toEqual([`web-rule-catalog-11 | ${F} | 'generation_failed'`])
+    expect(rows(F, "const r = 'quota_exhausted'")).toEqual([`web-rule-catalog-11 | ${F} | 'quota_exhausted'`])
+    expect(rows(F, 'const r = "quota_exhausted"')).toEqual([`web-rule-catalog-11 | ${F} | 'quota_exhausted'`])
+    expect(rows(F, 'const r = `generation_failed`')).toEqual([`web-rule-catalog-11 | ${F} | 'generation_failed'`])
+    expect(rows(F, "if (e === 'generation_failed' || e === 'quota_exhausted') {}").sort()).toEqual(
+      [`web-rule-catalog-11 | ${F} | 'generation_failed'`, `web-rule-catalog-11 | ${F} | 'quota_exhausted'`].sort(),
+    )
+  })
+
+  test('web-rule-catalog-11: 出てよい 3 ファイル（episode.ts・failureMessage.ts・episodeMapper.ts）の中、コメントの中、引用符で囲まないコードは拾わない', () => {
+    const literal = "const r = 'generation_failed'; const q = 'quota_exhausted'"
+    expect(rows('lib/catalog/domain/episode.ts', literal)).toEqual([])
+    expect(rows('lib/catalog/presentation/failureMessage.ts', literal)).toEqual([])
+    expect(rows('lib/catalog/infrastructure/episodeMapper.ts', literal)).toEqual([])
+    expect(rows(F, "// 'generation_failed' と 'quota_exhausted' は書かない\n/** 'quota_exhausted' */\nconst a = 1")).toEqual([])
+    expect(rows(F, 'const generation_failed_count = 1; const quota_exhausted = 2')).toEqual([])
+    // 正方向対照: 同じ入力を出てよいファイルの外に置くと拾う
+    expect(rows('lib/catalog/presentation/other.ts', literal)).toHaveLength(2)
   })
 
   test('web-rule-playback-02・web-rule-prefs-01: 配列リテラル（速度 3 値すべて・難易度の値 2 つ以上）と [3, 5, 7, 10]', () => {

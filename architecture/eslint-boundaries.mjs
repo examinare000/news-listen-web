@@ -97,11 +97,19 @@ function appSpec({ name, context, files, match }) {
 const presSpec = {
   name: 'PRES',
   match: (file) =>
-    (file.startsWith('app/') || file.startsWith('components/') || file.startsWith('hooks/')) &&
+    (file.startsWith('app/') ||
+      file.startsWith('components/') ||
+      file.startsWith('hooks/') ||
+      /^lib\/[^/]+\/presentation\//.test(file)) &&
     !file.startsWith('app/api/') &&
     file !== 'app/layout.tsx' &&
     file !== 'app/(app)/layout.tsx',
-  files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'hooks/**/*.{ts,tsx}'],
+  files: [
+    'app/**/*.{ts,tsx}',
+    'components/**/*.{ts,tsx}',
+    'hooks/**/*.{ts,tsx}',
+    'lib/*/presentation/**/*.{ts,tsx}',
+  ],
   ignores: ['app/api/**', 'app/layout.tsx', 'app/(app)/layout.tsx'],
   importPatterns: (exempt) => [
     regexPattern(

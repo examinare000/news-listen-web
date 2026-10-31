@@ -42,6 +42,9 @@ const REMOVE_BY_VALUES = [
   'web-slice-catalog-01', 'web-slice-catalog-02', 'web-slice-catalog-03', 'web-slice-catalog-04', 'web-slice-account-01', 'web-slice-prefs-01', 'web-slice-admin-01', 'web-slice-notify-01', 'web-slice-platform-01', 'web-slice-learning-01', 'web-slice-learning-02', 'web-slice-learning-03', 'web-slice-closure-01',
 ]
 
+/** `introducedBy` の値域: 最初の許可リストを作った slice ＋ page が mapper を import する web-temp-07 の 2 行を足した slice（web-dec-54）。 */
+const INTRODUCED_BY_VALUES = ['web-slice-skeleton-01', 'web-slice-context-01']
+
 const ALLOWLIST_KEYS = ['rule', 'file', 'specifier', 'introducedBy', 'removeBy']
 
 let scanFiles: string[]
@@ -78,7 +81,9 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
         if (!isNonEmptyString(row[key])) problems.push(`行 ${index} の ${key}: 空でない文字列でない`)
       }
       if (!ALLOWLIST_RULES.includes(row.rule as string)) problems.push(`行 ${index} の rule: 値域の外 (${String(row.rule)})`)
-      if (row.introducedBy !== 'web-slice-skeleton-01') problems.push(`行 ${index} の introducedBy: web-slice-skeleton-01 でない (${String(row.introducedBy)})`)
+      if (!INTRODUCED_BY_VALUES.includes(row.introducedBy as string)) {
+        problems.push(`行 ${index} の introducedBy: ${INTRODUCED_BY_VALUES.join('・')} のいずれでもない (${String(row.introducedBy)})`)
+      }
       if (!REMOVE_BY_VALUES.includes(row.removeBy as string)) {
         problems.push(`行 ${index} の removeBy: 承認された値域の外 (${String(row.removeBy)})`)
       }
@@ -111,6 +116,11 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
   test('removeBy が web-slice-catalog-01 の行は 0 件（web-slice-catalog-01 で消した）', () => {
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-catalog-01')).toHaveLength(0)
+  })
+
+  test('removeBy が web-slice-context-01 の行は 0 件（web-slice-context-01 で消した）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-context-01')).toHaveLength(0)
   })
 })
 

@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { layerOf, listScanFiles, readSource } from '../helpers/architecture'
 import { scanPublicTypes } from '../helpers/architectureDetectors'
 
-/** 空振りの防止: 走査した export の名前に含まれるべき 9 つ。 */
+/** 空振りの防止: 走査した export の名前に含まれるべき 10 個。 */
 const MUST_BE_SCANNED = [
   'QueueState',
   'PlayableEpisode',
@@ -19,6 +19,7 @@ const MUST_BE_SCANNED = [
   'ResolvePlaybackInput',
   'PasskeyClient',
   'PushRegistrationApiClient',
+  'GenerationLimit',
 ]
 
 let targetFiles: string[]
@@ -38,7 +39,7 @@ describe('web-check-05 (b) DOMAIN・APP・shared の export する型は readonl
     expect(appExports, 'AudioElement が APP の走査集合に無い').toContain('AudioElement')
   })
 
-  test('走査した export の名前が 9 つ（QueueState・PlayableEpisode・PlaybackState・ApiFailure・Result・AdminAccessSession・ResolvePlaybackInput・PasskeyClient・PushRegistrationApiClient）を含む', () => {
+  test('走査した export の名前が 10 個（QueueState・PlayableEpisode・PlaybackState・ApiFailure・Result・AdminAccessSession・ResolvePlaybackInput・PasskeyClient・PushRegistrationApiClient・GenerationLimit）を含む', () => {
     const scanned = new Set(targetFiles.flatMap((f) => scanPublicTypes(f, readSource(f), []).exportedNames))
     expect(MUST_BE_SCANNED.filter((n) => !scanned.has(n))).toEqual([])
   })

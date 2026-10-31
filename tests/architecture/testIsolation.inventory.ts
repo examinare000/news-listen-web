@@ -16,6 +16,8 @@ const UNIT_TESTS: readonly string[] = [
   'tests/architecture/readonly.types.test.ts',
   'tests/lib/account/adminAccess.test.ts',
   'tests/lib/catalog/domain/episode.test.ts',
+  'tests/lib/catalog/domain/generationLimit.test.ts',
+  'tests/lib/catalog/presentation/failureMessage.test.ts',
   'tests/lib/featuredCategories.test.ts',
   'tests/lib/format.test.ts',
   'tests/lib/highlightTerms.test.ts',
@@ -222,6 +224,7 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/account/domain/adminAccess.ts': ['tests/lib/account/adminAccess.test.ts'],
   'lib/account/domain/role.ts': [],
   'lib/catalog/domain/episode.ts': ['tests/lib/catalog/domain/episode.test.ts', 'tests/lib/playback/domain/queueEntry.test.ts'],
+  'lib/catalog/domain/generationLimit.ts': ['tests/lib/catalog/domain/generationLimit.test.ts'],
   'lib/passkey.ts': ['tests/lib/passkey.test.ts'],
   'lib/playback/application/coordinator.ts': [
     'tests/architecture/cqrs.playback.test.ts',

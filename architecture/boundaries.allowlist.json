@@ -155,13 +155,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "components/ui/StatusBadge.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-02"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "contexts/AuthContext.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -282,6 +275,13 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/lib/catalog/infrastructure/episodeMapper",
+    "introducedBy": "web-slice-context-01",
+    "removeBy": "web-slice-catalog-02"
+  },
+  {
+    "rule": "web-dep-05",
+    "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/sfx",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
@@ -291,6 +291,13 @@
     "file": "app/(app)/podcast/page.tsx",
     "specifier": "@/lib/api",
     "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-catalog-02"
+  },
+  {
+    "rule": "web-dep-05",
+    "file": "app/(app)/podcast/page.tsx",
+    "specifier": "@/lib/catalog/infrastructure/episodeMapper",
+    "introducedBy": "web-slice-context-01",
     "removeBy": "web-slice-catalog-02"
   },
   {
@@ -614,20 +621,6 @@
     "specifier": "intro_text.slice(",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-02"
-  },
-  {
-    "rule": "web-rule-catalog-03",
-    "file": "app/(app)/feed/page.tsx",
-    "specifier": "/monthly/i",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-01"
-  },
-  {
-    "rule": "web-rule-catalog-03",
-    "file": "app/(app)/feed/page.tsx",
-    "specifier": "86400",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-01"
   },
   {
     "rule": "web-rule-catalog-06",
