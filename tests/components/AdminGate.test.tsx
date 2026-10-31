@@ -4,7 +4,7 @@ import React from 'react'
 import { AdminGate } from '@/components/AdminGate'
 
 // web-contract-19: AdminGate は adminAccess(useAuth()) の 4 値で分岐する唯一の gating 集約点。
-// useApp() に依存しない（C5: metrics page test は AppProvider 無しで描画するため）。
+// 設定の Provider（PreferencesProvider）に依存しない（C5: metrics page test は Provider 無しで描画するため）。
 // vi.mock で useAuth を丸ごと差し替える（既存 admin 4 page test と同じ方式。C6）。
 
 interface AuthOverride {

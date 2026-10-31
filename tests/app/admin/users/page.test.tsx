@@ -3,7 +3,23 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import AdminUsersPage from '@/app/(app)/admin/users/page'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const listUsers = vi.fn()
 const createUser = vi.fn()
@@ -28,9 +44,9 @@ vi.mock('@/contexts/AuthContext', () => ({
 
 function renderPage() {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <AdminUsersPage />
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

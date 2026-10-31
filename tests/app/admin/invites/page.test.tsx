@@ -3,8 +3,24 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import AdminInvitesPage from '@/app/(app)/admin/invites/page'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const listInvites = vi.fn()
 const createInvite = vi.fn()
@@ -30,11 +46,11 @@ const writeText = vi.fn().mockResolvedValue(undefined)
 
 function renderPage() {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <ToastProvider>
         <AdminInvitesPage />
       </ToastProvider>
-    </AppProvider>,
+    </PreferencesProvider>,
   )
 }
 

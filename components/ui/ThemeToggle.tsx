@@ -1,18 +1,20 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { KEY_THEME } from '@/lib/config'
+import { usePreferences } from '@/contexts/PreferencesProvider'
+import { theme } from '@/lib/preferences/domain/settings'
 
 /**
  * テーマ切替トグル（docs/design/app-ui.html L1425-1435, L2007-2012 準拠）。
  *
  * テーマの実体は `html[data-theme]` を単一の真実とする。
  * WHY: テーマは CSS 変数（html[data-theme] セレクタ）だけで全体に反映できるため、
- * Context などのグローバル state で持つと全コンポーネント再レンダリングの
- * コストだけが増える。ここで持つローカル state は aria-checked を支援技術へ
- * 公開するための鏡であり、再レンダリング範囲はこのトグル自身に閉じる。
+ * 現在値の読みの実体は html[data-theme] に置き、Context では持たない。ここで持つ
+ * ローカル state は aria-checked を支援技術へ公開するための鏡である。保存は
+ * usePreferences().set 経由なので、PreferencesProvider の consumer の再描画を伴う。
  */
 export function ThemeToggle() {
+  const { set } = usePreferences()
   // WHY: 初期テーマは layout.tsx のインラインスクリプトが設定済みの data-theme
   // から読む。SSR 時はテーマが未知のため dark（既定）で描画し、マウント後に
   // 実際の値へ同期する（html は suppressHydrationWarning 済み）。
@@ -26,10 +28,9 @@ export function ThemeToggle() {
     const current = document.documentElement.dataset.theme
     const next = current === 'dark' ? 'light' : 'dark'
     document.documentElement.dataset.theme = next
-    // WHY: useLocalStorage フックは JSON.stringify で保存するため `"light"` のような
-    // 引用符付き文字列になり、layout.tsx のテーマ初期化スクリプトが読む生値
-    // （'light' | 'dark'）と互換にならない。ここでは localStorage を直接使う。
-    localStorage.setItem(KEY_THEME, next)
+    // WHY: theme は layout.tsx のテーマ初期化スクリプトが読む生値（'light' | 'dark'）で保存される。
+    // その形式は設定の codec（lib/preferences/infrastructure）が保つ。
+    set(theme, next)
     setIsLight(next === 'light')
   }
 

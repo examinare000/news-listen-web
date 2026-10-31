@@ -2,11 +2,27 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushSubscriptionJSON } from '@/types/index'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const getMe = vi.fn()
 const login = vi.fn()
@@ -83,11 +99,11 @@ function Consumer({ authRef }: { authRef: AuthRef }) {
 
 function renderAuth(authRef: AuthRef) {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <AuthProvider initialStatus="authenticated" initialUser={{ username: 'alice', role: 'user', display_name: 'Alice' }}>
         <Consumer authRef={authRef} />
       </AuthProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

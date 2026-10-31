@@ -309,13 +309,6 @@
   },
   {
     "rule": "web-dep-05",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": "@/lib/config",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-05",
     "file": "app/(app)/subscriptions/page.tsx",
     "specifier": "@/lib/api",
     "introducedBy": "web-slice-skeleton-01",
@@ -414,13 +407,6 @@
   },
   {
     "rule": "web-dep-05",
-    "file": "components/ui/ThemeToggle.tsx",
-    "specifier": "@/lib/config",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-05",
     "file": "hooks/useWebPushSubscription.ts",
     "specifier": "@/lib/api",
     "introducedBy": "web-slice-skeleton-01",
@@ -509,41 +495,6 @@
     "specifier": ".status と数値の比較",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-context-07"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "app/(app)/dashboard/page.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "components/ui/ThemeToggle.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "contexts/AppContext.tsx",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "hooks/useLocalStorage.ts",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-dep-11",
-    "file": "lib/sfx.ts",
-    "specifier": "localStorage",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
   },
   {
     "rule": "web-rule-account-03",
@@ -677,19 +628,5 @@
     "specifier": "slice(0, 3)",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-02"
-  },
-  {
-    "rule": "web-rule-prefs-01",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": "[3, 5, 7, 10]",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
-  },
-  {
-    "rule": "web-rule-prefs-01",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": "難易度の値の配列",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-02"
   }
 ]

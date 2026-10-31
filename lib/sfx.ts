@@ -1,5 +1,3 @@
-import { KEY_SFX_ENABLED } from '@/lib/config'
-
 export type SfxName = 'correct' | 'incorrect' | 'achievement' | 'streak' | 'swipe'
 
 interface Voice {
@@ -41,25 +39,11 @@ const VOCABULARY: Record<SfxName, readonly Voice[]> = {
 let audioContext: AudioContext | null = null
 const lastPlayedAt = new Map<SfxName, number>()
 
-export function isSfxEnabled(): boolean {
-  if (typeof window === 'undefined') return true
+// 有効かどうかの判定は呼出側（PreferencesProvider）から注入される。未注入の間は有効とみなす。
+let isEnabled: () => boolean = () => true
 
-  try {
-    const stored = window.localStorage.getItem(KEY_SFX_ENABLED)
-    return stored === null ? true : JSON.parse(stored) !== false
-  } catch {
-    return true
-  }
-}
-
-export function setSfxEnabled(enabled: boolean): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    window.localStorage.setItem(KEY_SFX_ENABLED, JSON.stringify(enabled))
-  } catch {
-    // Storage can be unavailable in privacy modes; sound remains usable for this session.
-  }
+export function configureSfx(next: () => boolean): void {
+  isEnabled = next
 }
 
 function getAudioContext(): AudioContext | null {
@@ -75,7 +59,7 @@ function getAudioContext(): AudioContext | null {
 }
 
 export function prepareSfx(): void {
-  if (!isSfxEnabled()) return
+  if (!isEnabled()) return
 
   const context = getAudioContext()
   if (context?.state === 'suspended') {
@@ -109,7 +93,7 @@ function synthesizeVoice(context: AudioContext, voice: Voice): void {
 }
 
 export function playSfx(name: SfxName): void {
-  if (!isSfxEnabled()) return
+  if (!isEnabled()) return
 
   const now = Date.now()
   const previous = lastPlayedAt.get(name)

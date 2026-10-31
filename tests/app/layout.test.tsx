@@ -12,7 +12,7 @@ vi.mock('next/font/local', () => ({
 }))
 
 import RootLayout from '@/app/layout'
-import { KEY_THEME } from '@/lib/config'
+import { KEY_THEME } from '@/lib/preferences/infrastructure/localSettingsStore'
 
 // RootLayout は <html> を返すため RTL の render ではネスト警告が出る。
 // 既存テストに先例がないため、renderToString による HTML 文字列検証を採用する（指示書の許容手法）
@@ -57,10 +57,16 @@ describe('RootLayout', () => {
   })
 })
 
-describe('lib/config — テーマ用 localStorage キー', () => {
+describe('テーマ用 localStorage キー', () => {
   test('KEY_THEME はデザイン正本と同じ "theme"', () => {
     // app-ui.html の初期化スクリプトが localStorage.getItem('theme') を参照するため、
     // キー名はデザインと一致させる必要がある
     expect(KEY_THEME).toBe('theme')
+  })
+
+  test('inline script が読む key は localSettingsStore の KEY_THEME と一致する（script は import できず key を複製しているため）', () => {
+    const html = renderLayoutToString()
+    const keys = [...html.matchAll(/localStorage\.getItem\('([^']+)'\)/g)].map((m) => m[1])
+    expect(keys).toEqual([KEY_THEME])
   })
 })

@@ -2,7 +2,8 @@ import { describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
-import { KEY_THEME } from '@/lib/config'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import { KEY_THEME } from '@/lib/preferences/infrastructure/localSettingsStore'
 
 // ==========================================================
 // ThemeToggle — html[data-theme] のトグル + localStorage 永続化
@@ -22,12 +23,12 @@ describe('ThemeToggle', () => {
   })
 
   test('renders a switch with accessible name テーマ切替', () => {
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
     expect(screen.getByRole('switch', { name: 'テーマ切替' })).toBeInTheDocument()
   })
 
   test('Given data-theme="dark", switch is unchecked (light mode off)', () => {
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
     expect(screen.getByRole('switch', { name: 'テーマ切替' })).toHaveAttribute(
       'aria-checked',
       'false'
@@ -36,7 +37,7 @@ describe('ThemeToggle', () => {
 
   test('Given data-theme="light", switch is checked (light mode on)', () => {
     document.documentElement.dataset.theme = 'light'
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
     expect(screen.getByRole('switch', { name: 'テーマ切替' })).toHaveAttribute(
       'aria-checked',
       'true'
@@ -45,7 +46,7 @@ describe('ThemeToggle', () => {
 
   test('Given data-theme="dark", clicking switches to light and persists raw string', async () => {
     const user = userEvent.setup()
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
 
     await user.click(screen.getByRole('switch', { name: 'テーマ切替' }))
 
@@ -61,7 +62,7 @@ describe('ThemeToggle', () => {
 
   test('clicking twice returns to dark', async () => {
     const user = userEvent.setup()
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
 
     const toggle = screen.getByRole('switch', { name: 'テーマ切替' })
     await user.click(toggle)
@@ -75,7 +76,7 @@ describe('ThemeToggle', () => {
   test('Given data-theme="light", clicking switches to dark', async () => {
     document.documentElement.dataset.theme = 'light'
     const user = userEvent.setup()
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
 
     await user.click(screen.getByRole('switch', { name: 'テーマ切替' }))
 
@@ -84,7 +85,7 @@ describe('ThemeToggle', () => {
   })
 
   test('has type="button" to avoid implicit form submission', () => {
-    render(<ThemeToggle />)
+    render(<ThemeToggle />, { wrapper: PreferencesProvider })
     expect(screen.getByRole('switch', { name: 'テーマ切替' })).toHaveAttribute(
       'type',
       'button'

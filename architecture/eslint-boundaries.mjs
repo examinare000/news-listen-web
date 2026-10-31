@@ -16,6 +16,7 @@ const ALLOWED_CROSS_CONTEXT = [
   ['learning', 'catalog'],
   ['admin', 'catalog'],
   ['admin', 'account'],
+  ['preferences', 'playback'],
 ]
 
 // application 層のディレクトリがまだ無い間の APP の現状の対応ファイル（context つき）。

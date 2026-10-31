@@ -3,8 +3,25 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
-import { AppProvider, useApp } from '@/contexts/AppContext'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { formatDate } from '@/lib/format'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 // 再生バーは usePlayback / usePlaybackActions の値を表示し、操作を委譲するだけ。
 // 値の導出（題の切り詰め・総時間の代替・主操作の分岐表）は application の読み取りモデルが持つので、ここでは与えた値が見えること・
@@ -104,16 +121,16 @@ function install(setup: Setup = {}) {
 }
 
 function DefaultSpeedProbe() {
-  return <output data-testid="default-speed">{useApp().state.playbackSpeed}</output>
+  return <output data-testid="default-speed">{usePreferences().get(LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting)}</output>
 }
 
 function renderBar(setup: Setup = {}, defaultSpeed = 1.5) {
   fns = install(setup)
   return render(
-    <AppProvider initialState={{ playbackSpeed: defaultSpeed }}>
+    <PreferencesProvider store={memoryStore({ default_playback_speed: JSON.stringify(defaultSpeed) })}>
       <AudioPlayerBar />
       <DefaultSpeedProbe />
-    </AppProvider>,
+    </PreferencesProvider>,
   )
 }
 
@@ -325,7 +342,7 @@ describe('Speed selector', () => {
     expect(Number(speedSelect.value)).toBe(2)
   })
 
-  test('変更すると setSpeed(数値) を呼び、既定速度 (AppContext.playbackSpeed) は書き換えない (verifies: CI-P4-27, CI-P4-45; shared-session-10)', async () => {
+  test('変更すると setSpeed(数値) を呼び、既定速度 (Preferences の defaultPlaybackSpeed) は書き換えない (verifies: CI-P4-27, CI-P4-45; shared-session-10)', async () => {
     renderBar({ playback: { speed: 2 } }, 1.5)
 
     await userEvent.selectOptions(screen.getByRole('combobox', { name: '速度' }), '1.25')

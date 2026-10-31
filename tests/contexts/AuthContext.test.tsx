@@ -2,8 +2,24 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const getMe = vi.fn()
 const login = vi.fn()
@@ -59,11 +75,11 @@ function Consumer() {
 
 function renderAuth() {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <AuthProvider>
         <Consumer />
       </AuthProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

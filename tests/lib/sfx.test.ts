@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 type SfxName = 'correct' | 'incorrect' | 'achievement' | 'streak' | 'swipe'
 
 interface SfxModule {
-  isSfxEnabled: () => boolean
-  setSfxEnabled: (enabled: boolean) => void
+  configureSfx: (isEnabled: () => boolean) => void
   prepareSfx: () => void
   playSfx: (name: SfxName) => void
 }
@@ -52,18 +51,49 @@ beforeEach(() => {
   vi.useRealTimers()
   vi.stubGlobal('AudioContext', AudioContextMock)
   AudioContextMock.instances = []
-  localStorage.clear()
 })
 
-describe('SFX preference', () => {
-  test('defaults to enabled and persists an explicit local override', async () => {
+describe('SFX enablement injection', () => {
+  test('configureSfx を一度も呼んでいない間は有効とみなして鳴らす', async () => {
     const sfx = await loadSfx()
 
-    expect(sfx.isSfxEnabled()).toBe(true)
+    sfx.playSfx('correct')
 
-    sfx.setSfxEnabled(false)
-    expect(localStorage.getItem('sfx_enabled')).toBe('false')
-    expect(sfx.isSfxEnabled()).toBe(false)
+    expect(AudioContextMock.instances).toHaveLength(1)
+    expect(AudioContextMock.instances[0].createOscillator).toHaveBeenCalled()
+  })
+
+  test('有効かどうかの判定で localStorage を読み書きしない', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    const sfx = await loadSfx()
+
+    sfx.configureSfx(() => true)
+    sfx.prepareSfx()
+    sfx.playSfx('correct')
+
+    expect(getItem).not.toHaveBeenCalled()
+    expect(setItem).not.toHaveBeenCalled()
+    getItem.mockRestore()
+    setItem.mockRestore()
+  })
+
+  test('最後に設定した判定関数が有効になる', async () => {
+    const sfx = await loadSfx()
+
+    sfx.configureSfx(() => false)
+    sfx.configureSfx(() => true)
+    sfx.playSfx('correct')
+
+    expect(AudioContextMock.instances).toHaveLength(1)
+  })
+
+  test('localStorage を使っていた旧アクセサを export しない', async () => {
+    const sfx = (await loadSfx()) as unknown as Record<string, unknown>
+
+    expect(sfx.isSfxEnabled).toBeUndefined()
+    expect(sfx.setSfxEnabled).toBeUndefined()
+    expect(typeof sfx.configureSfx).toBe('function')
   })
 })
 
@@ -82,11 +112,12 @@ describe('playSfx', () => {
     const sfx = await loadSfx()
 
     expect(AudioContextMock.instances).toHaveLength(0)
-    sfx.setSfxEnabled(false)
+    sfx.configureSfx(() => false)
     sfx.playSfx('correct')
+    sfx.prepareSfx()
     expect(AudioContextMock.instances).toHaveLength(0)
 
-    sfx.setSfxEnabled(true)
+    sfx.configureSfx(() => true)
     sfx.playSfx('correct')
     expect(AudioContextMock.instances).toHaveLength(1)
   })

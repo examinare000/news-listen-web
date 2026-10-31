@@ -35,18 +35,6 @@ const {
   mockRouterReplace: vi.fn(),
 }))
 
-// AppContext mock
-vi.mock('@/contexts/AppContext', () => ({
-  useApp: vi.fn(() => ({
-    state: {
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      isRestoring: false,
-    },
-    dispatch: vi.fn(),
-  })),
-}))
-
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     updateProfile: mockUpdateProfile,

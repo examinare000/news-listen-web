@@ -7,14 +7,6 @@ const mockGetVapidPublicKey = vi.fn().mockResolvedValue({ public_key: 'BNVa2nUfx
 const mockSubscribePush = vi.fn().mockResolvedValue({})
 const mockUnsubscribePush = vi.fn().mockResolvedValue({})
 
-vi.mock('@/contexts/AppContext', () => ({
-  useApp: vi.fn(() => ({
-    state: { baseUrl: 'https://api.example.com', apiKey: 'test-key', isConfigured: true, isRestoring: false, playbackSpeed: 1.0 },
-    dispatch: vi.fn(),
-    configure: vi.fn(),
-  })),
-}))
-
 vi.mock('@/lib/api', () => ({
   createApiClient: vi.fn(() => ({
     getVapidPublicKey: mockGetVapidPublicKey,

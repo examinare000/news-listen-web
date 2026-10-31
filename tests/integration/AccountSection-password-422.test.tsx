@@ -6,18 +6,6 @@ import { AccountSection } from '@/components/ui/AccountSection'
 
 // ── グローバルモック（lib/api は実装を使う） ────────────────────────────
 
-// AppContext mock
-vi.mock('@/contexts/AppContext', () => ({
-  useApp: vi.fn(() => ({
-    state: {
-      baseUrl: 'https://api.example.com',
-      apiKey: 'test-key',
-      isRestoring: false,
-    },
-    dispatch: vi.fn(),
-  })),
-}))
-
 // AuthContext mock
 const mockLogout = vi.fn()
 const mockRefreshMe = vi.fn()

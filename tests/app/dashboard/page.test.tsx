@@ -2,13 +2,15 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import DashboardPage from '@/app/(app)/dashboard/page'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 
 const { playSfx, showToast } = vi.hoisted(() => ({
   playSfx: vi.fn(),
   showToast: vi.fn(),
 }))
 
-vi.mock('@/lib/sfx', () => ({ playSfx }))
+vi.mock('@/lib/sfx', () => ({ playSfx, configureSfx: vi.fn() }))
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast }),
 }))
@@ -65,6 +67,27 @@ const EMPTY_DASHBOARD = {
   achievements: [],
 }
 
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore。前のテストが書いた値に頼らない。
+function renderDashboard(initial: Record<string, string> = {}) {
+  const data = new Map<string, string>(Object.entries(initial))
+  const store: KeyValueStore = {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+  render(
+    <PreferencesProvider store={store}>
+      <DashboardPage />
+    </PreferencesProvider>,
+  )
+  return data
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -79,7 +102,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('ダッシュボード')).toBeInTheDocument()
   })
@@ -90,7 +113,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText(/5日連続/)).toBeInTheDocument()
   })
@@ -101,7 +124,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('生成済みエピソード数')).toBeInTheDocument()
     expect(screen.getByText('12')).toBeInTheDocument()
@@ -113,7 +136,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('習得語彙数')).toBeInTheDocument()
     expect(screen.getByText('34')).toBeInTheDocument()
@@ -125,7 +148,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('クイズ成績の推移')).toBeInTheDocument()
     // quizzed_episodes=3・average_correct_rate=0.75(75%) の要約表示
@@ -142,7 +165,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('月別活動')).toBeInTheDocument()
     expect(screen.getByText('2026-07')).toBeInTheDocument()
@@ -157,7 +180,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('TOEIC 600')).toBeInTheDocument()
   })
@@ -168,7 +191,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('今週 3/5 本')).toBeInTheDocument()
     expect(screen.getByText('目標: 5 → 実績: 4')).toBeInTheDocument()
@@ -182,7 +205,7 @@ describe('DashboardPage — display', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('実績')).toBeInTheDocument()
     expect(screen.getByText('初回エピソード完聴')).toBeInTheDocument()
@@ -208,7 +231,8 @@ describe('DashboardPage — display', () => {
       getLearningDashboard,
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    // 初回の応答に含まれる解錠済み実績は「見た」扱いである、という前提を保存値で明示する
+    renderDashboard({ seen_achievement_ids: JSON.stringify(['first_episode_completed']) })
     await screen.findByText('解錠: 2026-07-01')
     expect(showToast).not.toHaveBeenCalled()
 
@@ -218,6 +242,21 @@ describe('DashboardPage — display', () => {
       expect(showToast).toHaveBeenCalledWith('実績を解錠しました：初回クイズ正解', 'success')
     })
     expect(playSfx).toHaveBeenCalledWith('achievement')
+  })
+
+  test('seen_achievement_ids の保存値が壊れていれば空とみなし、解除済みの実績を音つきでトースト表示して既読として保存する', async () => {
+    const { createApiClient } = await import('@/lib/api')
+    vi.mocked(createApiClient).mockReturnValue({
+      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
+    } as unknown as ReturnType<typeof createApiClient>)
+
+    const saved = renderDashboard({ seen_achievement_ids: 'not-json' })
+
+    await waitFor(() => {
+      expect(showToast).toHaveBeenCalledWith('実績を解錠しました：初回エピソード完聴', 'success')
+    })
+    expect(playSfx).toHaveBeenCalledWith('achievement')
+    expect(JSON.parse(saved.get('seen_achievement_ids') ?? 'null')).toContain('first_episode_completed')
   })
 
   test('shows registered vocabulary count/latest five and hides the test link when no words are due', async () => {
@@ -238,7 +277,7 @@ describe('DashboardPage — display', () => {
       getVocabularyTestSession: vi.fn().mockResolvedValue({ items: [] }),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('登録語彙')).toBeInTheDocument()
     expect(screen.getByText('6 語')).toBeInTheDocument()
@@ -264,7 +303,7 @@ describe('DashboardPage — display', () => {
       }),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByRole('link', { name: '単語テスト' })).toHaveAttribute(
       'href',
@@ -280,7 +319,7 @@ describe('DashboardPage — graceful degradation', () => {
       getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('ダッシュボード')).toBeInTheDocument()
     // ゼロ表示（クラッシュしない）
@@ -293,7 +332,7 @@ describe('DashboardPage — graceful degradation', () => {
       getLearningDashboard: vi.fn().mockRejectedValue(new Error('network error')),
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText('ダッシュボード')).toBeInTheDocument()
     expect(await screen.findByText(/取得できませんでした/)).toBeInTheDocument()
@@ -311,7 +350,7 @@ describe('DashboardPage — graceful degradation', () => {
       getLearningDashboard,
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText(/取得できませんでした/)).toBeInTheDocument()
 
@@ -331,7 +370,7 @@ describe('DashboardPage — graceful degradation', () => {
       getLearningDashboard,
     } as unknown as ReturnType<typeof createApiClient>)
 
-    render(<DashboardPage />)
+    renderDashboard()
 
     expect(await screen.findByText(/5日連続/)).toBeInTheDocument()
 

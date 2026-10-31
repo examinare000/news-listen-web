@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import React, { useEffect } from 'react'
-import { AppProvider, useApp } from '@/contexts/AppContext'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { PlaybackErrorToaster, usePlaybackActions } from '@/components/PlaybackToasts'
@@ -44,7 +45,7 @@ const entry = (id: string) => ({ id, title: `Title ${id}`, intro: `intro ${id}` 
 interface Captured {
   pb: ReturnType<typeof usePlayback>
   actions: ReturnType<typeof usePlaybackActions>
-  app: ReturnType<typeof useApp>
+  prefs: ReturnType<typeof usePreferences>
 }
 
 // 描画した consumer の最新の値を、テストから操作できるように取り出す。
@@ -53,9 +54,9 @@ let cap: Captured
 function Capture() {
   const pb = usePlayback()
   const actions = usePlaybackActions()
-  const app = useApp()
+  const prefs = usePreferences()
   useEffect(() => {
-    cap = { pb, actions, app }
+    cap = { pb, actions, prefs }
   })
   return null
 }
@@ -64,9 +65,15 @@ let gateway: GatewayDouble
 let audio: TestAudio
 let AudioCtor: ReturnType<typeof vi.fn>
 
-function tree(options: { readonly playbackSpeed?: number; readonly gateway?: ApiGateway } = {}) {
+// 既定速度の保存値は、描画の前に localStorage へ seed する（browser adapter を通る）。
+const DEFAULT_SPEED = LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting
+function seedDefaultSpeed(speed: number): void {
+  localStorage.setItem('default_playback_speed', JSON.stringify(speed))
+}
+
+function tree(options: { readonly gateway?: ApiGateway } = {}) {
   return (
-    <AppProvider initialState={options.playbackSpeed === undefined ? undefined : { playbackSpeed: options.playbackSpeed }}>
+    <PreferencesProvider>
       <ToastProvider>
         <ApiClientProvider gateway={options.gateway ?? gateway}>
           <PlaybackProvider>
@@ -75,7 +82,7 @@ function tree(options: { readonly playbackSpeed?: number; readonly gateway?: Api
           </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 
@@ -199,7 +206,8 @@ describe('PlaybackProvider の配線', () => {
 
 describe('既定速度 (shared-session-10)', () => {
   test('開始のたびに既定速度で始まり、再生中に既定速度を変えても再生中の回は変わらない。バーの速度変更は既定速度を書き換えない (verifies: CI-P4-15, CI-P4-45; T-P4-12, shared-session-10)', async () => {
-    render(tree({ playbackSpeed: 1.5 }))
+    seedDefaultSpeed(1.5)
+    render(tree())
     await startAndPlay('a')
     expect(audio.playbackRate).toBe(1.5)
 
@@ -207,10 +215,11 @@ describe('既定速度 (shared-session-10)', () => {
       cap.pb.setSpeed(2.0)
     })
     expect(cap.pb.playback.speed).toBe(2.0)
-    expect(cap.app.state.playbackSpeed).toBe(1.5)
+    expect(cap.prefs.get(DEFAULT_SPEED)).toBe(1.5)
 
     act(() => {
-      cap.app.dispatch({ type: 'SET_SPEED', speed: 1.1 })
+      // 8 段に無い値は set が既定へ正規化する。型を外すのはこの 1 箇所だけ。
+      cap.prefs.set(DEFAULT_SPEED, 1.1 as never)
     })
     expect(cap.pb.playback.speed).toBe(2.0)
     expect(audio.playbackRate).toBe(2.0)
@@ -226,17 +235,19 @@ describe('既定速度 (shared-session-10)', () => {
     [1.1, 1.0],
     [3, 1.0],
   ])('idle の表示速度は、既定速度 %s を 8 段に狭めた %s (verifies: CI-P4-15; T-P4-12, web-dec-35)', (stored, shown) => {
-    render(tree({ playbackSpeed: stored }))
+    seedDefaultSpeed(stored)
+    render(tree())
     expect(cap.pb.playback.status).toBe('idle')
     expect(cap.pb.playback.speed).toBe(shown)
   })
 
   test('idle の間に既定速度を変えると、その同じ描画で表示速度が新しい既定速度になる (verifies: CI-P4-15; T-P4-12, web-dec-39)', () => {
-    render(tree({ playbackSpeed: 1.1 }))
+    seedDefaultSpeed(1.1)
+    render(tree())
     expect(cap.pb.playback.speed).toBe(1.0)
 
     act(() => {
-      cap.app.dispatch({ type: 'SET_SPEED', speed: 1.5 })
+      cap.prefs.set(DEFAULT_SPEED, 1.5)
     })
 
     expect(cap.pb.playback.speed).toBe(1.5)

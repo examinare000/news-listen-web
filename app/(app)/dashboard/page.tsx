@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { createApiClient } from '@/lib/api'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { useToast } from '@/components/ui/Toast'
+import { usePreferences } from '@/contexts/PreferencesProvider'
+import { seenAchievementIds } from '@/lib/preferences/domain/settings'
 import { playSfx } from '@/lib/sfx'
 import type {
   LearningDashboard,
@@ -30,6 +32,7 @@ function formatPercent(rate: number): string {
 
 export default function DashboardPage() {
   const { showToast } = useToast()
+  const { get, set } = usePreferences()
   const [dashboard, setDashboard] = useState<LearningDashboard | null>(null)
   const [vocabulary, setVocabulary] = useState<VocabularyListResponse | null>(null)
   const [testSession, setTestSession] = useState<VocabularyTestSessionResponse | null>(null)
@@ -45,9 +48,7 @@ export default function DashboardPage() {
 
     if (dashboardResult.status === 'fulfilled') {
       const data = dashboardResult.value
-      const seenIdsJson = typeof window !== 'undefined' ? localStorage.getItem('seen_achievement_ids') : null
-      const seenIds = seenIdsJson ? JSON.parse(seenIdsJson) as string[] : []
-      const seenIdsSet = new Set(seenIds)
+      const seenIdsSet = new Set(get(seenAchievementIds))
 
       const newlyUnlockedAndUnseen = data.achievements.filter(
         (achievement) => !seenIdsSet.has(achievement.id),
@@ -61,9 +62,7 @@ export default function DashboardPage() {
           }
           seenIdsSet.add(achievement.id)
         }
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('seen_achievement_ids', JSON.stringify(Array.from(seenIdsSet)))
-        }
+        set(seenAchievementIds, Array.from(seenIdsSet))
       }
       setDashboard(data)
       setLoadError(false)
@@ -81,7 +80,7 @@ export default function DashboardPage() {
     if (sessionResult.status === 'fulfilled' && sessionResult.value) {
       setTestSession(sessionResult.value)
     }
-  }, [showToast])
+  }, [showToast, get, set])
 
   useEffect(() => {
     void loadDashboard()

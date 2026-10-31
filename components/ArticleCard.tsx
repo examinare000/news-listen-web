@@ -1,6 +1,7 @@
 import React from 'react'
 import { formatDate, formatRelativeTime } from '@/lib/format'
-import { useApp } from '@/contexts/AppContext'
+import { usePreferences } from '@/contexts/PreferencesProvider'
+import { timeFormat } from '@/lib/preferences/domain/settings'
 import { Menu } from '@/components/ui/Menu'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import type { Article, DifficultyLevel } from '@/types/index'
@@ -75,10 +76,10 @@ export function ArticleCard({
   readOnly = false,
   onUnstar,
 }: ArticleCardProps) {
-  const { state } = useApp()
+  const { get } = usePreferences()
 
   // WHY: now を current time に注入して相対表記を計算する（決定的にテスト可能）
-  const formattedDate = state.timeFormat === 'relative'
+  const formattedDate = get(timeFormat) === 'relative'
     ? formatRelativeTime(new Date(article.published_at), new Date())
     : formatDate(article.published_at)
 

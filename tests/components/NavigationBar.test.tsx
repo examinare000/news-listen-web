@@ -33,6 +33,11 @@ vi.mock('@/contexts/AuthContext', () => ({
   useAuth: vi.fn(defaultAuthContext),
 }))
 
+// 実物の ThemeToggle が usePreferences() を呼ぶ。設定の保存は本テストの対象外なので、公開面だけを差し替える。
+vi.mock('@/contexts/PreferencesProvider', () => ({
+  usePreferences: () => ({ get: vi.fn(), set: vi.fn(), ready: true }),
+}))
+
 vi.mock('@/contexts/StreakContext', () => ({
   useStreak: vi.fn(() => ({ streak: null, isPulsing: false, refresh: vi.fn() })),
 }))

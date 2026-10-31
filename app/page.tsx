@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useApp } from '@/contexts/AppContext'
+import { usePreferences } from '@/contexts/PreferencesProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { LandingPage } from '@/components/lp/LandingPage'
 import { LoginModal } from '@/components/ui/LoginModal'
@@ -10,7 +10,7 @@ import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
 import { createApiClient } from '@/lib/api'
 
 // Entry gate（ランディングページ導入後）:
-// - unknown / unauthenticated → LandingPage を即座に表示（LP は静的なので isRestoring を
+// - unknown / unauthenticated → LandingPage を即座に表示（LP は静的なので PreferencesProvider の ready を
 //   待たない。以前のスケルトン分岐は撤去）。ログインボタンでオーバーレイの LoginModal を開く。
 // - 認証済み:
 //     - onboarding 状態を取得する間は LandingPage を表示（ブランク遷移防止。以前は null）
@@ -19,7 +19,7 @@ import { createApiClient } from '@/lib/api'
 type OnboardingGate = 'unknown' | 'needed' | 'done'
 
 export default function RootPage() {
-  const { state } = useApp()
+  const { ready } = usePreferences()
   const { status: authStatus } = useAuth()
   const router = useRouter()
 
@@ -30,7 +30,7 @@ export default function RootPage() {
 
   // ログイン完了後に onboarding 状態を取得する（未認証では API が 401 になるため）。
   useEffect(() => {
-    if (state.isRestoring || authStatus !== 'authenticated') return
+    if (!ready || authStatus !== 'authenticated') return
     let cancelled = false
     const client = createApiClient()
     client
@@ -45,18 +45,18 @@ export default function RootPage() {
     return () => {
       cancelled = true
     }
-  }, [state.isRestoring, authStatus])
+  }, [ready, authStatus])
 
   // onboarding 完了（または取得失敗）が確定したらフィードへ。
   useEffect(() => {
     if (
-      !state.isRestoring &&
+      ready &&
       authStatus === 'authenticated' &&
       gate === 'done'
     ) {
       router.replace('/feed')
     }
-  }, [state.isRestoring, authStatus, gate, router])
+  }, [ready, authStatus, gate, router])
 
   if (authStatus === 'authenticated') {
     if (gate === 'needed') {

@@ -2,9 +2,25 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { useState } from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthContext'
 import { setupMockCaches } from '../helpers/mockCaches'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 // web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
 // 消す。audio-v1 は失効経路では消さない（棄却済み: 主体付き key・SW 一元化）。
@@ -50,7 +66,7 @@ function Consumer() {
 
 function renderAuth(initialStatus: 'authenticated' | 'unknown' = 'authenticated') {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <AuthProvider
         // 'unknown' は initialStatus を渡さず、AuthProvider の mount 時自動解決
         // （useEffect の void refreshMe()）を発火させる（T-T15c 用）。
@@ -59,7 +75,7 @@ function renderAuth(initialStatus: 'authenticated' | 'unknown' = 'authenticated'
       >
         <Consumer />
       </AuthProvider>
-    </AppProvider>
+    </PreferencesProvider>
   )
 }
 

@@ -4,8 +4,24 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { ArticleCard } from '@/components/ArticleCard'
 import { formatDate, formatRelativeTime } from '@/lib/format'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import type { Article } from '@/types/index'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 const SAMPLE_ARTICLE: Article = {
   id: 'a1',
@@ -37,9 +53,9 @@ function renderCard(overrides: Partial<{
   const timeFormat = overrides.timeFormat || 'absolute'
   return {
     ...render(
-      <AppProvider initialState={{ timeFormat }}>
+      <PreferencesProvider store={memoryStore({ time_format: JSON.stringify(timeFormat) })}>
         <ArticleCard {...props} />
-      </AppProvider>
+      </PreferencesProvider>
     ),
     props,
   }

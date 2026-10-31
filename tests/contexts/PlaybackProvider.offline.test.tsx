@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { act, render } from '@testing-library/react'
 import React, { useEffect } from 'react'
-import { AppProvider } from '@/contexts/AppContext'
+import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -11,6 +12,21 @@ import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 import type { Podcast } from '@/types'
+
+// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
+const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
+  const data = new Map(Object.entries(initial))
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
 
 // 実の PlaybackProvider が組む保存庫（Cache Storage・Object URL・fetch）を、test-local の差し替えで動かす結合テスト。
 // 保存済みの回は gateway を引かず、Object URL の音源で再生する。旧 AudioPlayerContext.offline の観点を新しい入口に対して固定する。
@@ -70,7 +86,7 @@ function restoreUrl(name: 'createObjectURL' | 'revokeObjectURL'): void {
 
 function renderProvider() {
   return render(
-    <AppProvider>
+    <PreferencesProvider store={memoryStore()}>
       <ToastProvider>
         <ApiClientProvider gateway={gateway}>
           <PlaybackProvider>
@@ -78,7 +94,7 @@ function renderProvider() {
           </PlaybackProvider>
         </ApiClientProvider>
       </ToastProvider>
-    </AppProvider>,
+    </PreferencesProvider>,
   )
 }
 
