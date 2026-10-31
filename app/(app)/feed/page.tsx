@@ -6,16 +6,16 @@ import { ArticleCard } from '@/components/ArticleCard'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { createApiClient, ApiError } from '@/lib/api'
 import { formatRetryAfter } from '@/lib/format'
+import { classifyGenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { Article, DifficultyLevel } from '@/types/index'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
-// ADR-073: backend 文言変更・版ずれ時の耐障害性のため、detail の "Monthly" 文言判定と
-// Retry-After 24時間超の両方で月次判定を行う（フォールバック戦略）。
+// 月次・日次の判定は classifyGenerationLimit（ADR-073 のフォールバック戦略）に集約している。
 function generationLimitMessage(err: ApiError): string {
   const when = formatRetryAfter(err.retryAfterSeconds)
-  const isMonthly = /monthly/i.test(err.detail) || (err.retryAfterSeconds ?? 0) > 86400
-  const label = isMonthly ? '今月の生成上限' : '本日の生成上限'
+  const label =
+    classifyGenerationLimit(err.detail, err.retryAfterSeconds).period === 'monthly' ? '今月の生成上限' : '本日の生成上限'
   return when ? `${label}に達しました（${when}に可能）` : `${label}に達しました`
 }
 
