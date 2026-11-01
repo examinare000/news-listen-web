@@ -136,4 +136,29 @@ describe('createBrowserKeyValueStore', () => {
     expect(kv.set('k', 'v')).toBe(false)
     expect(() => kv.remove('k')).not.toThrow()
   })
+
+  test('keys は localStorage に保存した key を返す', () => {
+    const kv = createBrowserKeyValueStore()
+    expect(kv.keys()).toEqual([])
+    kv.set('podcast_position:p1', '1')
+    kv.set('theme', 'dark')
+    expect([...kv.keys()].sort()).toEqual(['podcast_position:p1', 'theme'])
+  })
+
+  test('localStorage へのアクセスが例外を投げると keys は空配列', () => {
+    const kv = createBrowserKeyValueStore()
+    const denied = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error('denied')
+        },
+        ownKeys() {
+          throw new Error('denied')
+        },
+      },
+    )
+    vi.stubGlobal('localStorage', denied)
+    expect(kv.keys()).toEqual([])
+  })
 })

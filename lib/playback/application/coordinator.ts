@@ -53,6 +53,8 @@ export interface PlaybackCommands {
   removeFromQueue(id: string): void
   reorder(fromIndex: number, toOffset: number): void
   skipToNext(): Promise<StartResult>
+  /** 主体離脱の停止（web-cmd-playback-09）。待ち中の解決は捨て、Queue を空にし、位置も完聴も送らない。 */
+  stopForSubjectLeave(): void
 }
 
 export interface PlaybackQueries {
@@ -291,6 +293,17 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
       } finally {
         userPending -= 1
       }
+    },
+
+    stopForSubjectLeave() {
+      // 世代を進めるので、待ち中の解決は待ち明けに解放される。advance は戻さない（web-dec-72）。
+      epoch += 1
+      autoPending = null
+      queue = emptyQueue
+      notify()
+      // reset してから stop: A の位置・完聴を B の確立後に送らない（web-dec-76）。
+      positionReporter.reset()
+      session.stop()
     },
 
     async addToQueue(input) {

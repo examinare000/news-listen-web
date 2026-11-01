@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useReducer, useState } from 'react'
 import { useApiClient } from '@/contexts/ApiClientProvider'
+import { useAuth } from '@/contexts/AuthProvider'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { createEpisodeGateway } from '@/lib/catalog/infrastructure/episodeGateway'
@@ -51,7 +52,12 @@ function createSpeedHolder(initial: PlaybackSpeed): { get: () => PlaybackSpeed; 
   }
 }
 
-function createWiring(gateway: ApiGateway, defaultSpeed: PlaybackSpeed, initialVolume: number) {
+function createWiring(
+  gateway: ApiGateway,
+  defaultSpeed: PlaybackSpeed,
+  initialVolume: number,
+  currentUserId: () => string | null,
+) {
   const session = createPlaybackSession(createBrowserAudioElement())
   const kv = createBrowserKeyValueStore()
   const localPositions = createLocalPositionStore(kv)
@@ -60,6 +66,7 @@ function createWiring(gateway: ApiGateway, defaultSpeed: PlaybackSpeed, initialV
     gateway,
     objectUrl: createBrowserObjectUrl(),
     estimate: createBrowserStorageEstimate(),
+    currentUserId,
   })
   const speed = createSpeedHolder(defaultSpeed)
   const coordinator = createPlaybackCoordinator({
@@ -99,6 +106,7 @@ function createServerValue(defaultSpeed: PlaybackSpeed): PlaybackContextValue {
     removeFromQueue: serverError,
     reorder: serverError,
     skipToNext: serverError,
+    stopForSubjectLeave: serverError,
     nowPlaying: () => null,
     upNext: () => [],
     queueView: () => ({ nowPlaying: null, upNext: [], canSkipNext: false }),
@@ -127,10 +135,11 @@ function createServerValue(defaultSpeed: PlaybackSpeed): PlaybackContextValue {
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const gateway = useApiClient()
   const { get, set } = usePreferences()
+  const { currentUserId, registerSubjectLeaveStep } = useAuth()
   const defaultSpeed = get(defaultPlaybackSpeed)
   // 音量は wiring の生成時に 1 回だけ読み、以後は変更を set で書くだけにする。
   const [wiring] = useState<Wiring | null>(() =>
-    typeof window === 'undefined' ? null : createWiring(gateway, defaultSpeed, get(volumeSetting)),
+    typeof window === 'undefined' ? null : createWiring(gateway, defaultSpeed, get(volumeSetting), currentUserId),
   )
   const [volume, setVolume] = useState(() => wiring?.volume ?? DEFAULT_VOLUME)
   // 関数の同一性を保つため、操作の束は 1 回だけ作る。
@@ -146,6 +155,12 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
       unsubscribeCoordinator()
     }
   }, [wiring])
+
+  // 主体離脱の後始末 (d) が呼ぶ停止の登録口。AuthProvider は再生を知らない（web-dec-73）。
+  useEffect(() => {
+    if (wiring === null) return undefined
+    return registerSubjectLeaveStep(() => wiring.coordinator.stopForSubjectLeave())
+  }, [wiring, registerSubjectLeaveStep])
 
   // 描画のたびに最新の既定速度を渡す。effect で更新すると 1 描画遅れる。
   wiring?.speed.set(defaultSpeed)
@@ -171,6 +186,7 @@ function createOperations(
     removeFromQueue: (id) => coordinator.removeFromQueue(id),
     reorder: (from, toOffset) => coordinator.reorder(from, toOffset),
     skipToNext: () => coordinator.skipToNext(),
+    stopForSubjectLeave: () => coordinator.stopForSubjectLeave(),
     nowPlaying: () => coordinator.nowPlaying(),
     upNext: () => coordinator.upNext(),
     queueView: () => coordinator.queueView(),

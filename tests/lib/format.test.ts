@@ -218,6 +218,7 @@ describe('formatRelativeTime', () => {
 describe('formatAuthUserLabel', () => {
   test('Given authenticated user, returns formatted label "display_name（username / role）"', () => {
     const user: AuthUser = {
+      user_id: 'u-taro',
       username: 'taro',
       role: 'user',
       display_name: '山田太郎',
@@ -227,6 +228,7 @@ describe('formatAuthUserLabel', () => {
 
   test('Given admin user, returns formatted label with admin role', () => {
     const user: AuthUser = {
+      user_id: 'u-admin-alice',
       username: 'admin-alice',
       role: 'admin',
       display_name: 'Alice Admin',
@@ -236,6 +238,13 @@ describe('formatAuthUserLabel', () => {
 
   test('Given null user, returns "—"', () => {
     expect(formatAuthUserLabel(null)).toBe('—')
+  })
+
+  test('web-dec-82: user_id の無い { username, role, display_name } と userId 付きの値のどちらにも同じ文字列を返す', () => {
+    const withoutId = { username: 'taro', role: 'user' as const, display_name: '山田太郎' }
+    const sessionUser = { ...withoutId, userId: 'u-taro' }
+    expect(formatAuthUserLabel(withoutId)).toBe('山田太郎（taro / user）')
+    expect(formatAuthUserLabel(sessionUser)).toBe('山田太郎（taro / user）')
   })
 })
 

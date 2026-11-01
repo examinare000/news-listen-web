@@ -36,6 +36,8 @@ export interface OfflineLibrary {
 export interface LocalPositionStore {
   read(id: string): number | null
   write(id: string, seconds: number): void
+  /** 主体離脱で、端末に残した全 episode の位置を消す。 */
+  clearAll(): void
 }
 
 export type Connectivity = () => boolean

@@ -23,15 +23,17 @@ vi.mock('next/navigation', () => ({
 async function setupUseAuth() {
   const { useAuth } = await import('@/contexts/AuthProvider')
   vi.mocked(useAuth).mockReturnValue({
-    session: { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } },
+    session: { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } },
     retry: vi.fn(),
     status: 'authenticated',
-    user: { username: 'alice', role: 'user', display_name: 'Alice' },
+    user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
     logout: mockLogout,
     login: vi.fn(),
     register: vi.fn(),
     refreshMe: vi.fn(),
     loginWithPasskey: vi.fn(),
+    registerSubjectLeaveStep: vi.fn(() => () => {}),
+    currentUserId: () => null,
   })
 }
 

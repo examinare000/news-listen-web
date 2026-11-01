@@ -10,8 +10,11 @@ import type { StorageEstimate } from '@/lib/platform/storageEstimate'
 import type { Podcast } from '@/types'
 import { episodeResponse, metaResponse, readEpisodeRecord, readMeta } from './offlineRecord'
 
-// 主体別の名前へ替えるのは別 slice。それまでは旧実装と同じ名前を使う。
-const CACHE_NAME = 'audio-v1'
+// 音声の Cache は主体（backend の user_id）ごとに分ける（ADR-104 決定 2）。旧名 audio-v1 は回収が消す。
+const OLD_AUDIO_CACHE = 'audio-v1'
+const SUBJECT_AUDIO_PREFIX = `${OLD_AUDIO_CACHE}-`
+
+export const audioCacheName = (userId: string): string => `${SUBJECT_AUDIO_PREFIX}${userId}`
 
 const audioKey = (id: string): string => `/_audio/${id}`
 const metaKey = (id: string): string => `/_audio-meta/${id}`
@@ -23,21 +26,37 @@ export interface OfflineLibraryDeps {
   readonly gateway: ApiGateway
   readonly objectUrl: ObjectUrl
   readonly estimate: StorageEstimate
+  /** 現在の主体。各操作は開始時に 1 回だけ読み、その Cache 名を最後まで使う。null は保存庫が無効（shared-leave-10）。 */
+  readonly currentUserId: () => string | null
 }
 
-/** logout 時など Provider の外から保存庫全体を消す。cacheStore が無ければ何もしない。 */
-export async function clearOfflineAudio(cacheStore: CacheStore | null): Promise<void> {
-  await cacheStore?.delete(CACHE_NAME)
+/** 主体離脱で、その主体の音声 Cache を消す。cacheStore が無ければ何もしない。 */
+export async function deleteSubjectAudio(cacheStore: CacheStore | null, userId: string): Promise<void> {
+  await cacheStore?.delete(audioCacheName(userId))
+}
+
+/**
+ * 起動時の回収。現在の主体以外の audio-v1（旧名を含む）・audio-v1-* を消す。
+ * keep は各削除の直前に読む: 掃除の途中で B が確立して保存しても B の Cache を消さない（web-dec-85）。
+ */
+export async function reclaimAudioCaches(cacheStore: CacheStore | null, keep: () => string | null): Promise<void> {
+  if (cacheStore === null) return
+  for (const name of await cacheStore.keys()) {
+    if (name !== OLD_AUDIO_CACHE && !name.startsWith(SUBJECT_AUDIO_PREFIX)) continue
+    const current = keep()
+    if (current !== null && name === audioCacheName(current)) continue
+    await cacheStore.delete(name)
+  }
 }
 
 export function createOfflineLibrary(deps: OfflineLibraryDeps): OfflineLibrary {
-  const { cacheStore, gateway, objectUrl, estimate } = deps
+  const { cacheStore, gateway, objectUrl, estimate, currentUserId } = deps
 
   // 音声の大きさは参考値なので、取れなければ null にして保存自体は成功させる。
-  async function audioSize(id: string): Promise<number | null> {
+  async function audioSize(cacheName: string, id: string): Promise<number | null> {
     if (cacheStore === null) return null
     try {
-      const bucket = await cacheStore.open(CACHE_NAME)
+      const bucket = await cacheStore.open(cacheName)
       const response = await bucket.match(audioKey(id))
       return response === undefined ? null : (await response.blob()).size
     } catch {
@@ -47,18 +66,20 @@ export function createOfflineLibrary(deps: OfflineLibraryDeps): OfflineLibrary {
 
   return {
     async save(id) {
-      if (cacheStore === null) return { ok: false, failure: { kind: 'unsupported' } }
+      const userId = currentUserId()
+      if (cacheStore === null || userId === null) return { ok: false, failure: { kind: 'unsupported' } }
+      const cacheName = audioCacheName(userId)
       const fetched = await gateway.request<Podcast>(`/api/backend/podcasts/${id}`)
       if (!fetched.ok) return { ok: false, failure: { kind: 'download_failed', failure: fetched.failure } }
       const dto = fetched.value
       if (decodeEpisode(dto).kind !== 'playable') return { ok: false, failure: { kind: 'not_playable' } }
 
-      const audio = await cacheStore.putFromUrl(CACHE_NAME, audioKey(id), dto.audio_url)
+      const audio = await cacheStore.putFromUrl(cacheName, audioKey(id), dto.audio_url)
       if (!audio.ok) return { ok: false, failure: audio.failure }
 
-      const sizeBytes = await audioSize(id)
+      const sizeBytes = await audioSize(cacheName, id)
       try {
-        const bucket = await cacheStore.open(CACHE_NAME)
+        const bucket = await cacheStore.open(cacheName)
         await bucket.put(
           metaKey(id),
           metaResponse({
@@ -78,8 +99,9 @@ export function createOfflineLibrary(deps: OfflineLibraryDeps): OfflineLibrary {
     },
 
     async get(id) {
-      if (cacheStore === null) return null
-      const bucket = await cacheStore.open(CACHE_NAME)
+      const userId = currentUserId()
+      if (cacheStore === null || userId === null) return null
+      const bucket = await cacheStore.open(audioCacheName(userId))
       const [audio, stored] = await Promise.all([bucket.match(audioKey(id)), bucket.match(episodeKey(id))])
       if (audio === undefined || stored === undefined) return null
       const dto = await readEpisodeRecord(stored)
@@ -101,26 +123,31 @@ export function createOfflineLibrary(deps: OfflineLibraryDeps): OfflineLibrary {
     },
 
     async has(id) {
-      if (cacheStore === null) return false
-      const bucket = await cacheStore.open(CACHE_NAME)
+      const userId = currentUserId()
+      if (cacheStore === null || userId === null) return false
+      const bucket = await cacheStore.open(audioCacheName(userId))
       return (await bucket.match(episodeKey(id))) !== undefined
     },
 
     async remove(id) {
-      if (cacheStore === null) return
-      const bucket = await cacheStore.open(CACHE_NAME)
+      const userId = currentUserId()
+      if (cacheStore === null || userId === null) return
+      const bucket = await cacheStore.open(audioCacheName(userId))
       await bucket.delete(audioKey(id))
       await bucket.delete(metaKey(id))
       await bucket.delete(episodeKey(id))
     },
 
     async clear() {
-      await clearOfflineAudio(cacheStore)
+      const userId = currentUserId()
+      if (userId === null) return
+      await deleteSubjectAudio(cacheStore, userId)
     },
 
     async list() {
-      if (cacheStore === null) return []
-      const bucket = await cacheStore.open(CACHE_NAME)
+      const userId = currentUserId()
+      if (cacheStore === null || userId === null) return []
+      const bucket = await cacheStore.open(audioCacheName(userId))
       const entries = (await bucket.keys()).filter((entry) => entry.url.includes(META_MARKER))
       const views: OfflineEpisodeView[] = []
       for (const entry of entries) {

@@ -261,3 +261,37 @@ describe('web-contract-20: 束ね物に無い記述子は拒否する（registry
     expect(data.get('theme')).toBe('light')
   })
 })
+
+describe('shared-leave-01 clearSubjectScoped（shared-dec-02 / web-dec-75）', () => {
+  const ALL = {
+    default_playback_speed: '1.5',
+    seen_achievement_ids: '["a"]',
+    time_format: '"relative"',
+    theme: 'light',
+    sfx_enabled: 'false',
+    player_volume: '0.5',
+  }
+
+  test('主体依存の 2 key（default_playback_speed・seen_achievement_ids）だけが消え、残り 4 key は元の値のまま。kv.set は 1 回も呼ばれない', () => {
+    const { store, data, sets } = memoryStore(ALL)
+    createLocalSettingsStore(store).clearSubjectScoped()
+
+    expect(data.has('default_playback_speed')).toBe(false)
+    expect(data.has('seen_achievement_ids')).toBe(false)
+    expect(data.get('time_format')).toBe('"relative"')
+    expect(data.get('theme')).toBe('light')
+    expect(data.get('sfx_enabled')).toBe('false')
+    expect(data.get('player_volume')).toBe('0.5')
+    expect(sets).toEqual([])
+  })
+
+  test('消した後の read は既定値で、2 回目も同じ結果', () => {
+    const { store, data } = memoryStore(ALL)
+    const settings = createLocalSettingsStore(store)
+    settings.clearSubjectScoped()
+    settings.clearSubjectScoped()
+    expect(settings.read(B.defaultPlaybackSpeed.setting)).toBe(B.defaultPlaybackSpeed.setting.default)
+    expect(settings.read(B.seenAchievementIds.setting)).toEqual(B.seenAchievementIds.setting.default)
+    expect(data.size).toBe(4)
+  })
+})

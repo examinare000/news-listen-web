@@ -18,14 +18,16 @@ vi.mock('next/navigation', () => ({
 // リテラル型に固定すると admin ロール等への上書きが型エラーになるため避ける。
 const defaultAuthProvider = vi.hoisted(
   () => (): ReturnType<typeof import('@/contexts/AuthProvider').useAuth> => ({
-    session: { kind: 'authenticated', user: { username: 'test', role: 'user', display_name: 'Test User' } },
+    session: { kind: 'authenticated', user: { username: 'test', role: 'user', display_name: 'Test User', userId: 'u-test' } },
     retry: vi.fn(),
     status: 'authenticated',
-    user: { username: 'test', role: 'user', display_name: 'Test User' },
+    user: { username: 'test', role: 'user', display_name: 'Test User', userId: 'u-test' },
     logout: vi.fn(),
     login: vi.fn(),
     register: vi.fn(),
     refreshMe: vi.fn(),
+    registerSubjectLeaveStep: vi.fn(),
+    currentUserId: () => null,
     loginWithPasskey: vi.fn(),
   })
 )
@@ -242,7 +244,7 @@ describe('NavigationBar', () => {
   // 「おすすめサイト管理」ナビ項目 — admin ロールのみ表示
   // ==========================================================
   test('Given an admin user, renders the おすすめサイト管理 link pointing to /admin/featured-sites', () => {
-    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -252,7 +254,7 @@ describe('NavigationBar', () => {
   })
 
   test('Given a non-admin user, does NOT render the おすすめサイト管理 link', () => {
-    mockAuthAs({ user: { username: 'test', role: 'user' as const, display_name: 'Test User' } })
+    mockAuthAs({ user: { username: 'test', role: 'user' as const, display_name: 'Test User', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -274,7 +276,7 @@ describe('NavigationBar', () => {
   test('Given current path is /admin/featured-sites and an admin user, admin link has nav-item active class and aria-current="page"', async () => {
     const { usePathname } = await import('next/navigation')
     vi.mocked(usePathname).mockReturnValue('/admin/featured-sites')
-    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -284,7 +286,7 @@ describe('NavigationBar', () => {
   })
 
   test('Given an admin user, renders sidebar-divider → 管理 label → admin link immediately after the 設定 link', () => {
-    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -305,7 +307,7 @@ describe('NavigationBar', () => {
   // 「招待管理」ナビ項目 — admin ロールのみ表示（招待制新規登録・issue 相当）
   // ==========================================================
   test('Given an admin user, renders the 招待管理 link pointing to /admin/invites', () => {
-    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -313,7 +315,7 @@ describe('NavigationBar', () => {
   })
 
   test('Given a non-admin user, does NOT render the 招待管理 link', () => {
-    mockAuthAs({ user: { username: 'test', role: 'user' as const, display_name: 'Test User' } })
+    mockAuthAs({ user: { username: 'test', role: 'user' as const, display_name: 'Test User', userId: 'u-test' } })
 
     render(<NavigationBar />)
 
@@ -321,7 +323,7 @@ describe('NavigationBar', () => {
   })
 
   test('Given an admin user, 招待管理 link immediately follows the おすすめサイト管理 link', () => {
-    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin' } })
+    mockAuthAs({ user: { username: 'admin', role: 'admin' as const, display_name: 'Admin', userId: 'u-test' } })
 
     render(<NavigationBar />)
 

@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { validatePassword } from '@/lib/account/domain/password'
 import { createApiClient } from '@/lib/api'
 import { AdminGate } from '@/components/AdminGate'
-import type { AuthUser, UserRole } from '@/types/index'
+import type { UserSummary, UserRole } from '@/types/index'
 
 // 管理者用ユーザー管理画面。一覧・作成・ロール変更・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
@@ -23,7 +23,7 @@ function AdminUsersPanel() {
   const { user } = useAuth()
   const client = createApiClient()
 
-  const [users, setUsers] = useState<AuthUser[]>([])
+  const [users, setUsers] = useState<UserSummary[]>([])
   const [loadError, setLoadError] = useState('')
 
   // 作成フォーム
@@ -81,7 +81,7 @@ function AdminUsersPanel() {
     }
   }
 
-  async function handleToggleRole(target: AuthUser) {
+  async function handleToggleRole(target: UserSummary) {
     const nextRole: UserRole = target.role === 'admin' ? 'user' : 'admin'
     try {
       await client.updateUser(target.username, { role: nextRole })

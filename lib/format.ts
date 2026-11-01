@@ -1,4 +1,4 @@
-import type { AuthUser } from '@/types/index'
+import type { UserRole } from '@/types/index'
 
 /**
  * Formats a duration in seconds to M:SS or H:MM:SS string.
@@ -128,7 +128,9 @@ export function formatBytes(bytes: number): string {
  * @param user - The authenticated user, or null for unauthenticated state
  * @returns Formatted label like "display_name（username / role）", or "—" if user is null
  */
-export function formatAuthUserLabel(user: AuthUser | null): string {
+export function formatAuthUserLabel(
+  user: { readonly username: string; readonly role: UserRole; readonly display_name: string } | null,
+): string {
   if (!user) {
     return '—'
   }

@@ -145,6 +145,15 @@ export interface OnboardingStatusResponse {
 
 /** ログインユーザーの公開情報（GET /auth/me 等）。password_hash は含まれない。 */
 export interface AuthUser {
+  /** backend の主体 ID（ADR-104 決定 6・15）。/admin/users の応答には無い（UserSummary）。 */
+  user_id: string
+  username: string
+  role: UserRole
+  display_name: string
+}
+
+/** /admin/users の一覧・作成・更新の応答。user_id を持たない（ADR-104 決定 15）。 */
+export interface UserSummary {
   username: string
   role: UserRole
   display_name: string
@@ -157,7 +166,7 @@ export interface LoginResponse {
 }
 
 export interface UserListResponse {
-  users: AuthUser[]
+  users: UserSummary[]
 }
 
 /** POST /auth/register のリクエストボディ。invite_code は登録制限が無効な環境では省略可。 */

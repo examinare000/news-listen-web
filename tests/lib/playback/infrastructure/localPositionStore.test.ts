@@ -1,14 +1,14 @@
 // 端末の位置 adapter の契約テスト（web-deriv-20）。key と形式は旧実装（hooks/useAudioPlayer.ts）と同じ。
 //
-// RED 理由: `@/lib/playback/infrastructure/localPositionStore` がまだ存在しない。
+// RED 理由（clearAll）: LocalPositionStore.clearAll と KeyEnumerableStore が未実装。
 import { describe, test, expect } from 'vitest'
 import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
-import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import type { KeyEnumerableStore } from '@/lib/platform/keyValueStore'
 
 function createKv(initial: Record<string, string> = {}) {
   const data = new Map(Object.entries(initial))
   const sets: Array<[string, string]> = []
-  const kv: KeyValueStore = {
+  const kv: KeyEnumerableStore = {
     get: (key) => data.get(key) ?? null,
     set: (key, value) => {
       sets.push([key, value])
@@ -18,8 +18,9 @@ function createKv(initial: Record<string, string> = {}) {
     remove: (key) => {
       data.delete(key)
     },
+    keys: () => [...data.keys()],
   }
-  return { kv, sets }
+  return { kv, sets, data }
 }
 
 describe('verifies: CI-T41 createLocalPositionStore（web-deriv-20）', () => {
@@ -54,8 +55,24 @@ describe('verifies: CI-T41 createLocalPositionStore（web-deriv-20）', () => {
     expect(createLocalPositionStore(kv).read('p1')).toBeNull()
   })
 
-  test('clearAll を宣言しない（web-slice-departure-02 が足す）', () => {
-    const { kv } = createKv()
-    expect('clearAll' in createLocalPositionStore(kv)).toBe(false)
+  test('shared-leave-01: clearAll は podcast_position: で始まる key だけを消し、他の key は残す', () => {
+    const { kv, data } = createKv({
+      'podcast_position:p1': '1',
+      'podcast_position:p2': '2',
+      podcast_positionX: '3',
+      theme: 'dark',
+      default_playback_speed: '1.5',
+    })
+    createLocalPositionStore(kv).clearAll()
+    expect([...data.keys()].sort()).toEqual(['default_playback_speed', 'podcast_positionX', 'theme'])
+  })
+
+  test('shared-leave-01: clearAll の後の read は null で、2 回目の clearAll は何も消さない', () => {
+    const { kv, data } = createKv({ 'podcast_position:p1': '9', theme: 'dark' })
+    const store = createLocalPositionStore(kv)
+    store.clearAll()
+    expect(store.read('p1')).toBeNull()
+    store.clearAll()
+    expect([...data.keys()]).toEqual(['theme'])
   })
 })

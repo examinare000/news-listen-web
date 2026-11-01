@@ -30,7 +30,7 @@ test('LP→招待コードで新規登録→オンボーディング→フィー
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ username: 'newbie', role: 'user', display_name: 'Newbie' }),
+        body: JSON.stringify({ user_id: 'u-newbie', username: 'newbie', role: 'user', display_name: 'Newbie' }),
       })
     } else {
       route.fulfill({
@@ -49,7 +49,7 @@ test('LP→招待コードで新規登録→オンボーディング→フィー
       contentType: 'application/json',
       body: JSON.stringify({
         token: 't',
-        user: { username: 'newbie', role: 'user', display_name: 'Newbie' },
+        user: { user_id: 'u-newbie', username: 'newbie', role: 'user', display_name: 'Newbie' },
       }),
     })
   })

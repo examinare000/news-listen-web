@@ -127,14 +127,18 @@ function createWorld(options: { readonly online?: boolean } = {}) {
   const markCompleted = vi.fn<PositionSync['markCompleted']>(() => Promise.resolve(OK_VOID))
   const read = vi.fn<LocalPositionStore['read']>((id) => positions.get(id) ?? null)
   const write = vi.fn<LocalPositionStore['write']>()
-  const positionReporter = createPositionReporter({ sync: { updatePosition, markCompleted }, local: { read, write } })
+  const clearAll = vi.fn<LocalPositionStore['clearAll']>()
+  const positionReporter = createPositionReporter({
+    sync: { updatePosition, markCompleted },
+    local: { read, write, clearAll },
+  })
 
   const coordinator = createPlaybackCoordinator({
     session,
     offline,
     positionReporter,
     episodes: { fetch },
-    localPositions: { read, write },
+    localPositions: { read, write, clearAll },
     isOnline: () => env.online,
     defaultSpeed: () => env.speed,
   })
@@ -1255,5 +1259,104 @@ describe('開始の後の自動再生', () => {
     await settle()
 
     expect(observed.at(-1)).toBe('playing')
+  })
+})
+
+describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
+  test('shared-leave-01: 再生中に呼ぶと session は idle・Queue は空・nowPlaying は null・購読者に通知・戻り値は undefined で、位置も完聴も送らない', async () => {
+    const w = createWorld()
+    await playingWithQueue(w, 'a', 'b', 'c')
+    w.audio.fireTimeUpdate(7)
+    w.updatePosition.mockClear()
+    w.write.mockClear()
+    const notifiedBefore = w.notified.mock.calls.length
+
+    const result = w.coordinator.stopForSubjectLeave()
+
+    expect(result).toBeUndefined()
+    expect(stateOf(w)).toEqual({ status: 'idle', id: null })
+    expect(upNextIds(w)).toEqual([])
+    expect(w.coordinator.nowPlaying()).toBeNull()
+    expect(w.notified.mock.calls.length).toBeGreaterThan(notifiedBefore)
+    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.markCompleted).not.toHaveBeenCalled()
+    expect(w.write).not.toHaveBeenCalled()
+    await expectSharedInvariant(w)
+  })
+
+  test('web-dec-72: 自動の開始の待ち中に呼ぶと advance を戻さず Queue は空のまま、待ち明けの解決は 1 回だけ解放されて開始されない', async () => {
+    const w = createWorld()
+    await playingWithQueue(w, 'a', 'b', 'c')
+    w.saved.add('b')
+    const heldB = w.holdGet('b')
+    await endPlayback(w)
+    w.updatePosition.mockClear()
+    w.markCompleted.mockClear()
+
+    w.coordinator.stopForSubjectLeave()
+    heldB.resolve(w.cached('b'))
+    await settle()
+
+    expect(upNextIds(w)).toEqual([])
+    expect(w.coordinator.nowPlaying()).toBeNull()
+    expect(stateOf(w)).toEqual({ status: 'idle', id: null })
+    expect(startedIds(w)).toEqual(['a'])
+    expect(w.releaseOf('b')).toHaveBeenCalledTimes(1)
+    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.markCompleted).not.toHaveBeenCalled()
+    await expectSharedInvariant(w)
+  })
+
+  test('web-dec-72: 利用者の開始の待ち中に呼ぶと、待ち明けの b は始まらず session は idle のまま、b の音源は 1 回だけ解放される', async () => {
+    const w = createWorld()
+    await playingWithQueue(w, 'a')
+    w.saved.add('b')
+    const heldB = w.holdGet('b')
+    const starting = w.coordinator.startEpisode('b')
+    await settle()
+
+    w.coordinator.stopForSubjectLeave()
+    heldB.resolve(w.cached('b'))
+    await starting
+    await settle()
+
+    expect(stateOf(w)).toEqual({ status: 'idle', id: null })
+    expect(startedIds(w)).toEqual(['a'])
+    expect(w.coordinator.nowPlaying()).toBeNull()
+    expect(upNextIds(w)).toEqual([])
+    expect(w.releaseOf('b')).toHaveBeenCalledTimes(1)
+  })
+
+  test('shared-leave-07: 停止の後に別の episode を再生して一時停止すると、その位置だけが送られ、停止前の a の位置・完聴は 1 回も送られない', async () => {
+    const w = createWorld()
+    await playingWithQueue(w, 'a', 'b')
+    w.audio.fireTimeUpdate(7)
+    w.coordinator.stopForSubjectLeave()
+    w.updatePosition.mockClear()
+    w.markCompleted.mockClear()
+
+    await startPlaying(w, 'd')
+    w.audio.fireTimeUpdate(30)
+    w.session.pause()
+
+    expect(w.updatePosition).toHaveBeenCalledTimes(1)
+    expect(w.updatePosition).toHaveBeenCalledWith('d', 30)
+    expect(calledIds(w.updatePosition)).not.toContain('a')
+    expect(w.markCompleted).not.toHaveBeenCalled()
+  })
+
+  test('web-cmd-playback-09: 2 回呼んでも idle・空のままで、送信は 0 回', async () => {
+    const w = createWorld()
+    await playingWithQueue(w, 'a', 'b')
+    w.audio.fireTimeUpdate(7)
+    w.updatePosition.mockClear()
+
+    w.coordinator.stopForSubjectLeave()
+    w.coordinator.stopForSubjectLeave()
+
+    expect(stateOf(w)).toEqual({ status: 'idle', id: null })
+    expect(upNextIds(w)).toEqual([])
+    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.markCompleted).not.toHaveBeenCalled()
   })
 })

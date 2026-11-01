@@ -4,6 +4,8 @@ import React, { useEffect } from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
+import { ApiError } from '@/lib/api'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 import { podcastPositionKey } from '@/lib/config'
@@ -27,6 +29,13 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
     },
   }
 }
+
+// AuthProvider の refreshMe だけ getMe を double にする（web-dec-80 の通信断の再現）。
+const { getMe } = vi.hoisted(() => ({ getMe: vi.fn() }))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return { ...actual, createApiClient: () => ({ getMe }) }
+})
 
 // 実の PlaybackProvider が組む保存庫（Cache Storage・Object URL・fetch）を、test-local の差し替えで動かす結合テスト。
 // 保存済みの回は gateway を引かず、Object URL の音源で再生する。旧 AudioPlayerContext.offline の観点を新しい入口に対して固定する。
@@ -56,11 +65,14 @@ function pod(id: string, over: Partial<Podcast> = {}): Podcast {
 }
 
 let cap: ReturnType<typeof usePlayback>
+let authCap: ReturnType<typeof useAuth>
 
 function Capture() {
   const pb = usePlayback()
+  const auth = useAuth()
   useEffect(() => {
     cap = pb
+    authCap = auth
   })
   return null
 }
@@ -87,13 +99,20 @@ function restoreUrl(name: 'createObjectURL' | 'revokeObjectURL'): void {
 function renderProvider() {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <ToastProvider>
-        <ApiClientProvider gateway={gateway}>
-          <PlaybackProvider>
-            <Capture />
-          </PlaybackProvider>
-        </ApiClientProvider>
-      </ToastProvider>
+      <AuthProvider
+        initialSession={{
+          kind: 'authenticated',
+          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'user-test' },
+        }}
+      >
+        <ToastProvider>
+          <ApiClientProvider gateway={gateway}>
+            <PlaybackProvider>
+              <Capture />
+            </PlaybackProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </AuthProvider>
     </PreferencesProvider>,
   )
 }
@@ -124,6 +143,7 @@ beforeEach(() => {
   createObjectURL = vi.fn(() => 'blob:test/a')
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: createObjectURL })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
+  getMe.mockReset()
   gateway = createGatewayDouble()
   gateway.respond('GET', '/api/backend/podcasts/a', { ok: true, value: pod('a', { playback_position_seconds: 0 }) })
   gateway.respond('PATCH', '/api/backend/podcasts/a/position', { ok: true, value: undefined })
@@ -203,6 +223,47 @@ describe('PlaybackProvider のオフライン', () => {
 
     await act(async () => {
       expect(await cap.offline.list()).toMatchObject([{ episodeId: 'a', title: 'intro a', durationSeconds: 60 }])
+    })
+  })
+})
+
+describe('主体別の保存庫 (verifies: web-dec-74, web-dec-80, shared-leave-10)', () => {
+  test('web-dec-74: 保存した entry は audio-v1-{user_id} にあり、固定名 audio-v1 は作られない', async () => {
+    renderProvider()
+    await saveA()
+
+    const names = await caches.keys()
+    expect(names).toContain('audio-v1-user-test')
+    expect(names).not.toContain('audio-v1')
+  })
+
+  test('web-dec-80: A の音声を保存してから getMe が通信断（unavailable）になっても、offline.has は true のまま', async () => {
+    renderProvider()
+    await saveA()
+    getMe.mockRejectedValue(new ApiError(0, 'Network error'))
+
+    await act(async () => {
+      await authCap.refreshMe()
+    })
+
+    expect(authCap.session.kind).toBe('unavailable')
+    await act(async () => {
+      expect(await cap.offline.has('a')).toBe(true)
+    })
+  })
+
+  test('web-dec-80 shared-leave-10: 401 で未認証になると、保存庫は無効（has は false・save は unsupported）になる', async () => {
+    renderProvider()
+    await saveA()
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+
+    await act(async () => {
+      await authCap.refreshMe()
+    })
+
+    await act(async () => {
+      expect(await cap.offline.has('a')).toBe(false)
+      expect(await cap.offline.save('a')).toEqual({ ok: false, failure: { kind: 'unsupported' } })
     })
   })
 })

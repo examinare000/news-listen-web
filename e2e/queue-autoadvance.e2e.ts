@@ -42,7 +42,7 @@ test('再生完了→キューの次エピソードが自動再生される', as
       route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ username: 'e2e', role: 'user', display_name: 'E2E' }),
+        body: JSON.stringify({ user_id: 'u-e2e', username: 'e2e', role: 'user', display_name: 'E2E' }),
       })
     } else {
       route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'unauthorized' }) })
@@ -54,7 +54,7 @@ test('再生完了→キューの次エピソードが自動再生される', as
     route.fulfill({
       status: 200,
       contentType: 'application/json',
-      body: JSON.stringify({ token: 't', user: { username: 'e2e', role: 'user', display_name: 'E2E' } }),
+      body: JSON.stringify({ token: 't', user: { user_id: 'u-e2e', username: 'e2e', role: 'user', display_name: 'E2E' } }),
     })
   })
 

@@ -37,6 +37,7 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
+          user_id: 'u-e2e',
           username: 'e2e',
           role: 'user',
           display_name: 'E2E',
@@ -60,6 +61,7 @@ test('ログイン→フィード→Star→再生', async ({ page }) => {
       body: JSON.stringify({
         token: 't',
         user: {
+          user_id: 'u-e2e',
           username: 'e2e',
           role: 'user',
           display_name: 'E2E',

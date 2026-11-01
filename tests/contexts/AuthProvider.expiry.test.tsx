@@ -23,7 +23,8 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 }
 
 // web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
-// 消す。audio-v1 は失効経路では消さない（棄却済み: 主体付き key・SW 一元化）。
+// 消す。音声は主体別 audio-v1-{user_id}（ADR-104 決定 27 / web-dec-83）: 実行中の 401 では消さず（次回起動の回収が消す）、
+// mount 後の最初の確定事象が 401 のとき（起動時の 401）は回収が audio-v1* を全削除する。
 // C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api のみ
 // createApiClient を差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
@@ -73,7 +74,7 @@ function renderAuth(initial: 'authenticated' | 'resolving' = 'authenticated') {
         initialSession={
           initial === 'resolving'
             ? undefined
-            : { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } }
+            : { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } }
         }
       >
         <Consumer />
@@ -92,22 +93,27 @@ afterEach(() => {
 })
 
 describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
-  test('T-T15a: clears shell-*/api-* but keeps audio-v1 when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2)', async () => {
+  test('T-T15a: clears shell-*/api-* but keeps audio-v1-{userId} on a mid-session 401 (verifies: web-contract-18-1, web-contract-18-2, shared-leave-02)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
+    await cacheStorage.open('audio-v1-u-alice')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
     const { ApiError } = await import('@/lib/api')
+    getMe.mockResolvedValueOnce({ user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' })
+    renderAuth('resolving')
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    // 起動時の回収（旧名 audio-v1 を消す）が終わってから 401 にする。途中に 401 が入ると回収の keep が null になる。
+    await waitFor(() => expect(cacheStorage.has('audio-v1')).resolves.toBe(false))
     getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
-    renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
 
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    await waitFor(() => expect(screen.getByTestId('cleanup')).toHaveTextContent('done'))
+    expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(false)
     await expect(cacheStorage.has('api-v1')).resolves.toBe(false)
-    await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
-    expect(screen.getByTestId('cleanup')).toHaveTextContent('done')
+    await expect(cacheStorage.has('audio-v1-u-alice')).resolves.toBe(true)
   })
 
   test('T-T15d: state transitions to unauthenticated and cleanup is reported incomplete when cache deletion fails (verifies: web-contract-18-3)', async () => {
@@ -124,19 +130,22 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     expect(screen.getByTestId('cleanup')).toHaveTextContent('incomplete')
   })
 
-  test('T-T15e: does not touch caches and reports cleanup skipped when getMe succeeds (verifies: web-contract-18-4)', async () => {
+  test('T-T15e: reclaims audio-v1 (non-current subjects) but keeps the current subject cache, shell and api when getMe succeeds (verifies: web-contract-18-4, shared-leave-08)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
-    getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
+    await cacheStorage.open('audio-v1-u-alice')
+    getMe.mockResolvedValue({ user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' })
     renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
 
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
-    expect(screen.getByTestId('cleanup')).toHaveTextContent('skipped')
-    await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
+    // status は初めから authenticated なので、回収まで終えて返る refreshMe の結果（cleanup 表示）で待つ
+    await waitFor(() => expect(screen.getByTestId('cleanup')).toHaveTextContent('skipped'))
+    expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    await expect(cacheStorage.has('audio-v1')).resolves.toBe(false)
+    await expect(cacheStorage.has('audio-v1-u-alice')).resolves.toBe(true)
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(true)
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
@@ -160,7 +169,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15c: clears shell-*/api-* on the initial mount auto-resolve when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2)', async () => {
+  test('T-T15c: clears shell-*/api-* and reclaims all audio-v1* on the initial mount auto-resolve when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2, shared-leave-08)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -172,10 +181,10 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(false)
     await expect(cacheStorage.has('api-v1')).resolves.toBe(false)
-    await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
+    await waitFor(() => expect(cacheStorage.has('audio-v1')).resolves.toBe(false))
   })
 
-  test('T-T15f: a second consecutive expiry cleanup is a no-op that still resolves as done (verifies: web-contract-18-6)', async () => {
+  test('T-T15f: a second consecutive expiry cleanup is a no-op that still resolves as done and audio-v1 is already reclaimed (verifies: web-contract-18-6, shared-leave-08)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -191,7 +200,8 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await userEvent.click(screen.getByText('refresh'))
     await waitFor(() => expect(screen.getByTestId('cleanup')).toHaveTextContent('done'))
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
-    await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
+    // 1 回目の 401 が最初の確定事象なので回収が全削除する。2 回目は回収が走らず、何も変わらない
+    await expect(cacheStorage.has('audio-v1')).resolves.toBe(false)
   })
 })
 

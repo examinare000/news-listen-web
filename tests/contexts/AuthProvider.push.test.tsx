@@ -40,10 +40,11 @@ vi.mock('@/lib/api', () => ({
   },
 }))
 
-const { clearOfflineAudio } = vi.hoisted(() => ({
-  clearOfflineAudio: vi.fn().mockResolvedValue(undefined),
+const { reclaimAudioCaches, deleteSubjectAudio } = vi.hoisted(() => ({
+  reclaimAudioCaches: vi.fn().mockResolvedValue(undefined),
+  deleteSubjectAudio: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ clearOfflineAudio }))
+vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ reclaimAudioCaches, deleteSubjectAudio }))
 
 const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
   clearManagedServiceWorkerCaches: vi.fn().mockResolvedValue(undefined),
@@ -100,7 +101,7 @@ function Consumer({ authRef }: { authRef: AuthRef }) {
 function renderAuth(authRef: AuthRef) {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } }}>
+      <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } }}>
         <Consumer authRef={authRef} />
       </AuthProvider>
     </PreferencesProvider>
@@ -111,7 +112,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   fakePortHolder.port = null
   logout.mockResolvedValue({ status: 'ok' })
-  clearOfflineAudio.mockResolvedValue(undefined)
+  reclaimAudioCaches.mockResolvedValue(undefined)
+  deleteSubjectAudio.mockResolvedValue(undefined)
   clearManagedServiceWorkerCaches.mockResolvedValue(undefined)
 })
 
@@ -156,8 +158,10 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     expect(unsubscribePush).toHaveBeenCalledTimes(1)
     expect(unsubscribePush.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
     expect(logout).toHaveBeenCalledTimes(1)
-    expect(clearOfflineAudio).toHaveBeenCalledTimes(1)
-    expect(clearManagedServiceWorkerCaches).toHaveBeenCalledTimes(1)
+    // logout の後始末は await されない（web-dec-79 / shared-dec-28）ので、完了を待って確かめる
+    await waitFor(() => expect(deleteSubjectAudio).toHaveBeenCalledTimes(1))
+    expect(deleteSubjectAudio).toHaveBeenCalledWith(null, 'u-alice')
+    await waitFor(() => expect(clearManagedServiceWorkerCaches).toHaveBeenCalledTimes(1))
     expect(isSupported).toHaveBeenCalledTimes(1)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
   })

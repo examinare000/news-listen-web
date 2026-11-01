@@ -5,8 +5,8 @@ import { reduce, type AuthEvent, type AuthSession } from '@/lib/account/domain/a
 // React なしで検査する純関数。
 // RED 理由（実装前）: `@/lib/account/domain/authSession` が無い（module not found）。
 
-const alice = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
-const bob = { username: 'bob', role: 'admin' as const, display_name: 'Bob' }
+const alice = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
+const bob = { username: 'bob', role: 'admin' as const, display_name: 'Bob', userId: 'u-bob' }
 const failure = { reason: 'network' as const }
 
 const STATES: ReadonlyArray<readonly [string, AuthSession]> = [

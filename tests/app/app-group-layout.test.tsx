@@ -32,6 +32,8 @@ vi.mock('@/contexts/AuthProvider', () => ({
     logout: vi.fn(),
     login: vi.fn(),
     refreshMe: vi.fn(),
+    currentUserId: () => null,
+    registerSubjectLeaveStep: vi.fn(() => () => {}),
   }),
 }))
 
