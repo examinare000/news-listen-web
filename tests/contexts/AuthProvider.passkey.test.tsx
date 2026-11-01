@@ -1,9 +1,9 @@
 /**
- * AuthContext の passkey ログイン経路テスト。
+ * AuthProvider の passkey ログイン経路テスト。
  *
  * vi.mock('@/lib/api') でクライアントをモック化し、
  * createFakeWebAuthnBrowserPort() でブラウザ境界をフェイク化する。
- * AuthContext + passkey.ts の連携を統合的に検証する
+ * AuthProvider + passkey.ts の連携を統合的に検証する
  * （passkey モジュールはモックしない）。
  */
 import { describe, test, expect, beforeEach, vi } from 'vitest'
@@ -12,7 +12,8 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
+import { ApiError } from '@/lib/api'
 import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
@@ -93,7 +94,7 @@ function renderAuth() {
 beforeEach(() => {
   vi.clearAllMocks()
   // 初期 /auth/me は 401（未認証状態から開始）
-  mockGetMe.mockRejectedValue(new Error('401'))
+  mockGetMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
 })
 
 describe('AuthProvider — loginWithPasskey 状態遷移', () => {

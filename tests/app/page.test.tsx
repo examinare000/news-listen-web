@@ -6,6 +6,7 @@ import RootPage from '@/app/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
+import type { AuthSession } from '@/lib/account/domain/authSession'
 
 // next/navigation は setup.ts でグローバルにモック済み
 // useRouter の戻り値を各テスト前に制御する
@@ -42,24 +43,39 @@ const memoryStore = (): KeyValueStore => {
 }
 
 // 認証状態は useAuth をモックして制御する（AuthProvider の /auth/me 実呼び出しを避ける）。
-// 既定は 'authenticated' とし、設定済みテストが従来どおりフィードへ進むようにする。
-const authStatusOverride = vi.hoisted(() => ({ current: 'authenticated' }))
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({
-    status: authStatusOverride.current,
-    user: null,
-    login: vi.fn(),
-    logout: vi.fn(),
-    register: vi.fn(),
-    refreshMe: vi.fn(),
-  }),
+// 既定は authenticated とし、設定済みテストが従来どおりフィードへ進むようにする。
+// session は AuthSession のリテラルで切り替え、status は Provider と同じ写し方で session から導く
+// （resolving・unavailable → 'unknown'、anonymous → 'unauthenticated'、authenticated → 'authenticated'）。
+// domain は型だけを import する（値 import しない）。
+const AUTHENTICATED: AuthSession = {
+  kind: 'authenticated',
+  user: { username: 'alice', role: 'user', display_name: 'Alice' },
+}
+const authSessionOverride = vi.hoisted(() => ({ current: null as unknown as AuthSession }))
+const retryMock = vi.hoisted(() => vi.fn())
+vi.mock('@/contexts/AuthProvider', () => ({
+  useAuth: () => {
+    const session = authSessionOverride.current
+    const status =
+      session.kind === 'authenticated' ? 'authenticated' : session.kind === 'anonymous' ? 'unauthenticated' : 'unknown'
+    return {
+      session,
+      status,
+      user: session.kind === 'authenticated' ? session.user : null,
+      retry: retryMock,
+      login: vi.fn(),
+      logout: vi.fn(),
+      register: vi.fn(),
+      refreshMe: vi.fn(),
+    }
+  },
 }))
 
 beforeEach(async () => {
   vi.clearAllMocks()
   localStorage.clear()
   usePreferencesOverride.current = null
-  authStatusOverride.current = 'authenticated'
+  authSessionOverride.current = AUTHENTICATED
   // setup.ts の vi.fn() に対して mockReturnValue で挙動を制御
   const { useRouter } = await import('next/navigation')
   vi.mocked(useRouter).mockReturnValue({ replace: mockReplace } as unknown as ReturnType<typeof useRouter>)
@@ -80,7 +96,7 @@ function renderRootPage() {
 // ==========================================================
 describe('RootPage — authenticated', () => {
   test('Given restore complete and authenticated, calls router.replace("/feed")', async () => {
-    authStatusOverride.current = 'authenticated'
+    authSessionOverride.current = AUTHENTICATED
     renderRootPage()
 
     await waitFor(() => {
@@ -89,7 +105,7 @@ describe('RootPage — authenticated', () => {
   })
 
   test('Given authenticated, does NOT show LoginModal', async () => {
-    authStatusOverride.current = 'authenticated'
+    authSessionOverride.current = AUTHENTICATED
     renderRootPage()
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalled())
@@ -103,7 +119,7 @@ describe('RootPage — authenticated, onboarding gate', () => {
   })
 
   test('Given onboarding not completed, shows OnboardingSourcesModal and does not redirect', async () => {
-    authStatusOverride.current = 'authenticated'
+    authSessionOverride.current = AUTHENTICATED
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -126,7 +142,7 @@ describe('RootPage — authenticated, onboarding gate', () => {
 // ==========================================================
 describe('RootPage — unauthenticated', () => {
   test('Given unauthenticated, shows LandingPage with /signup CTA and does NOT auto-open LoginModal', async () => {
-    authStatusOverride.current = 'unauthenticated'
+    authSessionOverride.current = { kind: 'anonymous' }
     renderRootPage()
 
     expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
@@ -139,7 +155,7 @@ describe('RootPage — unauthenticated', () => {
   })
 
   test('未認証なら preferences が ready でなくても、スケルトンを待たずに LandingPage を即座に表示する', () => {
-    authStatusOverride.current = 'unauthenticated'
+    authSessionOverride.current = { kind: 'anonymous' }
     usePreferencesOverride.current = () => ({
       ready: false,
       get: vi.fn(),
@@ -152,7 +168,7 @@ describe('RootPage — unauthenticated', () => {
   })
 
   test('clicking ログイン opens the LoginModal, and its onClose hides it again', async () => {
-    authStatusOverride.current = 'unauthenticated'
+    authSessionOverride.current = { kind: 'anonymous' }
     renderRootPage()
     const user = userEvent.setup()
 
@@ -166,11 +182,52 @@ describe('RootPage — unauthenticated', () => {
     expect(screen.getByTestId('lp-hero')).toBeInTheDocument()
   })
 
-  test('Given auth unknown, shows LandingPage (no redirect)', async () => {
-    authStatusOverride.current = 'unknown'
+  test('Given auth resolving, shows LandingPage (no redirect)', async () => {
+    authSessionOverride.current = { kind: 'resolving' }
     renderRootPage()
 
     expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
     expect(mockReplace).not.toHaveBeenCalled()
+  })
+})
+
+// ==========================================================
+// Entry Gate — 認証状態を確認できない（unavailable）→ 再試行（web-dec-69 / shared-leave-03）
+// ==========================================================
+describe('RootPage — unavailable', () => {
+  beforeEach(() => {
+    authSessionOverride.current = { kind: 'unavailable', failure: { reason: 'network' } }
+  })
+
+  test('shared-leave-03: unavailable は LandingPage もログインモーダルも出さず、再試行ボタンを出す', () => {
+    renderRootPage()
+
+    expect(screen.getByText('接続できませんでした')).toBeInTheDocument()
+    expect(screen.getByTestId('auth-retry')).toBeInTheDocument()
+    expect(screen.queryByTestId('lp-hero')).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  test('shared-leave-03: 再試行ボタンを押すと retry() を 1 回呼ぶ', async () => {
+    renderRootPage()
+    const user = userEvent.setup()
+
+    await user.click(screen.getByTestId('auth-retry'))
+
+    expect(retryMock).toHaveBeenCalledTimes(1)
+  })
+
+  test('resolving・anonymous では再試行ボタンを出さない（従来の描画のまま）', async () => {
+    authSessionOverride.current = { kind: 'resolving' }
+    const { unmount } = renderRootPage()
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    expect(screen.queryByTestId('auth-retry')).not.toBeInTheDocument()
+    unmount()
+
+    authSessionOverride.current = { kind: 'anonymous' }
+    renderRootPage()
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    expect(screen.queryByTestId('auth-retry')).not.toBeInTheDocument()
   })
 })

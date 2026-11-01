@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
+import { ApiError } from '@/lib/api'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -52,10 +53,13 @@ const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
 vi.mock('@/lib/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
 
 function Consumer() {
-  const { status, user, login: doLogin, logout: doLogout, register: doRegister } = useAuth()
+  const { status, user, session, retry, login: doLogin, logout: doLogout, register: doRegister } = useAuth()
   return (
     <div>
       <span data-testid="status">{status}</span>
+      <span data-testid="kind">{session.kind}</span>
+      <span data-testid="reason">{session.kind === 'unavailable' ? session.failure.reason : '-'}</span>
+      <button onClick={() => void retry()}>retry</button>
       <span data-testid="user">{user?.username ?? '-'}</span>
       <button onClick={() => doLogin('alice', 'pw')}>login</button>
       <button onClick={() => doLogout()}>logout</button>
@@ -99,7 +103,7 @@ describe('AuthProvider auto-resolution', () => {
   })
 
   test('resolves unauthenticated when /auth/me fails (401)', async () => {
-    getMe.mockRejectedValue(new Error('401'))
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
     renderAuth()
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     expect(screen.getByTestId('user')).toHaveTextContent('-')
@@ -108,7 +112,7 @@ describe('AuthProvider auto-resolution', () => {
 
 describe('login / logout', () => {
   test('login success sets user and authenticated status', async () => {
-    getMe.mockRejectedValue(new Error('401'))
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
     login.mockResolvedValue({ token: 't', user: { username: 'bob', role: 'admin', display_name: 'Bob' } })
     renderAuth()
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
@@ -186,7 +190,7 @@ describe('login / logout', () => {
 
 describe('register', () => {
   test('register success sets user and authenticated status', async () => {
-    getMe.mockRejectedValue(new Error('401'))
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
     register.mockResolvedValue({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'Newbie' } })
     renderAuth()
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
@@ -198,7 +202,7 @@ describe('register', () => {
   })
 
   test('register failure propagates the error and stays unauthenticated', async () => {
-    getMe.mockRejectedValue(new Error('401'))
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
     register.mockRejectedValue(new Error('409'))
     renderAuth()
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
@@ -209,5 +213,61 @@ describe('register', () => {
     // 状態は unauthenticated のまま据え置かれる（authenticated へ誤って進めない）。
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     expect(screen.getByTestId('user')).toHaveTextContent('-')
+  })
+})
+
+// web-dec-67・68 / shared-leave-03: getMe の失敗は 401 だけが未認証。それ以外は unavailable で、cleanup もしない。
+describe('起動時の getMe 失敗の分類 (verifies: web-contract-18, shared-leave-03)', () => {
+  test.each([
+    ['ApiError(0)（network・timeout）', new ApiError(0, 'Network error'), 'network'],
+    ['ApiError(503)（server）', new ApiError(503, 'Service Unavailable'), 'server'],
+    ['TypeError（ApiError 以外）', new TypeError('boom'), 'unknown'],
+    ['ApiError(404)（401 以外の 4xx）', new ApiError(404, 'Not Found'), 'unknown'],
+  ])('shared-leave-03: %s は unavailable（reason=%s）で、anonymous にも cleanup にもしない', async (_label, error, reason) => {
+    getMe.mockRejectedValue(error)
+    renderAuth()
+
+    // mount 直後の resolving で成り立たないよう、unavailable になるのを完全一致で待つ
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('unavailable'))
+    expect(screen.getByTestId('status').textContent).toBe('unknown')
+    expect(screen.getByTestId('reason').textContent).toBe(reason)
+    expect(screen.getByTestId('user').textContent).toBe('-')
+    expect(clearManagedServiceWorkerCaches).not.toHaveBeenCalled()
+    expect(logout).not.toHaveBeenCalled()
+  })
+
+  test('401 は anonymous（status=unauthenticated）で、既存の cleanup を行う', async () => {
+    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    renderAuth()
+
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('anonymous'))
+    expect(screen.getByTestId('status').textContent).toBe('unauthenticated')
+    expect(clearManagedServiceWorkerCaches).toHaveBeenCalled()
+  })
+})
+
+describe('retry (verifies: web-contract-18, web-dec-68)', () => {
+  test('unavailable から retry すると resolving を経て、成功すれば authenticated になる', async () => {
+    getMe.mockRejectedValueOnce(new ApiError(0, 'Network error'))
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('unavailable'))
+
+    let resolveSecond: (me: { username: string; role: string; display_name: string }) => void = () => {}
+    getMe.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveSecond = resolve
+      })
+    )
+
+    await userEvent.click(screen.getByText('retry'))
+
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('resolving'))
+    expect(screen.getByTestId('status').textContent).toBe('unknown')
+
+    resolveSecond({ username: 'alice', role: 'user', display_name: 'Alice' })
+
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    expect(screen.getByTestId('user').textContent).toBe('alice')
+    expect(getMe).toHaveBeenCalledTimes(2)
   })
 })

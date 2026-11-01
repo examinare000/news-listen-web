@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
+import { validatePassword } from '@/lib/account/domain/password'
 import { createApiClient } from '@/lib/api'
 import { AdminGate } from '@/components/AdminGate'
 import type { AuthUser, UserRole } from '@/types/index'
@@ -50,8 +51,8 @@ function AdminUsersPanel() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
     setFormError('')
-    if (!newUsername || newPassword.length < 8) {
-      setFormError('ユーザーIDと8文字以上のパスワードを入力してください')
+    if (!newUsername || !validatePassword(newPassword).ok) {
+      setFormError('ユーザーIDと12〜20文字のパスワードを入力してください')
       return
     }
     try {
@@ -117,7 +118,7 @@ function AdminUsersPanel() {
             <input
               className="form-input"
               type="password"
-              placeholder="パスワード（8文字以上）"
+              placeholder="パスワード（12〜20文字）"
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}

@@ -30,7 +30,7 @@ const {
   }
 })
 
-vi.mock('@/contexts/AuthContext', () => ({ useAuth: mockUseAuth }))
+vi.mock('@/contexts/AuthProvider', () => ({ useAuth: mockUseAuth }))
 
 vi.mock('@/lib/pushBrowserPort', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/pushBrowserPort')>()

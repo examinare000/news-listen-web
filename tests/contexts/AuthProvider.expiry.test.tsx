@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React, { useState } from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { setupMockCaches } from '../helpers/mockCaches'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
@@ -24,7 +24,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 
 // web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
 // 消す。audio-v1 は失効経路では消さない（棄却済み: 主体付き key・SW 一元化）。
-// C4: 既存 tests/contexts/AuthContext.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
+// C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api のみ
 // createApiClient を差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
 const getMe = vi.fn()
@@ -37,7 +37,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   }
 })
 
-// SG-S0-1（失効 cleanup の発火条件）は 2026-09-17 の user 裁定で候補 (b) に確定した
+// web-contract-18 の失効 cleanup の発火条件は 2026-09-17 の user 裁定で候補 (b) に確定した
 // （`err instanceof ApiError && err.status === 401` のときのみ発火。直前 status は問わない）。
 // 候補 (a)/(c) は再提案しない（棄却済み）。T-T15b/T-T15c/T-T15f は (b) の期待値で固定する。
 
@@ -64,14 +64,17 @@ function Consumer() {
   )
 }
 
-function renderAuth(initialStatus: 'authenticated' | 'unknown' = 'authenticated') {
+function renderAuth(initial: 'authenticated' | 'resolving' = 'authenticated') {
   return render(
     <PreferencesProvider store={memoryStore()}>
       <AuthProvider
-        // 'unknown' は initialStatus を渡さず、AuthProvider の mount 時自動解決
+        // 'resolving' は initialSession を渡さず、AuthProvider の mount 時自動解決
         // （useEffect の void refreshMe()）を発火させる（T-T15c 用）。
-        initialStatus={initialStatus === 'unknown' ? undefined : initialStatus}
-        initialUser={{ username: 'alice', role: 'user', display_name: 'Alice' }}
+        initialSession={
+          initial === 'resolving'
+            ? undefined
+            : { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } }
+        }
       >
         <Consumer />
       </AuthProvider>
@@ -88,7 +91,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
+describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
   test('T-T15a: clears shell-*/api-* but keeps audio-v1 when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
@@ -138,7 +141,7 @@ describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15b: does not clear any cache when getMe rejects with a non-401 ApiError (network error) (verifies: web-contract-18-2, web-contract-18-4)', async () => {
+  test('T-T15b: shared-leave-03: does not clear any cache and stays unavailable (status unknown) when getMe rejects with a non-401 ApiError (network error) (verifies: web-contract-18-2, web-contract-18-4)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -149,8 +152,9 @@ describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
 
     await userEvent.click(screen.getByText('refresh'))
 
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
-    expect(screen.getByTestId('cleanup')).toHaveTextContent('skipped')
+    // shared-leave-03: 401 以外の失敗は未認証にしない（unavailable。status は 'unknown'）
+    await waitFor(() => expect(screen.getByTestId('cleanup').textContent).toBe('skipped'))
+    expect(screen.getByTestId('status').textContent).toBe('unknown')
     await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(true)
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
@@ -163,7 +167,7 @@ describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('api-v1')
     const { ApiError } = await import('@/lib/api')
     getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
-    renderAuth('unknown')
+    renderAuth('resolving')
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(false)
@@ -188,5 +192,28 @@ describe('AuthContext failure cleanup (verifies: web-contract-18)', () => {
     await waitFor(() => expect(screen.getByTestId('cleanup')).toHaveTextContent('done'))
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
     await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
+  })
+})
+
+describe('AuthProvider initialSession (verifies: web-contract-18)', () => {
+  test('initialSession を渡したときは、refresh を押すまで getMe を呼ばない（自動解決しない）', async () => {
+    getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
+    renderAuth('authenticated')
+
+    // 自動解決が走るなら effect が非同期に getMe を呼ぶ。描画後に十分待っても 0 回であること
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('authenticated'))
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(getMe).toHaveBeenCalledTimes(0)
+
+    await userEvent.click(screen.getByText('refresh'))
+    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+  })
+
+  test('initialSession を渡さないと、mount 時に getMe を 1 回呼んで解決する', async () => {
+    getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
+    renderAuth('resolving')
+
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('authenticated'))
+    expect(getMe).toHaveBeenCalledTimes(1)
   })
 })

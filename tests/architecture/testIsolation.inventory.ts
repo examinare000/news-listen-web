@@ -12,9 +12,12 @@ import type { MigrationAllowance, TestInventoryEntry } from '../helpers/architec
 
 const UNIT_TESTS: readonly string[] = [
   'tests/architecture/cqrs.playback.test.ts',
+  'tests/architecture/immutability.account.test.ts',
   'tests/architecture/immutability.playback.test.ts',
   'tests/architecture/readonly.types.test.ts',
   'tests/lib/account/adminAccess.test.ts',
+  'tests/lib/account/domain/authSession.test.ts',
+  'tests/lib/account/domain/password.test.ts',
   'tests/lib/catalog/domain/episode.test.ts',
   'tests/lib/catalog/domain/generationLimit.test.ts',
   'tests/lib/catalog/presentation/failureMessage.test.ts',
@@ -175,10 +178,10 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
     reason: 'React context を provider ごと描画し、状態遷移と外部ポートの結合を検証する',
     files: [
       'tests/contexts/ApiClientProvider.test.tsx',
-      'tests/contexts/AuthContext.expiry.test.tsx',
-      'tests/contexts/AuthContext.passkey.test.tsx',
-      'tests/contexts/AuthContext.push.test.tsx',
-      'tests/contexts/AuthContext.test.tsx',
+      'tests/contexts/AuthProvider.expiry.test.tsx',
+      'tests/contexts/AuthProvider.passkey.test.tsx',
+      'tests/contexts/AuthProvider.push.test.tsx',
+      'tests/contexts/AuthProvider.test.tsx',
       'tests/contexts/PlaybackProvider.completion.test.tsx',
       'tests/contexts/PlaybackProvider.offline.test.tsx',
       'tests/contexts/PlaybackProvider.queue.test.tsx',
@@ -232,6 +235,14 @@ export const TEST_INVENTORY: Readonly<Record<string, TestInventoryEntry>> = Obje
  */
 export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/account/domain/adminAccess.ts': ['tests/lib/account/adminAccess.test.ts'],
+  'lib/account/domain/authSession.ts': [
+    'tests/architecture/immutability.account.test.ts',
+    'tests/lib/account/domain/authSession.test.ts',
+  ],
+  'lib/account/domain/password.ts': [
+    'tests/architecture/immutability.account.test.ts',
+    'tests/lib/account/domain/password.test.ts',
+  ],
   'lib/account/domain/role.ts': [],
   'lib/catalog/domain/episode.ts': ['tests/lib/catalog/domain/episode.test.ts', 'tests/lib/playback/domain/queueEntry.test.ts'],
   'lib/catalog/domain/generationLimit.ts': ['tests/lib/catalog/domain/generationLimit.test.ts'],

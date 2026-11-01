@@ -1,6 +1,6 @@
 'use client'
 
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
 
 /**

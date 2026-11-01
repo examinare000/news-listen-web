@@ -20,14 +20,14 @@ const MOCK_USER_ADMIN: AuthUser = {
   display_name: 'Bob Admin',
 }
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(),
 }))
 
 // next/navigation は tests/setup.ts のグローバルモックで賄う（LogoutButton の useRouter 用）。
 
 async function mockUseAuth(overrides: Record<string, unknown>) {
-  const { useAuth } = await import('@/contexts/AuthContext')
+  const { useAuth } = await import('@/contexts/AuthProvider')
   vi.mocked(useAuth).mockReturnValue({
     logout: mockLogout,
     login: vi.fn(),

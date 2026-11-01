@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { ApiError } from '@/lib/api'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { BrandLogo } from '@/components/ui/BrandLogo'
@@ -16,7 +16,7 @@ interface LoginModalProps {
 }
 
 // 接続設定（SetupModal）の後、未ログイン時に表示するログイン画面。
-// 認証はサーバーサイドセッション（httpOnly Cookie）。成功すると AuthContext が
+// 認証はサーバーサイドセッション（httpOnly Cookie）。成功すると AuthProvider が
 // 'authenticated' になり、上位のゲート（app/page.tsx）がフィードへ進める。
 export function LoginModal({ onClose }: LoginModalProps = {}) {
   const { login, loginWithPasskey } = useAuth()

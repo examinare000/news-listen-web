@@ -2,7 +2,7 @@
 
 import React from 'react'
 import Link from 'next/link'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { adminAccess } from '@/lib/account/domain/adminAccess'
 import { LoginModal } from '@/components/ui/LoginModal'
 
@@ -16,8 +16,8 @@ interface AdminGateProps {
 // children を mount しない（ページ内 useEffect ロードを走らせない）。usePreferences には
 // 依存しない（metrics ページのテストは PreferencesProvider 無しで描画するため）。
 export function AdminGate({ title, children }: AdminGateProps) {
-  const { status, user } = useAuth()
-  const access = adminAccess({ status, user })
+  const { session } = useAuth()
+  const access = adminAccess(session)
 
   if (access === 'loading') {
     return (

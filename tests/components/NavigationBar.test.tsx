@@ -1,7 +1,7 @@
 import { describe, test, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { NavigationBar } from '@/components/NavigationBar'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { useStreak } from '@/contexts/StreakContext'
 
 vi.mock('next/navigation', () => ({
@@ -14,10 +14,12 @@ vi.mock('next/navigation', () => ({
 
 // WHY: vi.mock は hoist されるため、afterEach でも同じ既定値を再利用できるよう
 // vi.hoisted でファクトリ関数として定義する（テスト間の mockReturnValue 上書き漏れ対策）。
-// 戻り値の型は useAuth の実際の型（AuthContextValue）に合わせる — `as const` で
+// 戻り値の型は useAuth の実際の型（AuthProviderValue）に合わせる — `as const` で
 // リテラル型に固定すると admin ロール等への上書きが型エラーになるため避ける。
-const defaultAuthContext = vi.hoisted(
-  () => (): ReturnType<typeof import('@/contexts/AuthContext').useAuth> => ({
+const defaultAuthProvider = vi.hoisted(
+  () => (): ReturnType<typeof import('@/contexts/AuthProvider').useAuth> => ({
+    session: { kind: 'authenticated', user: { username: 'test', role: 'user', display_name: 'Test User' } },
+    retry: vi.fn(),
     status: 'authenticated',
     user: { username: 'test', role: 'user', display_name: 'Test User' },
     logout: vi.fn(),
@@ -29,8 +31,8 @@ const defaultAuthContext = vi.hoisted(
 )
 
 // SidebarAccount は useAuth を呼ぶため、デフォルトで authenticated mock を返す
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: vi.fn(defaultAuthContext),
+vi.mock('@/contexts/AuthProvider', () => ({
+  useAuth: vi.fn(defaultAuthProvider),
 }))
 
 // 実物の ThemeToggle が usePreferences() を呼ぶ。設定の保存は本テストの対象外なので、公開面だけを差し替える。
@@ -44,12 +46,12 @@ vi.mock('@/contexts/StreakContext', () => ({
 
 // admin ロール系テストで使う上書きヘルパー。既定値とのマージにより各テストの記述量を減らす。
 function mockAuthAs(overrides: Partial<ReturnType<typeof useAuth>>) {
-  vi.mocked(useAuth).mockReturnValue({ ...defaultAuthContext(), ...overrides })
+  vi.mocked(useAuth).mockReturnValue({ ...defaultAuthProvider(), ...overrides })
 }
 
 // admin ロール系テストが useAuth の戻り値を上書きするため、後続テストへ漏れないよう毎回既定値へ戻す
 afterEach(() => {
-  vi.mocked(useAuth).mockImplementation(defaultAuthContext)
+  vi.mocked(useAuth).mockImplementation(defaultAuthProvider)
   vi.mocked(useStreak).mockReturnValue({ streak: null, isPulsing: false, refresh: vi.fn() })
 })
 

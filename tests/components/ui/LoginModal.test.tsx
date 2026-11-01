@@ -6,7 +6,7 @@ import { LoginModal } from '@/components/ui/LoginModal'
 
 const login = vi.fn()
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({ login, status: 'unauthenticated', user: null, logout: vi.fn(), refreshMe: vi.fn() }),
 }))
 

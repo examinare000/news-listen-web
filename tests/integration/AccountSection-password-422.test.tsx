@@ -6,10 +6,10 @@ import { AccountSection } from '@/components/ui/AccountSection'
 
 // ── グローバルモック（lib/api は実装を使う） ────────────────────────────
 
-// AuthContext mock
+// AuthProvider mock
 const mockLogout = vi.fn()
 const mockRefreshMe = vi.fn()
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
     user: { username: 'alice', role: 'user' as const, display_name: 'Alice' },
     logout: mockLogout,

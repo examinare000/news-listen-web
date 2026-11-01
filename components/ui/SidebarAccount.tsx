@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { formatAuthUserLabel } from '@/lib/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 

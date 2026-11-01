@@ -155,7 +155,7 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "contexts/AuthContext.tsx",
+    "file": "contexts/AuthProvider.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
@@ -484,7 +484,7 @@
   },
   {
     "rule": "web-dep-08",
-    "file": "contexts/AuthContext.tsx",
+    "file": "contexts/AuthProvider.tsx",
     "specifier": ".status と数値の比較",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-context-06"
@@ -495,55 +495,6 @@
     "specifier": ".status と数値の比較",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-context-07"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "app/(app)/admin/users/page.tsx",
-    "specifier": "password.length",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "app/signup/page.tsx",
-    "specifier": "PASSWORD_MIN_LENGTH",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "app/signup/page.tsx",
-    "specifier": "countPasswordCharacterClasses",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "app/signup/page.tsx",
-    "specifier": "password.length",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "components/ui/AccountSection.tsx",
-    "specifier": "PASSWORD_MIN_LENGTH",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "components/ui/AccountSection.tsx",
-    "specifier": "countPasswordCharacterClasses",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
-  },
-  {
-    "rule": "web-rule-account-03",
-    "file": "components/ui/AccountSection.tsx",
-    "specifier": "password.length",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-03"
   },
   {
     "rule": "web-rule-account-06",
