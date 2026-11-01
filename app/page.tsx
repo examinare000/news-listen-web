@@ -3,14 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePreferences } from '@/contexts/PreferencesProvider'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { LandingPage } from '@/components/lp/LandingPage'
 import { LoginModal } from '@/components/ui/LoginModal'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
 import { createApiClient } from '@/lib/api'
 
 // Entry gate（ランディングページ導入後）:
-// - unknown / unauthenticated → LandingPage を即座に表示（LP は静的なので PreferencesProvider の ready を
+// - resolving / anonymous → LandingPage を即座に表示（LP は静的なので PreferencesProvider の ready を
 //   待たない。以前のスケルトン分岐は撤去）。ログインボタンでオーバーレイの LoginModal を開く。
 // - 認証済み:
 //     - onboarding 状態を取得する間は LandingPage を表示（ブランク遷移防止。以前は null）
@@ -20,7 +20,7 @@ type OnboardingGate = 'unknown' | 'needed' | 'done'
 
 export default function RootPage() {
   const { ready } = usePreferences()
-  const { status: authStatus } = useAuth()
+  const { status: authStatus, session, retry } = useAuth()
   const router = useRouter()
 
   // ログイン済みになった後にだけ取得する onboarding ゲート状態。
@@ -67,7 +67,19 @@ export default function RootPage() {
     return <LandingPage onLoginClick={() => setShowLoginModal(true)} />
   }
 
-  // unknown（/auth/me 解決中）/ unauthenticated: LP を即座に表示する。
+  // 認証状態を確認できない（接続失敗など）: LP もログインモーダルも出さず、再試行を促す（web-dec-69）。
+  if (session.kind === 'unavailable') {
+    return (
+      <div className="content-area content-narrow">
+        <p className="settings-row-desc" role="status">接続できませんでした</p>
+        <button type="button" className="btn btn-primary" data-testid="auth-retry" onClick={() => void retry()}>
+          再試行
+        </button>
+      </div>
+    )
+  }
+
+  // resolving（/auth/me 解決中）/ anonymous: LP を即座に表示する。
   return (
     <>
       <LandingPage onLoginClick={() => setShowLoginModal(true)} />

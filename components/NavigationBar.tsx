@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { useStreak } from '@/contexts/StreakContext'
 
 // アイコン SVG は docs/design/app-ui.html L1392-1418 をインライン移植

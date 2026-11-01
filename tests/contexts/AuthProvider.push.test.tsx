@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { AuthProvider, useAuth } from '@/contexts/AuthContext'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushSubscriptionJSON } from '@/types/index'
@@ -100,7 +100,7 @@ function Consumer({ authRef }: { authRef: AuthRef }) {
 function renderAuth(authRef: AuthRef) {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <AuthProvider initialStatus="authenticated" initialUser={{ username: 'alice', role: 'user', display_name: 'Alice' }}>
+      <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } }}>
         <Consumer authRef={authRef} />
       </AuthProvider>
     </PreferencesProvider>

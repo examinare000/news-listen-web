@@ -9,7 +9,7 @@ const mockReplace = vi.fn()
 const register = vi.fn()
 const authStatusOverride = vi.hoisted(() => ({ current: 'unauthenticated' }))
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
     status: authStatusOverride.current,
     user: null,
@@ -72,6 +72,70 @@ describe('SignupPage — client-side validation', () => {
 
     expect(await screen.findByText('パスワードは12文字以上にしてください')).toBeInTheDocument()
     expect(register).not.toHaveBeenCalled()
+  })
+
+  test('shows the minimum-length message and does not register when the password is 11 characters (3 classes)', async () => {
+    const user = userEvent.setup()
+    render(<SignupPage />)
+
+    await user.type(screen.getByLabelText('ユーザーID'), 'newbie')
+    await user.type(screen.getByLabelText('パスワード'), 'Abc12345678')
+    await user.type(screen.getByLabelText('パスワード（確認）'), 'Abc12345678')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    expect(await screen.findByText('パスワードは12文字以上にしてください')).toBeInTheDocument()
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  test('shows the 20-character upper-limit message and does not register when the password is 21 characters', async () => {
+    const user = userEvent.setup()
+    render(<SignupPage />)
+    const tooLong = 'Abcdefghij12345678901'
+
+    await user.type(screen.getByLabelText('ユーザーID'), 'newbie')
+    await user.type(screen.getByLabelText('パスワード'), tooLong)
+    await user.type(screen.getByLabelText('パスワード（確認）'), tooLong)
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    expect(await screen.findByText('パスワードは20文字以下にしてください')).toBeInTheDocument()
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  test('shows the character-class message for a 12-character password with only 2 classes', async () => {
+    const user = userEvent.setup()
+    render(<SignupPage />)
+
+    await user.type(screen.getByLabelText('ユーザーID'), 'newbie')
+    await user.type(screen.getByLabelText('パスワード'), 'abcdefgh1234')
+    await user.type(screen.getByLabelText('パスワード（確認）'), 'abcdefgh1234')
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    expect(await screen.findByText('小文字・大文字・数字・記号のうち3種類以上を含めてください')).toBeInTheDocument()
+    expect(register).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['12 characters', 'Abcd12345678'],
+    ['20 characters', 'Abcdefghij1234567890'],
+  ])('registers when the password is %s with 3 classes (boundary)', async (_label, password) => {
+    register.mockResolvedValue(undefined)
+    const user = userEvent.setup()
+    render(<SignupPage />)
+
+    await user.type(screen.getByLabelText('ユーザーID'), 'newbie')
+    await user.type(screen.getByLabelText('パスワード'), password)
+    await user.type(screen.getByLabelText('パスワード（確認）'), password)
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1))
+    expect(screen.queryByText('パスワードは20文字以下にしてください')).not.toBeInTheDocument()
+  })
+
+  test('the hint states 12-20 characters and 3 or more classes', () => {
+    render(<SignupPage />)
+
+    expect(screen.getByText('12〜20文字・小文字/大文字/数字/記号のうち3種類以上')).toBeInTheDocument()
+    expect(screen.queryByText('12文字以上・小文字/大文字/数字/記号のうち3種類以上')).not.toBeInTheDocument()
   })
 
   test('shows an error when password confirmation does not match', async () => {

@@ -38,8 +38,8 @@ vi.mock('@/lib/api', () => ({
 const authOverride = vi.hoisted(() => ({
   current: { username: 'admin', role: 'admin', display_name: 'Admin' },
 }))
-vi.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ status: 'authenticated', user: authOverride.current, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
+vi.mock('@/contexts/AuthProvider', () => ({
+  useAuth: () => ({ status: 'authenticated', user: authOverride.current, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
 }))
 
 function renderPage() {
@@ -74,14 +74,56 @@ describe('AdminUsersPage', () => {
     await waitFor(() => expect(listUsers).toHaveBeenCalled())
 
     await userEvent.type(screen.getByLabelText('新規ユーザーID'), 'carol')
-    await userEvent.type(screen.getByLabelText('新規パスワード'), 'carol-pass')
+    await userEvent.type(screen.getByLabelText('新規パスワード'), 'Carol-Pass-123')
     await userEvent.click(screen.getByRole('button', { name: '追加' }))
 
     await waitFor(() =>
       expect(createUser).toHaveBeenCalledWith(
-        expect.objectContaining({ username: 'carol', password: 'carol-pass', role: 'user' }),
+        expect.objectContaining({ username: 'carol', password: 'Carol-Pass-123', role: 'user' }),
       ),
     )
+  })
+
+  describe('password policy (12〜20 characters, 3 or more classes)', () => {
+    const VIOLATION = 'ユーザーIDと12〜20文字のパスワードを入力してください'
+
+    async function submitWith(password: string) {
+      renderPage()
+      await waitFor(() => expect(listUsers).toHaveBeenCalled())
+      await userEvent.type(screen.getByLabelText('新規ユーザーID'), 'carol')
+      await userEvent.type(screen.getByLabelText('新規パスワード'), password)
+      await userEvent.click(screen.getByRole('button', { name: '追加' }))
+    }
+
+    test.each([
+      ['11 characters (too short)', 'Abc12345678'],
+      ['21 characters (too long)', 'Abcdefghij12345678901'],
+      ['12 characters with only 2 classes', 'abcdefgh1234'],
+    ])('rejects %s without calling createUser', async (_label, password) => {
+      await submitWith(password)
+
+      expect(await screen.findByText(VIOLATION)).toBeInTheDocument()
+      expect(createUser).not.toHaveBeenCalled()
+    })
+
+    test.each([
+      ['12 characters', 'Abcd12345678'],
+      ['20 characters', 'Abcdefghij1234567890'],
+    ])('accepts %s with 3 classes', async (_label, password) => {
+      createUser.mockResolvedValue({ username: 'carol', role: 'user', display_name: 'carol' })
+      await submitWith(password)
+
+      await waitFor(() => expect(createUser).toHaveBeenCalledWith(expect.objectContaining({ password })))
+      expect(screen.queryByText(VIOLATION)).not.toBeInTheDocument()
+    })
+
+    test('the password field placeholder states 12〜20 characters', async () => {
+      renderPage()
+      await waitFor(() => expect(listUsers).toHaveBeenCalled())
+
+      expect(screen.getByPlaceholderText('パスワード（12〜20文字）')).toBeInTheDocument()
+      expect(screen.queryByPlaceholderText('パスワード（8文字以上）')).not.toBeInTheDocument()
+    })
   })
 
   test('deletes another user but not self', async () => {

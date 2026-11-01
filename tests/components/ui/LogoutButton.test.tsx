@@ -8,7 +8,7 @@ const mockLogout = vi.fn()
 const mockReplace = vi.fn()
 const mockPush = vi.fn()
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(),
 }))
 
@@ -21,8 +21,10 @@ vi.mock('next/navigation', () => ({
 }))
 
 async function setupUseAuth() {
-  const { useAuth } = await import('@/contexts/AuthContext')
+  const { useAuth } = await import('@/contexts/AuthProvider')
   vi.mocked(useAuth).mockReturnValue({
+    session: { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice' } },
+    retry: vi.fn(),
     status: 'authenticated',
     user: { username: 'alice', role: 'user', display_name: 'Alice' },
     logout: mockLogout,

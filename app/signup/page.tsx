@@ -3,26 +3,14 @@
 import React, { Suspense, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { ApiError } from '@/lib/api'
+import { validatePassword } from '@/lib/account/domain/password'
 
 // WHY: backend の shared/username_policy 相当（招待コード新規登録）。normalize（trim+lowercase）
 // してから検証する — サーバー側の正規化と一致させ、表示前チェックと 409/422 の整合を取る。
 const USERNAME_REGEX = /^[a-z0-9][a-z0-9_-]{2,31}$/
-
-// WHY: backend の shared/password_policy.py と同一規則（components/ui/AccountSection.tsx の
-// バリデーションと同じ意図）。招待制登録フォーム側でも送信前に同じ基準で弾く。
-const PASSWORD_MIN_LENGTH = 12
-
-function countPasswordCharacterClasses(password: string): number {
-  return [
-    /[a-z]/.test(password),
-    /[A-Z]/.test(password),
-    /\d/.test(password),
-    /[^A-Za-z0-9\s]/.test(password),
-  ].filter(Boolean).length
-}
 
 function validateUsername(raw: string): string | null {
   const normalized = raw.trim().toLowerCase()
@@ -32,14 +20,17 @@ function validateUsername(raw: string): string | null {
   return null
 }
 
-function validatePassword(password: string): string | null {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return 'パスワードは12文字以上にしてください'
+function passwordErrorMessage(password: string): string | null {
+  const check = validatePassword(password)
+  if (check.ok) return null
+  switch (check.reason) {
+    case 'too_short':
+      return 'パスワードは12文字以上にしてください'
+    case 'too_long':
+      return 'パスワードは20文字以下にしてください'
+    case 'too_few_classes':
+      return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
   }
-  if (countPasswordCharacterClasses(password) < 3) {
-    return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
-  }
-  return null
 }
 
 function mapRegisterError(err: unknown): string {
@@ -107,7 +98,7 @@ function SignupForm() {
       setFieldError(usernameError)
       return
     }
-    const passwordError = validatePassword(password)
+    const passwordError = passwordErrorMessage(password)
     if (passwordError) {
       setFieldError(passwordError)
       return
@@ -206,7 +197,7 @@ function SignupForm() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={submitting}
             />
-            <p className="form-hint">12文字以上・小文字/大文字/数字/記号のうち3種類以上</p>
+            <p className="form-hint">12〜20文字・小文字/大文字/数字/記号のうち3種類以上</p>
           </div>
 
           <div className="form-field">

@@ -25,7 +25,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 
 // NavigationBar は useAuth を参照する。AuthProvider 経由だと実 /auth/me fetch が走るため、
 // NavigationBar.test.tsx と同様にモックして分離する。
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
     status: 'authenticated',
     user: { username: 'test', role: 'user', display_name: 'Test User' },

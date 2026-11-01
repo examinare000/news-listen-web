@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import { createApiClient } from '@/lib/api'
+import { validatePassword } from '@/lib/account/domain/password'
 import { ApiError } from '@/lib/api'
 import { registerPasskey } from '@/lib/passkey'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
@@ -12,28 +13,17 @@ import { formatAuthUserLabel } from '@/lib/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 import type { PasskeyCredential, Session } from '@/types/index'
 
-// WHY: backend の shared/password_policy.py と同一規則を frontend でも検証し、
-//      送信前エラー表示と 422 レスポンス時の対訳を一元管理する。
-const PASSWORD_MIN_LENGTH = 12
-
-function countPasswordCharacterClasses(password: string) {
-  return [
-    /[a-z]/.test(password),
-    /[A-Z]/.test(password),
-    /\d/.test(password),
-    // WHY: backend の has_symbol は空白を記号に数えない。空白はパスワード政策上記号ではない。
-    /[^A-Za-z0-9\s]/.test(password),
-  ].filter(Boolean).length
-}
-
 function validateNewPassword(password: string) {
-  if (password.length < PASSWORD_MIN_LENGTH) {
-    return '新しいパスワードは12文字以上にしてください'
+  const check = validatePassword(password)
+  if (check.ok) return null
+  switch (check.reason) {
+    case 'too_short':
+      return '新しいパスワードは12文字以上にしてください'
+    case 'too_long':
+      return '新しいパスワードは20文字以下にしてください'
+    case 'too_few_classes':
+      return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
   }
-  if (countPasswordCharacterClasses(password) < 3) {
-    return '小文字・大文字・数字・記号のうち3種類以上を含めてください'
-  }
-  return null
 }
 
 function translatePasswordPolicyDetail(detail: string) {
@@ -360,7 +350,7 @@ export function AccountSection() {
           onChange={(e) => setNewPassword(e.target.value)}
           aria-label="新しいパスワード"
         />
-        <div className="settings-row-desc">12文字以上・小文字/大文字/数字/記号のうち3種類以上</div>
+        <div className="settings-row-desc">12〜20文字・小文字/大文字/数字/記号のうち3種類以上</div>
         <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={handlePasswordChange} aria-label="パスワードを変更">
           パスワードを変更
         </button>
@@ -703,7 +693,7 @@ export function AccountSection() {
             <button
               className="btn btn-primary"
               onClick={handleDeleteAccountConfirm}
-              disabled={deletingAccount || deleteAccountPassword.length === 0}
+              disabled={deletingAccount || deleteAccountPassword === ''}
               aria-label="退会を実行する"
             >
               {deletingAccount ? '削除中…' : '退会を実行する'}

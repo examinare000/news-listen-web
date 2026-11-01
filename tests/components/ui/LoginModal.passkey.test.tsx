@@ -7,7 +7,7 @@ import { LoginModal } from '@/components/ui/LoginModal'
 const mockLogin = vi.fn()
 const mockLoginWithPasskey = vi.fn()
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
     login: mockLogin,
     loginWithPasskey: mockLoginWithPasskey,

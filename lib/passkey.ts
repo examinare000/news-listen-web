@@ -8,7 +8,7 @@
  * 設計上の境界:
  *   - ブラウザ WebAuthn 操作 → WebAuthnBrowserPort
  *   - ネットワーク通信 → PasskeyClient (api.ts の createApiClient が実装)
- *   - React 状態管理 → 呼び出し側 (AuthContext 等)
+ *   - React 状態管理 → 呼び出し側 (AuthProvider 等)
  */
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import type { LoginResponse, PasskeyOptionsResponse } from '@/types/index'
@@ -51,7 +51,7 @@ export async function registerPasskey(
  * 3. POST /auth/passkey/login/verify { challenge_id, credential } → LoginResponse
  *
  * 成功時のセッション Cookie は backend が httpOnly で発行するため、
- * token フィールドは web では未使用（AuthContext が user を取り出して setUser する）。
+ * token フィールドは web では未使用（AuthProvider が user を取り出して signedIn 事象を送る）。
  */
 export async function loginWithPasskey(
   client: PasskeyClient,

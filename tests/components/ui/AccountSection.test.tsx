@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AccountSection } from '@/components/ui/AccountSection'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth } from '@/contexts/AuthProvider'
 import type { PasskeyCredential } from '@/types/index'
 
 // vi.hoisted で mock 変数を宣言する（vi.mock のホイスティングより前に評価される）
@@ -74,7 +74,7 @@ vi.mock('@/lib/webauthnBrowserPort', async (importOriginal) => {
 
 const MOCK_USER = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
 
-vi.mock('@/contexts/AuthContext', () => ({
+vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
     user: MOCK_USER,
     logout: mockLogout,
@@ -461,6 +461,40 @@ describe('AccountSection — パスワード変更', () => {
     expect(mockChangePassword).not.toHaveBeenCalled()
   })
 
+  test('21文字のパスワード送信は前ブロックで拒否（上限20文字）', async () => {
+    render(<AccountSection />)
+
+    await userEvent.type(screen.getByLabelText('現在のパスワード'), 'current-password')
+    // 小文字・大文字・数字の 3 種・21 文字
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), 'Abcdefghij12345678901')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() => screen.getByText('新しいパスワードは20文字以下にしてください'))
+    expect(mockChangePassword).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    ['12文字', 'Abcd12345678'],
+    ['20文字', 'Abcdefghij1234567890'],
+  ])('%s（3種）のパスワードは送信される（境界値）', async (_label, password) => {
+    mockChangePassword.mockResolvedValue({ status: 'ok' })
+    render(<AccountSection />)
+
+    await userEvent.type(screen.getByLabelText('現在のパスワード'), 'current-password')
+    await userEvent.type(screen.getByLabelText('新しいパスワード'), password)
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    await waitFor(() => expect(mockChangePassword).toHaveBeenCalledWith('current-password', password))
+    expect(screen.queryByText('新しいパスワードは20文字以下にしてください')).not.toBeInTheDocument()
+  })
+
+  test('ヒント文言は 12〜20文字・3種類以上を示す', () => {
+    render(<AccountSection />)
+
+    expect(screen.getByText('12〜20文字・小文字/大文字/数字/記号のうち3種類以上')).toBeInTheDocument()
+    expect(screen.queryByText('12文字以上・小文字/大文字/数字/記号のうち3種類以上')).not.toBeInTheDocument()
+  })
+
   test('現在のパスワード空のまま送信時は前ブロックで拒否', async () => {
     render(<AccountSection />)
 
@@ -672,6 +706,8 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
   // このブロック専用に admin ロールへ張り替えた後、必ずデフォルト（一般ユーザー）へ戻す。
   afterEach(() => {
     vi.mocked(useAuth).mockReturnValue({
+      session: { kind: 'authenticated', user: MOCK_USER },
+      retry: vi.fn(),
       status: 'authenticated',
       user: MOCK_USER,
       login: vi.fn(),
@@ -684,6 +720,8 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
 
   test('admin ユーザーには計測ダッシュボードへのリンクが表示される', async () => {
     vi.mocked(useAuth).mockReturnValue({
+      session: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin' } },
+      retry: vi.fn(),
       status: 'authenticated',
       user: { username: 'admin', role: 'admin', display_name: 'Admin' },
       login: vi.fn(),

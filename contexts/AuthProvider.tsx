@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import type { AuthUser, RegisterInput } from '@/types/index'
+import { RESOLVING_SESSION, reduce, type AuthEvent, type AuthSession } from '@/lib/account/domain/authSession'
 import { ApiError, createApiClient } from '@/lib/api'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
@@ -14,18 +15,22 @@ import { createPushRegistration } from '@/lib/push/pushRegistration'
 
 // 認証状態。サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
-// - 'unknown': 接続設定済みだが /auth/me 解決前（または未接続）
-// - 'authenticated' / 'unauthenticated': 解決済み
+// - 'unknown': /auth/me の解決前（resolving）、または 401 以外の失敗で状態を確認できない（unavailable）
+// - 'authenticated' / 'unauthenticated': 解決済み（unauthenticated は 401 のときだけ）
 export type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 
-// web-contract-18（SG-S0-1 候補 (b) で確定）: refreshMe が失効（401）を検知したときの
+// web-contract-18 の失効 cleanup の発火条件（2026-09-17 user 裁定で候補 (b)）: refreshMe が失効（401）を検知したときの
 // SW 管理キャッシュ（shell-*/api-*）消去結果。'skipped' は 401 以外（成功・network error 等）で
 // cleanup 自体を行っていないことを表す。
 export type RefreshMeResult = { cleanup: 'done' | 'incomplete' | 'skipped' }
 
-interface AuthContextValue {
+interface AuthProviderValue {
+  /** 認証状態の正本（判別共用体）。status・user はここから導く互換の値。 */
+  session: AuthSession
   status: AuthStatus
   user: AuthUser | null
+  /** unavailable からの再試行。resolving に戻して /auth/me を解決し直す。 */
+  retry: () => Promise<void>
   /** パスワードログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
   login: (username: string, password: string) => Promise<void>
   logout: () => Promise<void>
@@ -40,19 +45,35 @@ interface AuthContextValue {
   loginWithPasskey: (port: WebAuthnBrowserPort) => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextValue | null>(null)
+const AuthSessionContext = createContext<AuthProviderValue | null>(null)
 
 interface AuthProviderProps {
   children: React.ReactNode
-  /** Test-only: 初期状態の上書き */
-  initialUser?: AuthUser | null
-  initialStatus?: AuthStatus
+  /** Test-only: 初期状態の上書き。指定すると起動時の自動解決をしない。 */
+  initialSession?: AuthSession
 }
 
-export function AuthProvider({ children, initialUser = null, initialStatus }: AuthProviderProps) {
+// 旧語彙 status への写し。resolving・unavailable は「未確定」として unknown に寄せる（web-dec-68）。
+function statusOf(session: AuthSession): AuthStatus {
+  if (session.kind === 'authenticated') return 'authenticated'
+  if (session.kind === 'anonymous') return 'unauthenticated'
+  return 'unknown'
+}
+
+// getMe の失敗を事象に分類する（web-dec-67）。401 だけが未認証で、それ以外は一時障害。
+// .status の数値比較はこの module に閉じる（許可リスト web-dep-08）。
+function classifyGetMeFailure(err: unknown): AuthEvent {
+  if (!(err instanceof ApiError)) return { type: 'failed', failure: { reason: 'unknown' } }
+  if (err.status === 401) return { type: 'unauthorized' }
+  if (err.status === 0) return { type: 'failed', failure: { reason: 'network' } }
+  if (err.status >= 500) return { type: 'failed', failure: { reason: 'server' } }
+  return { type: 'failed', failure: { reason: 'unknown' } }
+}
+
+export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   const { ready } = usePreferences()
-  const [user, setUser] = useState<AuthUser | null>(initialUser)
-  const [status, setStatus] = useState<AuthStatus>(initialStatus ?? 'unknown')
+  const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
+  const dispatch = useCallback((event: AuthEvent) => setSession((s) => reduce(s, event)), [])
 
   const client = useCallback(
     () => createApiClient(),
@@ -62,17 +83,15 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
   const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
     try {
       const me = await client().getMe()
-      setUser(me)
-      setStatus('authenticated')
+      dispatch({ type: 'resolved', user: me })
       return { cleanup: 'skipped' }
     } catch (err) {
-      // 401 などはすべて未認証として扱う（理由は伏せる）。
-      setUser(null)
-      setStatus('unauthenticated')
-      // SG-S0-1 (b): 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
+      const event = classifyGetMeFailure(err)
+      dispatch(event)
+      // 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
       // network error（ApiError(0) 等）や 401 以外では shell-*/api-* を残す
-      // （直前 status は問わない — 初回 mount の自動解決でも同じ判定）。
-      if (err instanceof ApiError && err.status === 401) {
+      // （直前の状態は問わない — 初回 mount の自動解決でも同じ判定）。
+      if (event.type === 'unauthorized') {
         try {
           await clearManagedServiceWorkerCaches()
           return { cleanup: 'done' }
@@ -83,26 +102,29 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
       }
       return { cleanup: 'skipped' }
     }
-  }, [client])
+  }, [client, dispatch])
+
+  const retry = useCallback(async () => {
+    dispatch({ type: 'retry' })
+    await refreshMe()
+  }, [dispatch, refreshMe])
 
   const login = useCallback(
     async (username: string, password: string) => {
       // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する。
       const res = await client().login(username, password)
-      setUser(res.user)
-      setStatus('authenticated')
+      dispatch({ type: 'signedIn', user: res.user })
     },
-    [client],
+    [client, dispatch],
   )
 
   const register = useCallback(
     async (input: RegisterInput) => {
       // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する（login と同じ方針）。
       const res = await client().register(input)
-      setUser(res.user)
-      setStatus('authenticated')
+      dispatch({ type: 'signedIn', user: res.user })
     },
-    [client],
+    [client, dispatch],
   )
 
   const logout = useCallback(async () => {
@@ -126,9 +148,8 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     } catch {
       // キャッシュ消去の失敗はログアウトを妨げない。
     }
-    setUser(null)
-    setStatus('unauthenticated')
-  }, [client])
+    dispatch({ type: 'loggedOut' })
+  }, [client, dispatch])
 
   // WHY: passkey.ts の loginWithPasskey(client, port) を呼ぶ薄いラッパー。
   //      client は DI（createApiClient）、port は呼び出し側から注入（テスト可能性を確保）。
@@ -136,28 +157,31 @@ export function AuthProvider({ children, initialUser = null, initialStatus }: Au
     async (port: WebAuthnBrowserPort) => {
       // 失敗時はエラーがそのまま伝播する。成功時のみ状態を更新する。
       const res = await passkeyLogin(client(), port)
-      setUser(res.user)
-      setStatus('authenticated')
+      dispatch({ type: 'signedIn', user: res.user })
     },
-    [client],
+    [client, dispatch],
   )
 
   // restore 完了後に /auth/me で認証状態を解決する。
   useEffect(() => {
-    if (initialStatus) return // テスト時の固定状態を尊重
+    if (initialSession) return // テスト時の固定状態を尊重
     if (!ready) return // restore 中は待つ
     void refreshMe() // eslint-disable-line @typescript-eslint/no-floating-promises
-  }, [ready, refreshMe, initialStatus])
+  }, [ready, refreshMe, initialSession])
+
+  const user = session.kind === 'authenticated' ? session.user : null
 
   return (
-    <AuthContext.Provider value={{ status, user, login, register, logout, refreshMe, loginWithPasskey }}>
+    <AuthSessionContext.Provider
+      value={{ session, status: statusOf(session), user, login, register, logout, refreshMe, loginWithPasskey, retry }}
+    >
       {children}
-    </AuthContext.Provider>
+    </AuthSessionContext.Provider>
   )
 }
 
-export function useAuth(): AuthContextValue {
-  const ctx = useContext(AuthContext)
+export function useAuth(): AuthProviderValue {
+  const ctx = useContext(AuthSessionContext)
   if (!ctx) {
     throw new Error('useAuth must be used within AuthProvider')
   }
