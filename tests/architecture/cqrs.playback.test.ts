@@ -1,8 +1,8 @@
 // @vitest-environment node
 // 再生の command / query の分離（web-check-07）。
-// (a) PlaybackCommands の名前の集合 = 7（web-cmd-playback-01〜07）、PlaybackQueries = 5（web-query-playback-01〜05）。
+// (a) PlaybackCommands の名前の集合 = 8（web-cmd-playback-01〜07・09）、PlaybackQueries = 5（web-query-playback-01〜05）。
 // (b) 書く port を記録する double を渡し、query 5 つを全部呼んでも変更系の呼出が 0 件。
-// (c) command の戻り値が void・Promise<void>（retry）・Promise<StartResult> で、リードモデルの型でない。
+// (c) command の戻り値が void（stopForSubjectLeave を含む）・Promise<void>（retry）・Promise<StartResult> で、リードモデルの型でない。
 // 型の等価は `npm run typecheck` が検査する（等価でなければ代入が TS2322 で落ちる）。実行時の検査は vitest が行う。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-07、§5.1 web-deriv-21。
 //
@@ -27,7 +27,15 @@ import { MockAudio } from '../helpers/mockAudio'
 // ---------------------------------------------------------------------------
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
 
-type CommandNames = 'startEpisode' | 'retry' | 'addToQueue' | 'playNext' | 'removeFromQueue' | 'reorder' | 'skipToNext'
+type CommandNames =
+  | 'startEpisode'
+  | 'retry'
+  | 'addToQueue'
+  | 'playNext'
+  | 'removeFromQueue'
+  | 'reorder'
+  | 'skipToNext'
+  | 'stopForSubjectLeave'
 type QueryNames = 'nowPlaying' | 'upNext' | 'queueView' | 'playbackView' | 'savedPosition'
 
 function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): void {
@@ -42,6 +50,7 @@ function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): 
   const removeFromQueue: Equals<ReturnType<PlaybackCommands['removeFromQueue']>, void> = true
   const reorder: Equals<ReturnType<PlaybackCommands['reorder']>, void> = true
   const skipToNext: Equals<ReturnType<PlaybackCommands['skipToNext']>, Promise<StartResult>> = true
+  const stopForSubjectLeave: Equals<ReturnType<PlaybackCommands['stopForSubjectLeave']>, void> = true
   // query の戻り値はリードモデル
   const nowPlaying: Equals<ReturnType<PlaybackQueries['nowPlaying']>, NowPlaying | null> = true
   const upNext: Equals<ReturnType<PlaybackQueries['upNext']>, ReadonlyArray<UpNextItem>> = true
@@ -61,6 +70,7 @@ function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): 
     removeFromQueue,
     reorder,
     skipToNext,
+    stopForSubjectLeave,
     nowPlaying,
     upNext,
     queueView,
@@ -87,6 +97,8 @@ const WRITE_CALLS: ReadonlySet<string> = new Set([
   'localPositions.write',
   'positionReporter.attach',
   'positionReporter.detach',
+  'positionReporter.reset',
+  'localPositions.clearAll',
   ...SESSION_MUTATORS.map((name) => `session.${name}`),
 ])
 
@@ -153,6 +165,7 @@ function harness() {
     positionReporter: {
       attach: () => void calls.push('positionReporter.attach'),
       detach: () => void calls.push('positionReporter.detach'),
+      reset: () => void calls.push('positionReporter.reset'),
       lastSyncFailure: () => null,
     },
     episodes: {
@@ -164,6 +177,7 @@ function harness() {
     localPositions: {
       read: () => null,
       write: () => void calls.push('localPositions.write'),
+      clearAll: () => void calls.push('localPositions.clearAll'),
     },
     isOnline: () => true,
     defaultSpeed: () => 1,
@@ -178,7 +192,7 @@ const entry = (id: string) => ({ id, title: `title ${id}`, intro: `intro ${id}` 
 // (a) 名前の集合
 // ---------------------------------------------------------------------------
 describe('web-check-07 (a) command 7 と query 5 は別の名前の集合として公開される', () => {
-  test('verifies: CI-T38 (web-check-07, web-cmd-playback-01) — 戻り値の key は command 7 ＋ query 5 ＋ subscribe の 13 だけ', () => {
+  test('verifies: CI-T38 (web-check-07, web-cmd-playback-01) — 戻り値の key は command 8 ＋ query 5 ＋ subscribe の 14 だけ', () => {
     const { coordinator } = harness()
     const commands: readonly CommandNames[] = [
       'startEpisode',
@@ -188,9 +202,10 @@ describe('web-check-07 (a) command 7 と query 5 は別の名前の集合とし�
       'removeFromQueue',
       'reorder',
       'skipToNext',
+      'stopForSubjectLeave',
     ]
     const queries: readonly QueryNames[] = ['nowPlaying', 'upNext', 'queueView', 'playbackView', 'savedPosition']
-    expect(commands).toHaveLength(7)
+    expect(commands).toHaveLength(8)
     expect(queries).toHaveLength(5)
     expect(Object.keys(coordinator).sort()).toEqual([...commands, ...queries, 'subscribe'].sort())
     for (const name of [...commands, ...queries, 'subscribe']) {
@@ -257,6 +272,8 @@ describe('web-check-07 (c) command の戻り値は void・Promise<void>（retry�
     const skipped = coordinator.skipToNext()
     expect(skipped).toBeInstanceOf(Promise)
     expect(await skipped).toEqual({ ok: true })
+
+    expect(coordinator.stopForSubjectLeave()).toBeUndefined()
   })
 
   test('verifies: CI-T38 (web-check-07) — command の戻り値はリードモデルの形（nowPlaying・upNext・canSkipNext・status）を持たない', async () => {

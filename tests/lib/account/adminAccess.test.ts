@@ -10,7 +10,7 @@ const anonymous: AdminAccessSession = { kind: 'anonymous' }
 const unavailable: AdminAccessSession = { kind: 'unavailable', failure: { reason: 'network' } }
 
 function authenticated(role: 'admin' | 'user'): AdminAccessSession {
-  return { kind: 'authenticated', user: { username: 'u', role, display_name: 'U' } }
+  return { kind: 'authenticated', user: { username: 'u', role, display_name: 'U', userId: 'u-1' } }
 }
 
 describe('adminAccess (verifies: web-contract-19)', () => {

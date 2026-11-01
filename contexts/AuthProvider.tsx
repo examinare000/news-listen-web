@@ -1,14 +1,24 @@
 'use client'
 
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { AuthUser, RegisterInput } from '@/types/index'
-import { RESOLVING_SESSION, reduce, type AuthEvent, type AuthSession } from '@/lib/account/domain/authSession'
+import {
+  RESOLVING_SESSION,
+  reduce,
+  type AuthEvent,
+  type AuthSession,
+  type AuthSessionUser,
+} from '@/lib/account/domain/authSession'
+import { subjectOf, type Subject } from '@/lib/account/domain/subject'
+import { createSubjectCleanup } from '@/lib/account/application/subjectCleanup'
 import { ApiError, createApiClient } from '@/lib/api'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
-import { clearOfflineAudio } from '@/lib/playback/infrastructure/offlineLibrary'
+import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
+import { deleteSubjectAudio, reclaimAudioCaches } from '@/lib/playback/infrastructure/offlineLibrary'
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
+import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
 import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
 import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
 import { createPushRegistration } from '@/lib/push/pushRegistration'
@@ -28,7 +38,7 @@ interface AuthProviderValue {
   /** 認証状態の正本（判別共用体）。status・user はここから導く互換の値。 */
   session: AuthSession
   status: AuthStatus
-  user: AuthUser | null
+  user: AuthSessionUser | null
   /** unavailable からの再試行。resolving に戻して /auth/me を解決し直す。 */
   retry: () => Promise<void>
   /** パスワードログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
@@ -43,6 +53,13 @@ interface AuthProviderValue {
    * 失敗時はエラーを throw する（UI 層でキャッチして文言表示）。
    */
   loginWithPasskey: (port: WebAuthnBrowserPort) => Promise<void>
+  /**
+   * 主体離脱の後始末 (d) が呼ぶ再生停止の登録口。最後に登録された 1 つを保持し、戻り値で解除する。
+   * AuthProvider は再生を知らない（再生側が登録する。web-dec-73）。
+   */
+  registerSubjectLeaveStep: (stop: () => void | Promise<void>) => () => void
+  /** 確定した主体の user_id。未確定・未認証・形式不正は null。通信断（unavailable）では直前の主体を保つ（web-dec-80）。 */
+  currentUserId: () => string | null
 }
 
 const AuthSessionContext = createContext<AuthProviderValue | null>(null)
@@ -70,10 +87,68 @@ function classifyGetMeFailure(err: unknown): AuthEvent {
   return { type: 'failed', failure: { reason: 'unknown' } }
 }
 
+// AuthUser（応答）を session の user へ写す。user_id は subjectOf が検査する。
+function toSessionUser(user: AuthUser): AuthSessionUser {
+  return {
+    username: user.username,
+    role: user.role,
+    display_name: user.display_name,
+    userId: subjectOf(user.user_id).userId,
+  }
+}
+
 export function AuthProvider({ children, initialSession }: AuthProviderProps) {
-  const { ready } = usePreferences()
+  const { ready, clearSubjectScoped } = usePreferences()
   const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
   const dispatch = useCallback((event: AuthEvent) => setSession((s) => reduce(s, event)), [])
+
+  // 主体は session の外の ref で持つ: unavailable をまたいで A を保つ必要があり、session からは導けない（web-dec-80）。
+  const lastSubjectRef = useRef<Subject | null>(
+    initialSession?.kind === 'authenticated' ? subjectOf(initialSession.user.userId) : null,
+  )
+  // 起動時の回収は mount につき最初の確定事象で 1 回だけ（shared-leave-08・09）。
+  const reclaimedRef = useRef(false)
+  const leaveStepRef = useRef<(() => void | Promise<void>) | null>(null)
+
+  const currentUserId = useCallback(() => lastSubjectRef.current?.userId ?? null, [])
+
+  const registerSubjectLeaveStep = useCallback((stop: () => void | Promise<void>) => {
+    leaveStepRef.current = stop
+    return () => {
+      if (leaveStepRef.current === stop) leaveStepRef.current = null
+    }
+  }, [])
+
+  // 手順の組み立ては呼出時に行う（render の間に ref を読む関数を渡さないため）。
+  const subjectCleanup = useCallback(
+    (subject: Subject, options: { readonly audio: boolean }) => {
+      const localPositions = createLocalPositionStore(createBrowserKeyValueStore())
+      return createSubjectCleanup({
+        deleteAudio: (userId) => deleteSubjectAudio(createBrowserCacheStore(), userId),
+        stopPlayback: () => leaveStepRef.current?.(),
+        clearServiceWorkerCaches: () => clearManagedServiceWorkerCaches(),
+        clearSubjectSettings: () => {
+          clearSubjectScoped()
+          localPositions.clearAll()
+        },
+      })(subject, options)
+    },
+    [clearSubjectScoped],
+  )
+
+  // 最初の確定事象でだけ回収を始める。フラグは事象の処理の中で同期に立てる（effect と手動の refreshMe が並行しても 2 回走らない）。
+  // 失敗は無視する: 回収は次回起動でも収束し、状態遷移と RefreshMeResult に影響しない。
+  const reclaimOnce = useCallback((): Promise<void> => {
+    if (reclaimedRef.current) return Promise.resolve()
+    reclaimedRef.current = true
+    return (async () => {
+      try {
+        await reclaimAudioCaches(createBrowserCacheStore(), currentUserId)
+      } catch {
+        // 次回起動の回収で収束する。
+      }
+    })()
+  }, [currentUserId])
 
   const client = useCallback(
     () => createApiClient(),
@@ -81,50 +156,76 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   )
 
   const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
+    let me: AuthUser
     try {
-      const me = await client().getMe()
-      dispatch({ type: 'resolved', user: me })
-      return { cleanup: 'skipped' }
+      me = await client().getMe()
     } catch (err) {
       const event = classifyGetMeFailure(err)
       dispatch(event)
       // 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
       // network error（ApiError(0) 等）や 401 以外では shell-*/api-* を残す
       // （直前の状態は問わない — 初回 mount の自動解決でも同じ判定）。
-      if (event.type === 'unauthorized') {
+      if (event.type !== 'unauthorized') return { cleanup: 'skipped' }
+      const previous = lastSubjectRef.current
+      lastSubjectRef.current = null
+      const reclaiming = reclaimOnce()
+      let result: RefreshMeResult
+      if (previous !== null) {
+        // 実行中の 401 では音声を消さない（次回起動の回収が消す。web-dec-83）。
+        result = { cleanup: (await subjectCleanup(previous, { audio: false })).ok ? 'done' : 'incomplete' }
+      } else {
         try {
           await clearManagedServiceWorkerCaches()
-          return { cleanup: 'done' }
+          result = { cleanup: 'done' }
         } catch {
           // キャッシュ消去の失敗は状態遷移を妨げない（observable な incomplete を返すのみ）。
-          return { cleanup: 'incomplete' }
+          result = { cleanup: 'incomplete' }
         }
       }
-      return { cleanup: 'skipped' }
+      await reclaiming
+      return result
     }
-  }, [client, dispatch])
+    lastSubjectRef.current = subjectOf(me.user_id)
+    dispatch({ type: 'resolved', user: toSessionUser(me) })
+    await reclaimOnce()
+    return { cleanup: 'skipped' }
+  }, [client, dispatch, reclaimOnce, subjectCleanup])
 
   const retry = useCallback(async () => {
     dispatch({ type: 'retry' })
     await refreshMe()
   }, [dispatch, refreshMe])
 
+  // login・register・passkey の成功（遷移④）。B の確立が先で、A の後始末は待たない（shared-dec-28）。
+  const establish = useCallback(
+    (user: AuthUser) => {
+      const previous = lastSubjectRef.current
+      const next = subjectOf(user.user_id)
+      lastSubjectRef.current = next
+      dispatch({ type: 'signedIn', user: toSessionUser(user) })
+      const sameSubject = previous !== null && previous.userId !== null && previous.userId === next.userId
+      if (previous !== null && !sameSubject) void subjectCleanup(previous, { audio: true })
+      void reclaimOnce()
+    },
+    [dispatch, reclaimOnce, subjectCleanup],
+  )
+
   const login = useCallback(
     async (username: string, password: string) => {
       // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する。
       const res = await client().login(username, password)
-      dispatch({ type: 'signedIn', user: res.user })
+      establish(res.user)
     },
-    [client, dispatch],
+    [client, establish],
   )
 
   const register = useCallback(
     async (input: RegisterInput) => {
       // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する（login と同じ方針）。
       const res = await client().register(input)
-      dispatch({ type: 'signedIn', user: res.user })
+      establish(res.user)
     },
-    [client, dispatch],
+    [client, establish],
   )
 
   const logout = useCallback(async () => {
@@ -138,18 +239,12 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     } catch {
       // ログアウトはベストエフォート（サーバー失効に失敗してもローカル状態は落とす）。
     }
-    try {
-      // issue #167 review指摘2: 共有端末でのユーザーデータ残留防止。
-      // clearOfflineAudio()（オフライン音声 audio-v1）だけでは、SW 管理の api-v1
-      // （ユーザー固有 Podcast 一覧）・shell-pages-v1（閲覧済みページ）が残り、
-      // ユーザー A のキャッシュがユーザー B に返りうる。両方ともベストエフォート
-      // （失敗してもログアウト自体は完了させる — 上の方針と揃える）。
-      await Promise.all([clearOfflineAudio(createBrowserCacheStore()), clearManagedServiceWorkerCaches()])
-    } catch {
-      // キャッシュ消去の失敗はログアウトを妨げない。
-    }
+    const previous = lastSubjectRef.current ?? { userId: null }
+    lastSubjectRef.current = null
     dispatch({ type: 'loggedOut' })
-  }, [client, dispatch])
+    // 後始末の完了は待たず、結果（CleanupIncomplete）も捨てる。端末全体の音声消去は残さない（§6.3 性質 1）。
+    void subjectCleanup(previous, { audio: true })
+  }, [client, dispatch, subjectCleanup])
 
   // WHY: passkey.ts の loginWithPasskey(client, port) を呼ぶ薄いラッパー。
   //      client は DI（createApiClient）、port は呼び出し側から注入（テスト可能性を確保）。
@@ -157,9 +252,9 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     async (port: WebAuthnBrowserPort) => {
       // 失敗時はエラーがそのまま伝播する。成功時のみ状態を更新する。
       const res = await passkeyLogin(client(), port)
-      dispatch({ type: 'signedIn', user: res.user })
+      establish(res.user)
     },
-    [client, dispatch],
+    [client, establish],
   )
 
   // restore 完了後に /auth/me で認証状態を解決する。
@@ -173,7 +268,19 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
 
   return (
     <AuthSessionContext.Provider
-      value={{ session, status: statusOf(session), user, login, register, logout, refreshMe, loginWithPasskey, retry }}
+      value={{
+        session,
+        status: statusOf(session),
+        user,
+        login,
+        register,
+        logout,
+        refreshMe,
+        loginWithPasskey,
+        retry,
+        registerSubjectLeaveStep,
+        currentUserId,
+      }}
     >
       {children}
     </AuthSessionContext.Provider>

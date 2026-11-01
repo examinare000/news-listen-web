@@ -77,7 +77,7 @@ describe('AdminGate (verifies: web-contract-19)', () => {
   test('T-T16b-3: session=authenticated with a non-admin user shows the denied message with the given title (verifies: web-contract-19-3, web-contract-19-4)', () => {
     authOverride.current.session = {
       kind: 'authenticated',
-      user: { username: 'bob', role: 'user', display_name: 'Bob' },
+      user: { username: 'bob', role: 'user', display_name: 'Bob', userId: 'u-bob' },
     }
     renderGate('ユーザー管理')
 
@@ -90,7 +90,7 @@ describe('AdminGate (verifies: web-contract-19)', () => {
   test('T-T16b-5: session=authenticated with an admin user mounts children and shows neither loading nor login modal (verifies: web-contract-19-3)', () => {
     authOverride.current.session = {
       kind: 'authenticated',
-      user: { username: 'alice', role: 'admin', display_name: 'Alice' },
+      user: { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' },
     }
     renderGate()
 

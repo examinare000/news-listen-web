@@ -17,6 +17,8 @@ export interface PositionReporterDeps {
 export interface PositionReporter {
   attach(session: Pick<PlaybackSession, 'subscribe'>): void
   detach(): void
+  /** 購読は保ったまま、直前の再生を無かったことにする。以降の idle への遷移で位置を書かない（主体離脱の停止）。 */
+  reset(): void
   lastSyncFailure(): ApiFailure | null
 }
 
@@ -132,6 +134,10 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     detach() {
       unsubscribe?.()
       unsubscribe = null
+    },
+    reset() {
+      lastStatus = 'idle'
+      episodeId = ''
     },
     lastSyncFailure: () => failure,
   }

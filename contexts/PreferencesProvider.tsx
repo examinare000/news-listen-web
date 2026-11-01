@@ -12,6 +12,8 @@ export interface PreferencesContextValue {
   readonly set: <T>(setting: SettingDescriptor<T>, value: T) => void
   /** 端末設定の復元が済んだか。mount の effect の後に true になり、false へは戻らない。 */
   readonly ready: boolean
+  /** 主体離脱で、主体依存の設定を既定値へ戻し保存も消す。theme などは触れない。 */
+  readonly clearSubjectScoped: () => void
 }
 
 const PreferencesContext = createContext<PreferencesContextValue | null>(null)
@@ -35,6 +37,13 @@ function createCore(store: KeyValueStore | undefined, notify: () => void) {
       values.set(setting, settings.write(setting, value))
       notify()
     },
+    clearSubjectScoped: (): void => {
+      for (const { setting } of Object.values(LOCAL_SETTING_BINDINGS)) {
+        if (setting.subjectScoped) values.set(setting, setting.default)
+      }
+      settings.clearSubjectScoped()
+      notify()
+    },
   }
 }
 
@@ -54,7 +63,7 @@ export function PreferencesProvider({ children, store }: { children: React.React
   }, [])
 
   const value = useMemo<PreferencesContextValue>(
-    () => ({ get: core.get, set: core.set, ready }),
+    () => ({ get: core.get, set: core.set, clearSubjectScoped: core.clearSubjectScoped, ready }),
     // version は値の更新を consumer へ伝えるための依存で、get/set の参照は変えない。
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [core, ready, version],

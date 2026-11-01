@@ -3,7 +3,7 @@
 // 記述子は settings.ts を値で import せず、INFRA の束ね物（LOCAL_SETTING_BINDINGS）から得る。
 //
 // RED 理由（実装前）: `@/contexts/PreferencesProvider` が無い（module not found）。
-import React from 'react'
+import React, { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
@@ -78,9 +78,9 @@ describe('web-contract-20: usePreferences の公開面', () => {
     expect(() => render(<Naked />)).toThrow('usePreferences must be used within PreferencesProvider')
   })
 
-  test('返り値の own key は get・set・ready の 3 つだけ（raw dispatch・subscribe を出さない）', () => {
+  test('返り値の own key は clearSubjectScoped・get・ready・set の 4 つだけ（raw dispatch・subscribe を出さない）', () => {
     const { latest } = renderWith(memoryStore().store)
-    expect(Object.keys(latest()).sort()).toEqual(['get', 'ready', 'set'])
+    expect(Object.keys(latest()).sort()).toEqual(['clearSubjectScoped', 'get', 'ready', 'set'])
   })
 })
 
@@ -287,5 +287,61 @@ describe('web-contract-20: 効果音の有効判定の注入', () => {
       log[log.length - 1].prefs.set(SFX, true)
     })
     expect(latestInjected()()).toBe(true)
+  })
+})
+
+describe('shared-leave-01 clearSubjectScoped（web-dec-75）', () => {
+  const SPEED = B.defaultPlaybackSpeed.setting
+
+  function SpeedRecorder({ log }: { log: Array<{ speed: number; theme: string }> }) {
+    const prefs = usePreferences()
+    log.push({ speed: prefs.get(SPEED), theme: prefs.get(B.theme.setting) })
+    return null
+  }
+
+  test('主体依存の値は既定へ戻って consumer が再描画され、theme は保存値のまま。store の主体依存 key は消える', () => {
+    const { store, data, setSpy } = memoryStore({ default_playback_speed: '1.5', theme: 'light' })
+    const log: Array<{ speed: number; theme: string }> = []
+    const grabbed: { clear: () => void } = { clear: () => {} }
+    function Grab() {
+      const { clearSubjectScoped } = usePreferences()
+      useEffect(() => {
+        grabbed.clear = clearSubjectScoped
+      })
+      return null
+    }
+    render(
+      <PreferencesProvider store={store}>
+        <SpeedRecorder log={log} />
+        <Grab />
+      </PreferencesProvider>,
+    )
+    expect(log[log.length - 1]).toEqual({ speed: 1.5, theme: 'light' })
+    const rendersBefore = log.length
+
+    act(() => {
+      grabbed.clear()
+    })
+
+    expect(log.length).toBeGreaterThan(rendersBefore)
+    expect(log[log.length - 1]).toEqual({ speed: SPEED.default, theme: 'light' })
+    expect(data.has('default_playback_speed')).toBe(false)
+    expect(data.get('theme')).toBe('light')
+    expect(setSpy).not.toHaveBeenCalled()
+  })
+
+  test('clearSubjectScoped の関数の同一性は再描画をまたいで保たれる', () => {
+    const { store } = memoryStore({ default_playback_speed: '1.5' })
+    const log: Array<{ prefs: Prefs; timeFormat: string; ready: boolean }> = []
+    render(
+      <PreferencesProvider store={store}>
+        <Recorder log={log} />
+      </PreferencesProvider>,
+    )
+    const first = log[0].prefs.clearSubjectScoped
+    act(() => {
+      first()
+    })
+    expect(log[log.length - 1].prefs.clearSubjectScoped).toBe(first)
   })
 })

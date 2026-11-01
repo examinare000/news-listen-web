@@ -49,7 +49,7 @@ const memoryStore = (): KeyValueStore => {
 // domain は型だけを import する（値 import しない）。
 const AUTHENTICATED: AuthSession = {
   kind: 'authenticated',
-  user: { username: 'alice', role: 'user', display_name: 'Alice' },
+  user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
 }
 const authSessionOverride = vi.hoisted(() => ({ current: null as unknown as AuthSession }))
 const retryMock = vi.hoisted(() => vi.fn())

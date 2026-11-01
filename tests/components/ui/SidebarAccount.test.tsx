@@ -9,12 +9,14 @@ import type { AuthUser } from '@/types/index'
 const mockLogout = vi.fn()
 
 const MOCK_USER_AUTHENTICATED: AuthUser = {
+  user_id: 'u-alice',
   username: 'alice',
   role: 'user',
   display_name: 'Alice',
 }
 
 const MOCK_USER_ADMIN: AuthUser = {
+  user_id: 'u-admin-bob',
   username: 'admin-bob',
   role: 'admin',
   display_name: 'Bob Admin',

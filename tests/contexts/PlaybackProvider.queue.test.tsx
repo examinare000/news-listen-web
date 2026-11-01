@@ -4,14 +4,23 @@ import React, { useEffect } from 'react'
 import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
+import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { PlaybackErrorToaster, usePlaybackActions } from '@/components/PlaybackToasts'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { MockAudio } from '../helpers/mockAudio'
+import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 import type { Podcast } from '@/types'
+
+// AuthProvider は initialSession で認証済みの A を渡す。logout・login だけ API を double にする（実通信を起こさない）。
+const { authLogout, authLogin } = vi.hoisted(() => ({ authLogout: vi.fn(), authLogin: vi.fn() }))
+vi.mock('@/lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api')>()
+  return { ...actual, createApiClient: () => ({ logout: authLogout, login: authLogin }) }
+})
 
 // 実の PlaybackProvider と実の browser adapter を、Audio の stub と gateway の double で動かす結合テスト。
 // 旧 AudioPlayerContext.queue / completion / gateway の観点（キュー・自動の次へ・完聴の送信・取得失敗）を新しい入口に対して固定する。
@@ -46,6 +55,7 @@ interface Captured {
   pb: ReturnType<typeof usePlayback>
   actions: ReturnType<typeof usePlaybackActions>
   prefs: ReturnType<typeof usePreferences>
+  auth: ReturnType<typeof useAuth>
 }
 
 // 描画した consumer の最新の値を、テストから操作できるように取り出す。
@@ -55,8 +65,9 @@ function Capture() {
   const pb = usePlayback()
   const actions = usePlaybackActions()
   const prefs = usePreferences()
+  const auth = useAuth()
   useEffect(() => {
-    cap = { pb, actions, prefs }
+    cap = { pb, actions, prefs, auth }
   })
   return null
 }
@@ -74,14 +85,21 @@ function seedDefaultSpeed(speed: number): void {
 function tree(options: { readonly gateway?: ApiGateway } = {}) {
   return (
     <PreferencesProvider>
-      <ToastProvider>
-        <ApiClientProvider gateway={options.gateway ?? gateway}>
-          <PlaybackProvider>
-            <Capture />
-            <PlaybackErrorToaster />
-          </PlaybackProvider>
-        </ApiClientProvider>
-      </ToastProvider>
+      <AuthProvider
+        initialSession={{
+          kind: 'authenticated',
+          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-a' },
+        }}
+      >
+        <ToastProvider>
+          <ApiClientProvider gateway={options.gateway ?? gateway}>
+            <PlaybackProvider>
+              <Capture />
+              <PlaybackErrorToaster />
+            </PlaybackProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </AuthProvider>
     </PreferencesProvider>
   )
 }
@@ -112,6 +130,8 @@ beforeEach(() => {
     return audio
   })
   vi.stubGlobal('Audio', AudioCtor)
+  authLogout.mockReset().mockResolvedValue({ status: 'ok' })
+  authLogin.mockReset()
   gateway = createGatewayDouble()
   for (const id of ['a', 'b', 'c', 'd']) {
     gateway.respond('GET', `/api/backend/podcasts/${id}`, { ok: true, value: pod(id) })
@@ -168,7 +188,7 @@ describe('PlaybackProvider の配線', () => {
     expect(cap.pb.playback.position).toBe(7)
   })
 
-  test('usePlayback の key はちょうど 21 個で、PlaybackState (episode・audioUrl) を含まない (verifies: CI-P4-13; T-P4-11)', async () => {
+  test('usePlayback の key はちょうど 22 個で、PlaybackState (episode・audioUrl) を含まない (verifies: CI-P4-13; T-P4-11)', async () => {
     render(tree())
     await startAndPlay('a')
 
@@ -181,6 +201,7 @@ describe('PlaybackProvider の配線', () => {
         'removeFromQueue',
         'reorder',
         'skipToNext',
+        'stopForSubjectLeave',
         'nowPlaying',
         'upNext',
         'queueView',
@@ -201,6 +222,57 @@ describe('PlaybackProvider の配線', () => {
     const data = Object.fromEntries(Object.entries(cap.pb).filter(([, value]) => typeof value !== 'function'))
     expect(JSON.stringify(data)).not.toContain('audioUrl')
     expect(JSON.stringify(data)).not.toContain('episode"')
+  })
+})
+
+describe('主体離脱の再生停止 (verifies: web-dec-73, shared-leave-07, web-dec-84)', () => {
+  test('web-dec-73: 同じ AuthProvider の logout で、再生中の回は止まり、nowPlaying は null・upNext は空・status は idle になる', async () => {
+    render(tree())
+    await startAndPlay('a')
+    await act(async () => {
+      await cap.actions.addToQueue(entry('b'))
+      await cap.actions.addToQueue(entry('c'))
+    })
+    expect(cap.pb.upNext().map((item) => item.id)).toEqual(['b', 'c'])
+
+    await act(async () => {
+      await cap.auth.logout()
+    })
+
+    // logout の後始末は await されないので、止まるのを待って確かめる
+    await waitFor(() => expect(cap.pb.nowPlaying()).toBeNull())
+    expect(cap.pb.upNext()).toEqual([])
+    expect(cap.pb.playback.status).toBe('idle')
+  })
+
+  test('shared-leave-07: 遷移④で音声の削除が保留のままでも、login の直後に再生は止まり、A の位置・完聴は 1 件も送られない', async () => {
+    const cacheStorage = setupMockCaches()
+    await cacheStorage.open('audio-v1-u-a')
+    vi.spyOn(cacheStorage, 'delete').mockReturnValue(new Promise<boolean>(() => {}))
+    authLogin.mockResolvedValue({
+      token: 't',
+      user: { user_id: 'u-b', username: 'bob', role: 'user', display_name: 'Bob' },
+    })
+    render(tree())
+    await startAndPlay('a')
+    const reportsOfA = () =>
+      gateway.calls.filter((call) => /\/podcasts\/a\/(position|completed)$/.test(call.path)).length
+    const before = reportsOfA()
+
+    await act(async () => {
+      await cap.auth.login('bob', 'pw')
+    })
+
+    // waitFor を挟まない: login が解決した時点で A の再生は止まっている
+    expect(cap.auth.currentUserId()).toBe('u-b')
+    expect(cap.pb.playback.status).toBe('idle')
+    expect(cap.pb.nowPlaying()).toBeNull()
+
+    await act(async () => {
+      audio.fireTimeUpdate(30)
+      audio.fireEnded()
+    })
+    expect(reportsOfA()).toBe(before)
   })
 })
 

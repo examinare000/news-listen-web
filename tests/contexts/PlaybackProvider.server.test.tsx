@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToString } from 'react-dom/server'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
+import { AuthProvider } from '@/contexts/AuthProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
@@ -24,6 +25,7 @@ const OPERATIONS: Readonly<Record<string, (pb: Playback) => unknown>> = {
   removeFromQueue: (pb) => pb.removeFromQueue('a'),
   reorder: (pb) => pb.reorder(0, 1),
   skipToNext: (pb) => pb.skipToNext(),
+  stopForSubjectLeave: (pb) => pb.stopForSubjectLeave(),
   play: (pb) => pb.play(),
   pause: (pb) => pb.pause(),
   seek: (pb) => pb.seek(1),
@@ -84,13 +86,20 @@ function memoryStore(initial: Record<string, string>): KeyValueStore {
 function renderOnServer(playbackSpeed = 1.0): string {
   return renderToString(
     <PreferencesProvider store={memoryStore({ default_playback_speed: JSON.stringify(playbackSpeed) })}>
-      <ToastProvider>
-        <ApiClientProvider>
-          <PlaybackProvider>
-            <Consumer />
-          </PlaybackProvider>
-        </ApiClientProvider>
-      </ToastProvider>
+      <AuthProvider
+        initialSession={{
+          kind: 'authenticated',
+          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'user-test' },
+        }}
+      >
+        <ToastProvider>
+          <ApiClientProvider>
+            <PlaybackProvider>
+              <Consumer />
+            </PlaybackProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </AuthProvider>
     </PreferencesProvider>,
   )
 }

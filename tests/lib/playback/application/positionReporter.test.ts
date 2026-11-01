@@ -115,7 +115,7 @@ function setup(syncImpl?: (id: string, seconds: number) => Promise<SyncResult>) 
     log.push(`write:${id}:${seconds}`)
   })
   const sync: PositionSync = { updatePosition, markCompleted }
-  const local: LocalPositionStore = { read: () => null, write }
+  const local: LocalPositionStore = { read: () => null, write, clearAll: () => {} }
   const reporter = createPositionReporter({ sync, local })
   const double = createSessionDouble()
   reporter.attach(double.session)
@@ -335,5 +335,57 @@ describe('verifies: CI-T11 attach / detach（web-contract-11）', () => {
     expect(other.listenerCount()).toBe(1)
     other.emit(stateChanged(loading('b', 0)), stateChanged(playing('b', 0)), positionChanged('b', 10))
     expect(t.log).toEqual(['write:b:10', 'updatePosition:b:10'])
+  })
+})
+
+describe('shared-leave-07 web-dec-76 reset（主体離脱の停止で A の位置・完聴を送らない）', () => {
+  test('reset の後の idle への遷移は位置の書込も完聴の送信も起こさない', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+    expect(t.log).toEqual([])
+
+    t.reporter.reset()
+    t.emit(stateChanged(idle))
+
+    expect(t.write).not.toHaveBeenCalled()
+    expect(t.updatePosition).not.toHaveBeenCalled()
+    expect(t.markCompleted).not.toHaveBeenCalled()
+  })
+
+  test('reset の後に停止直前の完聴事象が来ても markCompleted は送られない（正方向の対照: reset が無ければ idle で位置が書かれる）', () => {
+    const control = setup()
+    control.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+    control.emit(stateChanged(idle))
+    expect(control.log).toEqual(['write:a:7', 'updatePosition:a:7'])
+
+    const t = setup()
+    t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+    t.reporter.reset()
+    t.emit(stateChanged(idle))
+    expect(t.log).toEqual([])
+  })
+
+  test('reset の後も購読は保たれ、次の episode の再生は今まで通り報告される', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+    t.reporter.reset()
+    const listeners = t.listenerCount()
+    t.emit(stateChanged(idle))
+    expect(listeners).toBe(1)
+
+    t.emit(stateChanged(loading('b', 0)), stateChanged(playing('b', 0)), positionChanged('b', 5))
+    t.emit(stateChanged(paused('b', 5)))
+
+    expect(t.log).toEqual(['write:b:5', 'updatePosition:b:5'])
+    expect(t.updatePosition).toHaveBeenCalledTimes(1)
+  })
+
+  test('reset を 2 回呼んでも送信は 0 回', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+    t.reporter.reset()
+    t.reporter.reset()
+    t.emit(stateChanged(idle))
+    expect(t.log).toEqual([])
   })
 })

@@ -5,6 +5,7 @@ import React, { useEffect } from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
+import { AuthProvider } from '@/contexts/AuthProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { PlaybackErrorToaster, usePlaybackActions } from '@/components/PlaybackToasts'
@@ -81,15 +82,22 @@ let audio: TestAudio
 function renderApp() {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <ToastProvider>
-        <ApiClientProvider gateway={gateway}>
-          <PlaybackProvider>
-            <Capture />
-            <AudioPlayerBar />
-            <PlaybackErrorToaster />
-          </PlaybackProvider>
-        </ApiClientProvider>
-      </ToastProvider>
+      <AuthProvider
+        initialSession={{
+          kind: 'authenticated',
+          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'user-test' },
+        }}
+      >
+        <ToastProvider>
+          <ApiClientProvider gateway={gateway}>
+            <PlaybackProvider>
+              <Capture />
+              <AudioPlayerBar />
+              <PlaybackErrorToaster />
+            </PlaybackProvider>
+          </ApiClientProvider>
+        </ToastProvider>
+      </AuthProvider>
     </PreferencesProvider>,
   )
 }

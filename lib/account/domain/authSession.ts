@@ -8,6 +8,8 @@ export interface AuthSessionUser {
   readonly username: string
   readonly role: UserRole
   readonly display_name: string
+  /** backend の user_id。欠落・形式不正は null（主体別の資産を使えない）。 */
+  readonly userId: string | null
 }
 
 export interface AuthFailure {
@@ -37,6 +39,7 @@ function authenticated(user: AuthSessionUser): AuthSession {
     username: user.username,
     role: user.role,
     display_name: user.display_name,
+    userId: user.userId,
   })
   return Object.freeze({ kind: 'authenticated', user: copy })
 }

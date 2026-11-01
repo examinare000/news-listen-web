@@ -6,7 +6,7 @@
  * AuthProvider + passkey.ts の連携を統合的に検証する
  * （passkey モジュールはモックしない）。
  */
-import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
@@ -15,6 +15,7 @@ import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { ApiError } from '@/lib/api'
 import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { setupMockCaches } from '../helpers/mockCaches'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -97,6 +98,11 @@ beforeEach(() => {
   mockGetMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
 })
 
+// shared-leave-09 の場面だけ setupMockCaches() で global の caches を差し替えるので、既存の場面へ漏らさない
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
 describe('AuthProvider — loginWithPasskey 状態遷移', () => {
   test('成功: authenticated に遷移し user がセットされる', async () => {
     mockGetPasskeyLoginOptions.mockResolvedValue(FAKE_OPTIONS)
@@ -143,5 +149,31 @@ describe('AuthProvider — loginWithPasskey 状態遷移', () => {
 
     await waitFor(() => expect(screen.getByTestId('error')).toHaveTextContent('failed'))
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
+  })
+})
+
+describe('AuthProvider — 未確定の後の passkey 成功で回収 (verifies: shared-leave-09)', () => {
+  test('shared-leave-09: getMe が通信断（unavailable）の後の passkey 成功で、現在の主体 B 以外の audio-v1* を 1 回回収する', async () => {
+    const cacheStorage = setupMockCaches()
+    await cacheStorage.open('audio-v1')
+    await cacheStorage.open('audio-v1-u-a')
+    await cacheStorage.open('audio-v1-u-b')
+    await cacheStorage.open('shell-pages-v1')
+    mockGetMe.mockRejectedValue(new ApiError(0, 'Network error'))
+    mockGetPasskeyLoginOptions.mockResolvedValue(FAKE_OPTIONS)
+    mockVerifyPasskeyLogin.mockResolvedValue({ token: 'tok', user: { ...FAKE_USER, user_id: 'u-b' } })
+    renderAuth()
+    await waitFor(() => expect(mockGetMe).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unknown'))
+    // 通信断では回収しない
+    await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)
+
+    await userEvent.click(screen.getByText('passkey-login'))
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    await waitFor(() => expect(cacheStorage.has('audio-v1')).resolves.toBe(false))
+    await expect(cacheStorage.has('audio-v1-u-a')).resolves.toBe(false)
+    await expect(cacheStorage.has('audio-v1-u-b')).resolves.toBe(true)
+    await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(true)
   })
 })

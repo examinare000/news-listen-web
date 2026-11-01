@@ -1,7 +1,7 @@
 import type {
   FeaturedSource,
   FeaturedSourcesResponse,
-  AuthUser,
+  UserSummary,
   UserListResponse,
   UserRole,
   InviteCreateResponse,
@@ -26,7 +26,7 @@ export function listUsers() {
 }
 
 export function createUser(input: { username: string; password: string; display_name?: string; role?: UserRole }) {
-  return request<AuthUser>('/api/backend/admin/users', {
+  return request<UserSummary>('/api/backend/admin/users', {
     method: 'POST',
     body: JSON.stringify(input),
   })
@@ -36,7 +36,7 @@ export function updateUser(
   username: string,
   patch: { role?: UserRole; new_password?: string; display_name?: string },
 ) {
-  return request<AuthUser>(`/api/backend/admin/users/${encodeURIComponent(username)}`, {
+  return request<UserSummary>(`/api/backend/admin/users/${encodeURIComponent(username)}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
   })

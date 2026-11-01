@@ -65,6 +65,8 @@ const REGISTERED: ReadonlyMap<SettingDescriptor<unknown>, Binding<unknown>> = ne
 export interface LocalSettingsStore {
   readonly read: <T>(setting: SettingDescriptor<T>) => T
   readonly write: <T>(setting: SettingDescriptor<T>, value: T) => T
+  /** 主体依存の key だけを消す。既定値は書き戻さない（shared-dec-02）。 */
+  readonly clearSubjectScoped: () => void
 }
 
 export function createLocalSettingsStore(kv: KeyValueStore): LocalSettingsStore {
@@ -80,6 +82,11 @@ export function createLocalSettingsStore(kv: KeyValueStore): LocalSettingsStore 
       const normalized = setting.normalize(value)
       kv.set(binding.key, binding.encode(normalized))
       return normalized
+    },
+    clearSubjectScoped() {
+      for (const binding of Object.values(LOCAL_SETTING_BINDINGS)) {
+        if (binding.setting.subjectScoped) kv.remove(binding.key)
+      }
     },
   }
 }

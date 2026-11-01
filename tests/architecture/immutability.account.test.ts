@@ -47,44 +47,76 @@ describe('web-check-06 helper の自己点検: 深い凍結の判定', () => {
 
 describe('reduce: authenticated の user は入力の複製で、入れ子まで凍結する (verifies: web-contract-18)', () => {
   test('resolved(user) の結果は、入力 user を後から書き換えても変わらない', () => {
-    const user = { username: 'alice', role: 'user' as 'admin' | 'user', display_name: 'Alice' }
+    const user = {
+      username: 'alice',
+      role: 'user' as 'admin' | 'user',
+      display_name: 'Alice',
+      userId: 'u-alice' as string | null,
+    }
     const next = reduce(RESOLVING_SESSION, { type: 'resolved', user })
 
     user.username = 'mallory'
     user.role = 'admin'
     user.display_name = 'Mallory'
+    user.userId = 'u-mallory'
 
     expect(next).toEqual({
       kind: 'authenticated',
-      user: { username: 'alice', role: 'user', display_name: 'Alice' },
+      user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
     })
     expectDeeplyFrozen('resolved', next)
   })
 
   test('signedIn(user) も入力の複製で凍結される', () => {
-    const user = { username: 'bob', role: 'admin' as 'admin' | 'user', display_name: 'Bob' }
+    const user = { username: 'bob', role: 'admin' as 'admin' | 'user', display_name: 'Bob', userId: 'u-bob' }
     const next = reduce(RESOLVING_SESSION, { type: 'signedIn', user })
 
     user.role = 'user'
 
     expect(next).toEqual({
       kind: 'authenticated',
-      user: { username: 'bob', role: 'admin', display_name: 'Bob' },
+      user: { username: 'bob', role: 'admin', display_name: 'Bob', userId: 'u-bob' },
     })
     expectDeeplyFrozen('signedIn', next)
   })
 
-  test('user の余分な property は複製に含めない（username・role・display_name の 3 つだけ）', () => {
-    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice', password: 'leak', extra: 1 }
+  test('user の余分な property は複製に含めない（username・role・display_name・userId の 4 つだけ）', () => {
+    const user = {
+      username: 'alice',
+      role: 'user' as const,
+      display_name: 'Alice',
+      userId: 'u-alice',
+      password: 'leak',
+      extra: 1,
+    }
     const next = reduce(RESOLVING_SESSION, { type: 'resolved', user })
 
     expect(next.kind).toBe('authenticated')
     if (next.kind !== 'authenticated') return
-    expect(Object.keys(next.user).sort()).toEqual(['display_name', 'role', 'username'])
+    expect(Object.keys(next.user).sort()).toEqual(['display_name', 'role', 'userId', 'username'])
+  })
+
+  test('web-dec-78: userId を含む user を書き換えようとしても次の読みは変わらない（null の userId も複製する）', () => {
+    const next = reduce(RESOLVING_SESSION, {
+      type: 'resolved',
+      user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
+    })
+    expect(next.kind).toBe('authenticated')
+    if (next.kind !== 'authenticated') return
+    expect(() => {
+      ;(next.user as unknown as { userId: string | null }).userId = 'u-mallory'
+    }).toThrow()
+    expect(next.user.userId).toBe('u-alice')
+
+    const noSubject = reduce(RESOLVING_SESSION, {
+      type: 'signedIn',
+      user: { username: 'bob', role: 'user', display_name: 'Bob', userId: null },
+    })
+    expect(noSubject.kind === 'authenticated' && noSubject.user.userId).toBeNull()
   })
 
   test('戻り値を書き換えようとしても次の呼出結果は変わらない', () => {
-    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
+    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
     const first = reduce(RESOLVING_SESSION, { type: 'resolved', user })
     expect(() => {
       ;(first as unknown as { kind: string }).kind = 'anonymous'

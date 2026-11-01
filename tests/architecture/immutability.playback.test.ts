@@ -581,7 +581,12 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
         list: () => Promise.resolve([]),
         usage: () => Promise.resolve(null),
       },
-      positionReporter: { attach: () => undefined, detach: () => undefined, lastSyncFailure: () => null },
+      positionReporter: {
+        attach: () => undefined,
+        detach: () => undefined,
+        reset: () => undefined,
+        lastSyncFailure: () => null,
+      },
       episodes: {
         fetch: (id: string) => {
           const fetched = makeEpisode(id)
@@ -589,7 +594,7 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
           return Promise.resolve({ ok: true, value: fetched })
         },
       },
-      localPositions: { read: () => null, write: () => undefined },
+      localPositions: { read: () => null, write: () => undefined, clearAll: () => undefined },
       isOnline: () => true,
       defaultSpeed: () => 1,
     })

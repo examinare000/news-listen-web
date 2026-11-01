@@ -1,16 +1,22 @@
 // オフライン保存庫の契約テスト（web-contract-13・web-spec/capsule-03・web-rule-playback-10）。
 // Cache は MockCacheStorage、gateway は gatewayDouble、blob URL と見積もりは関数 double。
-// 旧実装（lib/audioCache.ts）が書いた entry との互換（Cache 名 audio-v1・key 3 種・旧 meta）も固定する。
+// Cache 名は主体別 audio-v1-{user_id}（ADR-104 決定 2・9 / web-dec-74）。旧名 audio-v1 は読まない。key 3 種と旧 meta（size_bytes・saved_at 無し）は主体別の Cache の中でも読める。
 //
-// RED 理由: `@/lib/playback/infrastructure/offlineLibrary` がまだ存在しない。
+// RED 理由: audioCacheName・deleteSubjectAudio・reclaimAudioCaches が未実装で、OfflineLibraryDeps に currentUserId が無い。
 import { describe, test, expect, vi, afterEach } from 'vitest'
-import { clearOfflineAudio, createOfflineLibrary } from '@/lib/playback/infrastructure/offlineLibrary'
+import {
+  audioCacheName,
+  createOfflineLibrary,
+  deleteSubjectAudio,
+  reclaimAudioCaches,
+} from '@/lib/playback/infrastructure/offlineLibrary'
 import type { CacheBucket } from '@/lib/platform/cacheStore'
 import type { Podcast } from '@/types'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import { MockCacheStorage } from '../../../helpers/mockCaches'
 
-const CACHE = 'audio-v1'
+const USER = 'u-a'
+const CACHE = `audio-v1-${USER}`
 const AUDIO_URL = 'https://storage.example.com/p1.mp3'
 const AUDIO_KEY = '/_audio/p1'
 const META_KEY = '/_audio-meta/p1'
@@ -37,7 +43,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function setup(options: { usage?: { usage: number; quota: number } | null } = {}) {
+function setup(options: { usage?: { usage: number; quota: number } | null; currentUserId?: () => string | null } = {}) {
   const caches = new MockCacheStorage()
   const gateway = createGatewayDouble()
   gateway.respond('GET', GET_PATH, { ok: true, value: dto })
@@ -58,6 +64,7 @@ function setup(options: { usage?: { usage: number; quota: number } | null } = {}
     gateway,
     objectUrl,
     estimate: () => Promise.resolve(options.usage ?? null),
+    currentUserId: options.currentUserId ?? (() => USER),
   })
   return { caches, gateway, library, created, revoked }
 }
@@ -290,7 +297,7 @@ describe('verifies: CI-T45 get（web-deriv-19）', () => {
   })
 })
 
-describe('verifies: CI-T46 remove・clear・clearOfflineAudio（web-deriv-10）', () => {
+describe('verifies: CI-T46 remove・clear・deleteSubjectAudio（web-deriv-10）', () => {
   test('remove は 3 key を delete し、未保存でも例外を投げない', async () => {
     const t = setup()
     await t.library.save('p1')
@@ -302,7 +309,7 @@ describe('verifies: CI-T46 remove・clear・clearOfflineAudio（web-deriv-10）'
     await expect(t.library.remove('p1')).resolves.toBeUndefined()
   })
 
-  test('clear は cacheStore.delete(audio-v1) を 1 回呼ぶ', async () => {
+  test('web-dec-74: clear は cacheStore.delete(audio-v1-{user_id}) を 1 回呼ぶ', async () => {
     const t = setup()
     await t.library.save('p1')
     const del = vi.spyOn(t.caches, 'delete')
@@ -311,13 +318,19 @@ describe('verifies: CI-T46 remove・clear・clearOfflineAudio（web-deriv-10）'
     expect(await t.caches.has(CACHE)).toBe(false)
   })
 
-  test('clearOfflineAudio も delete(audio-v1) を 1 回。null なら何もしない', async () => {
+  test('web-dec-74: deleteSubjectAudio は delete(audio-v1-{user_id}) を 1 回。null の cacheStore なら何もしない', async () => {
     const t = setup()
     await t.library.save('p1')
     const del = vi.spyOn(t.caches, 'delete')
-    await clearOfflineAudio(t.caches)
+    await deleteSubjectAudio(t.caches, USER)
     expect(del.mock.calls).toEqual([[CACHE]])
-    await expect(clearOfflineAudio(null)).resolves.toBeUndefined()
+    await expect(deleteSubjectAudio(null, USER)).resolves.toBeUndefined()
+  })
+
+  test('web-dec-74: deleteSubjectAudio は delete の reject をそのまま伝える', async () => {
+    const t = setup()
+    vi.spyOn(t.caches, 'delete').mockRejectedValue(new Error('delete failed'))
+    await expect(deleteSubjectAudio(t.caches, USER)).rejects.toThrow('delete failed')
   })
 })
 
@@ -378,6 +391,7 @@ describe('verifies: CI-T49 cacheStore が null のときの 7 操作（web-deriv
         revoke: () => undefined,
       },
       estimate: () => Promise.resolve({ usage: 1, quota: 2 }),
+      currentUserId: () => USER,
     })
     expect(await library.save('p1')).toEqual({ ok: false, failure: { kind: 'unsupported' } })
     expect(await library.has('p1')).toBe(false)
@@ -387,5 +401,141 @@ describe('verifies: CI-T49 cacheStore が null のときの 7 操作（web-deriv
     await expect(library.clear()).resolves.toBeUndefined()
     expect(await library.usage()).toEqual({ usage: 1, quota: 2 })
     expect(created).toHaveLength(0)
+  })
+})
+
+describe('web-dec-74 audioCacheName（ADR-104 決定 2）', () => {
+  test('audio-v1-{user_id} を返す', () => {
+    expect(audioCacheName('u-a')).toBe('audio-v1-u-a')
+  })
+})
+
+describe('web-dec-74 主体別 Cache（ADR-104 決定 2・9）', () => {
+  test('save・has・get・list・remove の entry はすべて audio-v1-{user_id} にあり、固定名 audio-v1 は作られない', async () => {
+    const t = setup()
+    expect(await t.library.save('p1')).toEqual({ ok: true, value: undefined })
+    expect(await t.caches.keys()).toEqual(['audio-v1-u-a'])
+    expect(await t.library.has('p1')).toBe(true)
+    expect((await t.library.get('p1'))?.id).toBe('p1')
+    expect((await t.library.list()).map((v) => v.episodeId)).toEqual(['p1'])
+    await t.library.remove('p1')
+    expect(await t.library.has('p1')).toBe(false)
+    expect(await t.caches.has('audio-v1')).toBe(false)
+  })
+
+  test('別の主体の Cache の entry は見えない（主体の交差 0）', async () => {
+    const t = setup({ currentUserId: () => 'u-b' })
+    const bucketOfA = await t.caches.open('audio-v1-u-a')
+    await writeLegacyEntries(bucketOfA, 'a-only')
+    expect(await t.library.has('a-only')).toBe(false)
+    expect(await t.library.get('a-only')).toBeNull()
+    expect(await t.library.list()).toEqual([])
+  })
+
+  test('旧名 audio-v1 の entry は読まない', async () => {
+    const t = setup()
+    await writeLegacyEntries(await t.caches.open('audio-v1'), 'old1')
+    expect(await t.library.has('old1')).toBe(false)
+    expect(await t.library.get('old1')).toBeNull()
+    expect(await t.library.list()).toEqual([])
+  })
+})
+
+describe('shared-leave-06 離脱後に完了した save は開始時の主体の Cache に入る', () => {
+  test('保存の途中で currentUserId が替わっても 3 entry は audio-v1-u-a に入り、次回の回収の後に audio-v1-u-a は存在しない', async () => {
+    let current: string | null = 'u-a'
+    const t = setup({ currentUserId: () => current })
+    const bucketA = await t.caches.open('audio-v1-u-a')
+    bucketA.deferPuts()
+
+    const saving = t.library.save('p1')
+    await settle()
+    current = 'u-b'
+    bucketA.flushPuts()
+    expect(await saving).toEqual({ ok: true, value: undefined })
+
+    expect(await keysOf(bucketA)).toEqual([AUDIO_KEY, EPISODE_KEY, META_KEY].sort())
+    expect(await t.caches.has('audio-v1-u-b')).toBe(false)
+
+    await reclaimAudioCaches(t.caches, () => current)
+    expect(await t.caches.has('audio-v1-u-a')).toBe(false)
+  })
+})
+
+describe('shared-leave-10 currentUserId が null のとき保存庫は無効', () => {
+  test('save は unsupported、get は null、has は false、list は空、remove・clear は Cache の集合を変えず、usage は主体に依らない', async () => {
+    let current: string | null = 'u-a'
+    const t = setup({ usage: { usage: 3, quota: 9 }, currentUserId: () => current })
+    await t.library.save('p1')
+    const namesBefore = await t.caches.keys()
+    const entriesBefore = await keysOf(await t.caches.open('audio-v1-u-a'))
+    current = null
+
+    expect(await t.library.save('p2')).toEqual({ ok: false, failure: { kind: 'unsupported' } })
+    expect(await t.library.get('p1')).toBeNull()
+    expect(await t.library.has('p1')).toBe(false)
+    expect(await t.library.list()).toEqual([])
+    await t.library.remove('p1')
+    await t.library.clear()
+    expect(await t.library.usage()).toEqual({ usage: 3, quota: 9 })
+
+    expect(await t.caches.keys()).toEqual(namesBefore)
+    expect(await keysOf(await t.caches.open('audio-v1-u-a'))).toEqual(entriesBefore)
+    expect(t.gateway.calls).toHaveLength(1)
+  })
+})
+
+describe('shared-leave-08 reclaimAudioCaches（ADR-104 決定 7・8）', () => {
+  async function seed() {
+    const caches = new MockCacheStorage()
+    for (const name of ['audio-v1', 'audio-v1-u-a', 'audio-v1-u-b', 'audio-v10', 'shell-pages-v1', 'api-v1']) {
+      await caches.open(name)
+    }
+    return caches
+  }
+
+  test('keep が u-a を返すと、audio-v1（旧名）と他の主体の Cache だけが消える', async () => {
+    const caches = await seed()
+    await reclaimAudioCaches(caches, () => 'u-a')
+    expect((await caches.keys()).sort()).toEqual(['api-v1', 'audio-v1-u-a', 'audio-v10', 'shell-pages-v1'])
+  })
+
+  test('keep が null（未認証・形式不正）なら audio-v1 と audio-v1-* がすべて消え、audio-v10・shell-*・api-* は残る。2 回目は削除 0 回', async () => {
+    const caches = await seed()
+    await reclaimAudioCaches(caches, () => null)
+    expect((await caches.keys()).sort()).toEqual(['api-v1', 'audio-v10', 'shell-pages-v1'])
+    const del = vi.spyOn(caches, 'delete')
+    await reclaimAudioCaches(caches, () => null)
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  test('cacheStore が null なら resolve し、keep は呼ばれない', async () => {
+    const keep = vi.fn(() => 'u-a')
+    await expect(reclaimAudioCaches(null, keep)).resolves.toBeUndefined()
+    expect(keep).not.toHaveBeenCalled()
+  })
+
+  test('web-dec-85: 掃除の途中で keep が u-b に替わると audio-v1-u-b は残る。keep は各削除の直前に 1 回ずつ、keys は 1 回だけ列挙する', async () => {
+    const caches = new MockCacheStorage()
+    await caches.open('audio-v1')
+    await caches.open('audio-v1-u-b')
+    let keepValue: string | null = null
+    const keep = vi.fn(() => keepValue)
+    const keys = vi.spyOn(caches, 'keys').mockResolvedValue(['audio-v1', 'audio-v1-u-b'])
+    const realDelete = caches.delete.bind(caches)
+    let deleteCalls = 0
+    vi.spyOn(caches, 'delete').mockImplementation(async (name) => {
+      deleteCalls += 1
+      // 1 回目の削除の最中に B がログインして保存した状態を再現する
+      if (deleteCalls === 1) keepValue = 'u-b'
+      return realDelete(name)
+    })
+
+    await reclaimAudioCaches(caches, keep)
+
+    expect(await caches.has('audio-v1')).toBe(false)
+    expect(await caches.has('audio-v1-u-b')).toBe(true)
+    expect(keep).toHaveBeenCalledTimes(2)
+    expect(keys).toHaveBeenCalledTimes(1)
   })
 })
