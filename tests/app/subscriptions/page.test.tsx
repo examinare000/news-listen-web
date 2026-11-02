@@ -5,7 +5,10 @@ import React from 'react'
 import SubscriptionsPage from '@/app/(app)/subscriptions/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { ToastProvider } from '@/components/ui/Toast'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -22,23 +25,24 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getSources: vi.fn(),
-    addSource: vi.fn(),
-    deleteSource: vi.fn(),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const SOURCES_PATH = '/api/backend/settings/sources'
+const FEATURED_PATH = '/api/backend/settings/featured-sources'
+const deleteSourcePath = (url: string) => `${SOURCES_PATH}?url=${encodeURIComponent(url)}`
 
 const SAMPLE_SOURCES = [
   { name: 'Hacker News', url: 'https://news.ycombinator.com/rss' },
   { name: 'Tech Crunch', url: 'https://techcrunch.com/rss' },
 ]
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 function renderSubscriptionsPage() {
   return render(
@@ -51,7 +55,8 @@ function renderSubscriptionsPage() {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
 })
 
 // ==========================================================
@@ -59,12 +64,7 @@ beforeEach(() => {
 // ==========================================================
 describe('SubscriptionsPage — fetch errors', () => {
   test('Given 401 on getSources, shows "API キーが正しくありません" and does NOT show empty state', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockRejectedValue(new ApiError(401, 'Unauthorized')),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: false, failure: { kind: 'unauthorized' } })
 
     renderSubscriptionsPage()
 
@@ -77,12 +77,7 @@ describe('SubscriptionsPage — fetch errors', () => {
   })
 
   test('Given 500 on getSources, shows error message with status code', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockRejectedValue(new ApiError(500, 'Internal Server Error')),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
 
     renderSubscriptionsPage()
 
@@ -93,15 +88,14 @@ describe('SubscriptionsPage — fetch errors', () => {
   })
 
   test('Given fetch error, shows retry button that re-fetches on click', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    const getSources = vi.fn()
-      .mockRejectedValueOnce(new ApiError(500, 'err'))
-      .mockResolvedValue({ sources: [] })
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources,
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    // 1 回目は 500、2 回目以降は成功
+    gw.respondWith('GET', SOURCES_PATH, (): Promise<Result<unknown, ApiFailure>> =>
+      Promise.resolve(
+        callsTo('GET', SOURCES_PATH).length === 1
+          ? { ok: false, failure: { kind: 'server', status: 500 } }
+          : { ok: true, value: { sources: [] } },
+      ),
+    )
 
     renderSubscriptionsPage()
 
@@ -109,7 +103,7 @@ describe('SubscriptionsPage — fetch errors', () => {
     await userEvent.click(screen.getByRole('button', { name: /リフレッシュ|retry/i }))
 
     await waitFor(() => {
-      expect(getSources).toHaveBeenCalledTimes(2)
+      expect(callsTo('GET', SOURCES_PATH)).toHaveLength(2)
     })
   })
 })
@@ -120,13 +114,8 @@ describe('SubscriptionsPage — fetch errors', () => {
 // 支援技術に通知されないため、role="status" + aria-live="polite" を付与する。
 // ==========================================================
 describe('SubscriptionsPage — loading', () => {
-  test('Given getSources has not resolved yet, shows a loading status announced to assistive tech (#83)', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn(() => new Promise(() => {})), // never resolves
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+  test('Given getSources has not resolved yet, shows a loading status announced to assistive tech (#83)', () => {
+    gw.respondWith('GET', SOURCES_PATH, () => new Promise<Result<unknown, ApiFailure>>(() => {})) // never resolves
 
     renderSubscriptionsPage()
 
@@ -141,12 +130,8 @@ describe('SubscriptionsPage — loading', () => {
 // ==========================================================
 describe('SubscriptionsPage — delete errors', () => {
   test('Given deleteSource returns 404, shows error toast', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn().mockRejectedValue(new ApiError(404, 'Source not found')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), { ok: false, failure: { kind: 'not_found' } })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -161,12 +146,8 @@ describe('SubscriptionsPage — delete errors', () => {
   })
 
   test('Given deleteSource returns 500, shows error toast with status', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn().mockRejectedValue(new ApiError(500, 'Server Error')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), { ok: false, failure: { kind: 'server', status: 500 } })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -186,12 +167,7 @@ describe('SubscriptionsPage — delete errors', () => {
 // ==========================================================
 describe('SubscriptionsPage — listing', () => {
   test('Given sources returned, renders source list', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
 
     renderSubscriptionsPage()
 
@@ -202,12 +178,7 @@ describe('SubscriptionsPage — listing', () => {
   })
 
   test('source list keeps explicit role="list" for Safari/VoiceOver', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
 
     renderSubscriptionsPage()
 
@@ -217,12 +188,7 @@ describe('SubscriptionsPage — listing', () => {
   })
 
   test('Given empty sources, shows "購読ソースがありません" and guidance to add form', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
 
     renderSubscriptionsPage()
 
@@ -236,13 +202,8 @@ describe('SubscriptionsPage — listing', () => {
 // AddSubscriptionForm — バリデーション
 // ==========================================================
 describe('AddSubscriptionForm — client-side validation', () => {
-  beforeEach(async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+  beforeEach(() => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
   })
 
   test('Given URL not starting with http(s)://, shows inline error and does NOT submit', async () => {
@@ -253,19 +214,14 @@ describe('AddSubscriptionForm — client-side validation', () => {
     await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     expect(screen.getByText(/http/i)).toBeInTheDocument()
-    const { createApiClient } = await import('@/lib/api')
-    const mockClient = vi.mocked(createApiClient).mock.results[0].value
-    expect(mockClient.addSource).not.toHaveBeenCalled()
+    expect(callsTo('POST', SOURCES_PATH)).toHaveLength(0)
   })
 
   test('Given name and valid URL submitted, calls addSource', async () => {
-    const addSource = vi.fn().mockResolvedValue({ sources: [{ name: 'HN', url: 'https://news.ycombinator.com/rss' }] })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource,
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [{ name: 'HN', url: 'https://news.ycombinator.com/rss' }] },
+    })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /ソース名|name|名前/i }))
@@ -275,17 +231,16 @@ describe('AddSubscriptionForm — client-side validation', () => {
     await userEvent.click(screen.getByRole('button', { name: '追加する' }))
 
     await waitFor(() => {
-      expect(addSource).toHaveBeenCalledWith('HN', 'https://news.ycombinator.com/rss')
+      expect(gw.calls).toContainEqual({
+        method: 'POST',
+        path: SOURCES_PATH,
+        body: { name: 'HN', url: 'https://news.ycombinator.com/rss' },
+      })
     })
   })
 
   test('Given 409 response, shows "この URL は登録済みです" and preserves input values', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn().mockRejectedValue(new ApiError(409, 'Source URL already exists')),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'conflict' } })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -302,12 +257,10 @@ describe('AddSubscriptionForm — client-side validation', () => {
   })
 
   test('Given 422 response, shows "URL の形式が正しくありません"', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn().mockRejectedValue(new ApiError(422, 'value is not a valid URL')),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', SOURCES_PATH, {
+      ok: false,
+      failure: { kind: 'validation', detail: 'value is not a valid URL' },
+    })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -321,12 +274,7 @@ describe('AddSubscriptionForm — client-side validation', () => {
   })
 
   test('Given submission in progress, input and button are disabled', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn(() => new Promise(() => {})), // never resolves
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respondWith('POST', SOURCES_PATH, () => new Promise<Result<unknown, ApiFailure>>(() => {})) // never resolves
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -338,12 +286,10 @@ describe('AddSubscriptionForm — client-side validation', () => {
   })
 
   test('Given submission succeeds, input fields are cleared', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      addSource: vi.fn().mockResolvedValue({ sources: [{ name: 'HN', url: 'https://example.com/rss' }] }),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [{ name: 'HN', url: 'https://example.com/rss' }] },
+    })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
@@ -368,13 +314,8 @@ describe('SubscriptionsPage — recommended sources', () => {
   ]
 
   test('Given featured sites returned, shows a 購読 button per recommended site', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: FEATURED } })
 
     renderSubscriptionsPage()
 
@@ -385,14 +326,9 @@ describe('SubscriptionsPage — recommended sources', () => {
   })
 
   test('Given recommend 購読 button clicked, calls addSource with that site', async () => {
-    const addSource = vi.fn().mockResolvedValue({ sources: FEATURED })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
-      addSource,
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: FEATURED } })
+    gw.respond('POST', SOURCES_PATH, { ok: true, value: { sources: FEATURED } })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('button', { name: 'The Verge を購読' }))
@@ -400,21 +336,21 @@ describe('SubscriptionsPage — recommended sources', () => {
     await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
 
     await waitFor(() => {
-      expect(addSource).toHaveBeenCalledWith('The Verge', 'https://www.theverge.com/rss/index.xml')
+      expect(gw.calls).toContainEqual({
+        method: 'POST',
+        path: SOURCES_PATH,
+        body: { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
+      })
     })
   })
 
   test('Given a featured site is already subscribed, it is excluded from recommendations', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      // The Verge は購読済み、dev.to は未購読
-      getSources: vi.fn().mockResolvedValue({
-        sources: [{ name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' }],
-      }),
-      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    // The Verge は購読済み、dev.to は未購読
+    gw.respond('GET', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [{ name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' }] },
+    })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: FEATURED } })
 
     renderSubscriptionsPage()
 
@@ -428,13 +364,8 @@ describe('SubscriptionsPage — recommended sources', () => {
 
   // issue #164: おすすめサイト取得失敗をサイレントにせず、取得失敗の旨と再読み込み導線を出す
   test('Given getFeaturedSources fails, shows a failure notice with a reload affordance', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      getFeaturedSources: vi.fn().mockRejectedValue(new Error('network error')),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('GET', FEATURED_PATH, { ok: false, failure: { kind: 'network' } })
 
     renderSubscriptionsPage()
 
@@ -445,24 +376,20 @@ describe('SubscriptionsPage — recommended sources', () => {
   })
 
   test('Given reload button clicked after getFeaturedSources failure, refetches and shows recommendations on success', async () => {
-    const getFeaturedSources = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({ sites: FEATURED })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      getFeaturedSources,
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    // 1 回目は失敗、2 回目は成功
+    gw.respondWith('GET', FEATURED_PATH, (): Promise<Result<unknown, ApiFailure>> =>
+      callsTo('GET', FEATURED_PATH).length === 1
+        ? Promise.reject(new Error('network error'))
+        : Promise.resolve({ ok: true, value: { sites: FEATURED } }),
+    )
 
     renderSubscriptionsPage()
 
     await waitFor(() => screen.getByRole('button', { name: /おすすめサイトを再読み込み/ }))
     await userEvent.click(screen.getByRole('button', { name: /おすすめサイトを再読み込み/ }))
 
-    await waitFor(() => expect(getFeaturedSources).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', FEATURED_PATH)).toHaveLength(2))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'The Verge を購読' })).toBeInTheDocument()
     })
@@ -470,16 +397,12 @@ describe('SubscriptionsPage — recommended sources', () => {
   })
 
   test('Given a recommended site is subscribed via its 購読 button, it disappears from recommendations', async () => {
-    const addSource = vi.fn().mockResolvedValue({
-      sources: [{ name: 'dev.to', url: 'https://dev.to/feed' }],
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: FEATURED } })
+    gw.respond('POST', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [{ name: 'dev.to', url: 'https://dev.to/feed' }] },
     })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: [] }),
-      getFeaturedSources: vi.fn().mockResolvedValue({ sites: FEATURED }),
-      addSource,
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByRole('button', { name: 'dev.to を購読' }))
@@ -499,13 +422,11 @@ describe('SubscriptionsPage — recommended sources', () => {
 // ==========================================================
 describe('SubscriptionsPage — subscription count', () => {
   test('Given 2 sources, shows "2 ソース購読中" and decrements after delete', async () => {
-    const deleteSource = vi.fn().mockResolvedValue({ sources: [SAMPLE_SOURCES[1]] })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), {
+      ok: true,
+      value: { sources: [SAMPLE_SOURCES[1]] },
+    })
 
     renderSubscriptionsPage()
 
@@ -528,12 +449,7 @@ describe('SubscriptionsPage — subscription count', () => {
 // ==========================================================
 describe('SubscriptionsPage — delete with confirm dialog', () => {
   test('Given delete button clicked, shows ConfirmDialog', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -544,13 +460,11 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
   })
 
   test('Given user confirms deletion, calls deleteSource(url)', async () => {
-    const deleteSource = vi.fn().mockResolvedValue({ sources: [SAMPLE_SOURCES[1]] })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      addSource: vi.fn(),
-      deleteSource,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), {
+      ok: true,
+      value: { sources: [SAMPLE_SOURCES[1]] },
+    })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -559,20 +473,21 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
     await userEvent.click(screen.getByRole('button', { name: /確認|OK/i }))
 
     await waitFor(() => {
-      expect(deleteSource).toHaveBeenCalledWith(SAMPLE_SOURCES[0].url)
+      expect(gw.calls).toContainEqual({
+        method: 'DELETE',
+        path: deleteSourcePath(SAMPLE_SOURCES[0].url),
+        body: undefined,
+      })
     })
   })
 
   test('Given deletion succeeds, replaces state with response sources (no re-GET)', async () => {
     const remainingSources = [SAMPLE_SOURCES[1]]
-    const deleteSource = vi.fn().mockResolvedValue({ sources: remainingSources })
-    const getSources = vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources,
-      addSource: vi.fn(),
-      deleteSource,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), {
+      ok: true,
+      value: { sources: remainingSources },
+    })
 
     renderSubscriptionsPage()
     await waitFor(() => screen.getByText('Hacker News'))
@@ -585,7 +500,7 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
       expect(screen.getByText('Tech Crunch')).toBeInTheDocument()
     })
     // 削除後に再 GET していないことを確認（レスポンスで直接 state を置換）
-    expect(getSources).toHaveBeenCalledTimes(1)
+    expect(callsTo('GET', SOURCES_PATH)).toHaveLength(1)
   })
 })
 
@@ -594,18 +509,16 @@ describe('SubscriptionsPage — delete with confirm dialog', () => {
 // ==========================================================
 describe('SubscriptionsPage — featured sources by category', () => {
   test('displays recommended sources grouped by category with fixed order', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      getFeaturedSources: vi.fn().mockResolvedValue({
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
         sites: [
           { id: 'f1', name: 'Tech News', url: 'https://technews.com', order: 0, category: 'tech' },
           { id: 'f2', name: 'Business News', url: 'https://biz.com', order: 1, category: 'business' },
         ],
-      }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSubscriptionsPage()
 
@@ -626,17 +539,15 @@ describe('SubscriptionsPage — featured sources by category', () => {
   })
 
   test('hides category section headers when category has 0 items', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      getFeaturedSources: vi.fn().mockResolvedValue({
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
         sites: [
           { id: 'f1', name: 'Tech News', url: 'https://technews.com', order: 0, category: 'tech' },
         ],
-      }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSubscriptionsPage()
 
@@ -648,18 +559,16 @@ describe('SubscriptionsPage — featured sources by category', () => {
   })
 
   test('normalizes missing category to tech', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getSources: vi.fn().mockResolvedValue({ sources: SAMPLE_SOURCES }),
-      getFeaturedSources: vi.fn().mockResolvedValue({
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
         sites: [
           { id: 'f1', name: 'Legacy Site', url: 'https://legacy.com', order: 0 },
           { id: 'f2', name: 'Tech News', url: 'https://technews.com', order: 1, category: 'tech' },
         ],
-      }),
-      addSource: vi.fn(),
-      deleteSource: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSubscriptionsPage()
 

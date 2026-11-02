@@ -6,6 +6,9 @@ import PodcastPage from '@/app/(app)/podcast/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -22,17 +25,17 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getPodcasts: vi.fn(),
-    getPodcast: vi.fn(),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const PODCASTS_PATH = '/api/backend/podcasts'
+
+let gw: GatewayDouble
+
+function podcastListCalls() {
+  return gw.calls.filter((c) => c.method === 'GET' && c.path === PODCASTS_PATH)
+}
 
 // ページは usePlayback() / usePlaybackActions() の公開面だけを使う。再生の振る舞いは PlaybackProvider.*.test.tsx が持つので、
 // ここでは「どの操作がどの引数で委譲されるか」と「保存・位置・再生中の表示」を double で固定する。
@@ -87,6 +90,8 @@ const TWO_PODCASTS = [
 ]
 
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
   vi.clearAllMocks()
   localStorage.clear()
   // 既定は「未保存・再生中なし・位置なし」。
@@ -111,12 +116,8 @@ function renderPodcastPage() {
   )
 }
 
-async function givenPodcasts(podcasts: unknown[]) {
-  const { createApiClient } = await import('@/lib/api')
-  vi.mocked(createApiClient).mockReturnValue({
-    getPodcasts: vi.fn().mockResolvedValue({ podcasts }),
-    getPodcast: vi.fn(),
-  } as unknown as ReturnType<typeof createApiClient>)
+function givenPodcasts(podcasts: unknown[]) {
+  gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts } })
 }
 
 // ==========================================================
@@ -124,11 +125,7 @@ async function givenPodcasts(podcasts: unknown[]) {
 // ==========================================================
 describe('PodcastPage — listing', () => {
   test('Given podcasts returned, renders podcast cards', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: SAMPLE_PODCASTS } })
 
     renderPodcastPage()
 
@@ -138,11 +135,7 @@ describe('PodcastPage — listing', () => {
   })
 
   test('Given empty podcasts array, displays empty state message', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts: vi.fn().mockResolvedValue({ podcasts: [] }),
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: [] } })
 
     renderPodcastPage()
 
@@ -152,12 +145,8 @@ describe('PodcastPage — listing', () => {
     })
   })
 
-  test('Given loading state, shows skeleton', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts: vi.fn(() => new Promise(() => {})),
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+  test('Given loading state, shows skeleton', () => {
+    gw.respondWith('GET', PODCASTS_PATH, () => new Promise<Result<unknown, ApiFailure>>(() => {}))
 
     renderPodcastPage()
 
@@ -170,7 +159,7 @@ describe('PodcastPage — listing', () => {
 // ==========================================================
 describe('PodcastPage — playback actions', () => {
   test('再生ボタンは usePlaybackActions().startEpisode(id) を呼ぶ (verifies: CI-P4-30)', async () => {
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
@@ -184,7 +173,7 @@ describe('PodcastPage — playback actions', () => {
     ['次に再生', () => playNext],
     ['キューに追加', () => addToQueue],
   ])('「%s」は { id, title, intro } を渡す。title が無ければ null (verifies: CI-P4-30; web-temp-07)', async (label, target) => {
-    await givenPodcasts([{ ...SAMPLE_PODCASTS[0], title: 'テスト題' }, TWO_PODCASTS[1]])
+    givenPodcasts([{ ...SAMPLE_PODCASTS[0], title: 'テスト題' }, TWO_PODCASTS[1]])
     renderPodcastPage()
     await waitFor(() => screen.getByText(/二つ目のポッドキャストのイントロ/))
 
@@ -200,7 +189,7 @@ describe('PodcastPage — playback actions', () => {
 
   test('端末に位置が保存されていれば「続きから」を出し、null なら出さない (verifies: CI-P4-30)', async () => {
     savedPosition.mockImplementation((id) => (id === 'p1' ? 120 : null))
-    await givenPodcasts(TWO_PODCASTS)
+    givenPodcasts(TWO_PODCASTS)
     renderPodcastPage()
     await waitFor(() => screen.getByText(/二つ目のポッドキャストのイントロ/))
 
@@ -215,7 +204,7 @@ describe('PodcastPage — playback actions', () => {
 describe('PodcastPage — playing highlight (D24)', () => {
   test('nowPlaying() が podcast A なら、A のカードだけに「再生中」が出る (verifies: CI-P4-30)', async () => {
     nowPlaying.mockReturnValue({ episodeId: 'p1' })
-    await givenPodcasts(TWO_PODCASTS)
+    givenPodcasts(TWO_PODCASTS)
 
     renderPodcastPage()
 
@@ -232,7 +221,7 @@ describe('PodcastPage — playing highlight (D24)', () => {
   })
 
   test('nowPlaying() が null なら、どのカードにも「再生中」は出ない (verifies: CI-P4-30)', async () => {
-    await givenPodcasts(TWO_PODCASTS)
+    givenPodcasts(TWO_PODCASTS)
 
     renderPodcastPage()
 
@@ -249,21 +238,16 @@ describe('PodcastPage — playing highlight (D24)', () => {
 // ==========================================================
 describe('PodcastPage — refresh', () => {
   test('Given refresh button clicked, calls getPodcasts again', async () => {
-    const getPodcasts = vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts,
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: SAMPLE_PODCASTS } })
 
     renderPodcastPage()
     await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
 
-    const initialCallCount = getPodcasts.mock.calls.length
+    const initialCallCount = podcastListCalls().length
     await userEvent.click(screen.getByRole('button', { name: /リフレッシュ|更新|refresh/i }))
 
     // Refresh button should trigger at least one more call (polling may also call in background)
-    expect(getPodcasts.mock.calls.length).toBeGreaterThan(initialCallCount)
+    expect(podcastListCalls().length).toBeGreaterThan(initialCallCount)
   })
 })
 
@@ -272,28 +256,19 @@ describe('PodcastPage — refresh', () => {
 // ==========================================================
 describe('PodcastPage — polling for new podcasts (#11)', () => {
   test('Polling hook is used and enabled on mount', async () => {
-    const getPodcasts = vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts,
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: SAMPLE_PODCASTS } })
 
     renderPodcastPage()
 
     // Polling should be enabled on mount: fetchPodcasts called for initial load
     // plus polling calls will increment over time. Just verify it starts.
     await waitFor(() => {
-      expect(getPodcasts).toHaveBeenCalled()
+      expect(podcastListCalls().length).toBeGreaterThan(0)
     })
   })
 
   test('Page renders list after initial fetch completes', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts: vi.fn().mockResolvedValue({ podcasts: SAMPLE_PODCASTS }),
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: SAMPLE_PODCASTS } })
 
     renderPodcastPage()
 
@@ -308,7 +283,7 @@ describe('PodcastPage — polling for new podcasts (#11)', () => {
 // ==========================================================
 describe('PodcastPage — offline download (issue #167)', () => {
   test('shows an オフライン保存 button on each card when not saved', async () => {
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
 
     renderPodcastPage()
 
@@ -318,7 +293,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
   })
 
   test('保存に成功すると offline.save(id) を呼び、そのカードを「保存済み」にする (verifies: CI-P4-30)', async () => {
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
     renderPodcastPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
@@ -337,7 +312,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
     ['reject する', () => save.mockRejectedValue(new Error('save failed'))],
   ])('保存が %s と、toast「オフライン保存に失敗しました」を出し、保存済みにしない (verifies: CI-P4-30)', async (_name, arrange) => {
     arrange()
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
     renderPodcastPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
@@ -350,7 +325,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
 
   test('offline.has が true の回は、最初から「保存済み」で再保存しない (verifies: CI-P4-30)', async () => {
     has.mockResolvedValue(true)
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
 
     renderPodcastPage()
 
@@ -362,7 +337,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
 
   test('offline.has が reject しても、一覧は描かれて保存ボタンが出続ける (verifies: CI-P4-30)', async () => {
     has.mockRejectedValue(new Error('cache open failed'))
-    await givenPodcasts(SAMPLE_PODCASTS)
+    givenPodcasts(SAMPLE_PODCASTS)
 
     renderPodcastPage()
 
@@ -380,12 +355,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
   // 相互作用して再レンダーの連鎖が実質無限ループ化する。テストでは fetch の都度、内容は同じだが
   // 参照が異なる配列を返すモックで再現する。
   test('does not run away re-checking cache status when podcasts array reference changes without content changes (regression)', async () => {
-    const getPodcasts = vi.fn().mockImplementation(async () => ({ podcasts: [...SAMPLE_PODCASTS] }))
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcasts,
-      getPodcast: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respondWith('GET', PODCASTS_PATH, async () => ({ ok: true, value: { podcasts: [...SAMPLE_PODCASTS] } }))
 
     renderPodcastPage()
 
@@ -398,7 +368,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
     // 数百〜数千回呼ばれる。
     await new Promise((resolve) => setTimeout(resolve, 300))
 
-    expect(getPodcasts.mock.calls.length).toBeLessThanOrEqual(2)
+    expect(podcastListCalls().length).toBeLessThanOrEqual(2)
   })
 })
 
@@ -406,12 +376,7 @@ describe('PodcastPage — offline download (issue #167)', () => {
     test('初回ロードでは just-completed クラスが付かない', async () => {
       // 初期状態で completed の podcast
       const INITIAL = [{ ...SAMPLE_PODCASTS[0], id: 'p1', status: 'completed' as const }]
-      const getPodcasts = vi.fn().mockResolvedValue({ podcasts: INITIAL })
-      const { createApiClient } = await import('@/lib/api')
-      vi.mocked(createApiClient).mockReturnValue({
-        getPodcasts,
-        getPodcast: vi.fn(),
-      } as unknown as ReturnType<typeof createApiClient>)
+      gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: INITIAL } })
 
       renderPodcastPage()
       await waitFor(() => {
@@ -453,7 +418,7 @@ describe('PodcastPage — Episode kinds (web-contract-14)', () => {
   ]
 
   async function renderKinds() {
-    await givenPodcasts(KIND_PODCASTS)
+    givenPodcasts(KIND_PODCASTS)
     renderPodcastPage()
     await waitFor(() => screen.getByText(/完成した回のイントロ/))
     return (id: string) => within(screen.getByTestId(`podcast-card-${id}`))

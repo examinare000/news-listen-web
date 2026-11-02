@@ -6,6 +6,8 @@ import PodcastDetailPage from '@/app/(app)/podcast/[id]/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
+import { createGatewayDouble } from '../../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -26,17 +28,15 @@ const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx
 
 vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx, configureSfx: vi.fn() }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getPodcast: vi.fn(),
-    getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const PODCAST_PATH = '/api/backend/podcasts/p1'
+const QUIZ_PATH = '/api/backend/podcasts/p1/quiz-answers'
+const VOCABULARY_PATH = '/api/backend/vocabulary'
+
+let gw: GatewayDouble
 
 // ページは usePlayback() / usePlaybackActions() の公開面だけを使う。再生の振る舞いは PlaybackProvider.*.test.tsx が持つので、
 // ここでは「どの操作がどの引数で委譲されるか」と「保存の表示」を double で固定する。
@@ -67,6 +67,9 @@ const SAMPLE_PODCAST = {
 }
 
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
+  gw.respond('GET', VOCABULARY_PATH, { ok: true, value: { vocabulary: [], count: 0 } })
   vi.clearAllMocks()
   localStorage.clear()
   // 既定は「未保存」に倒す。
@@ -92,11 +95,7 @@ function renderDetailPage(params = { id: 'p1' }) {
 // ==========================================================
 describe('PodcastDetailPage — normal', () => {
   test('Displays full japanese_intro_text (not truncated)', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -107,11 +106,7 @@ describe('PodcastDetailPage — normal', () => {
   })
 
   test('Displays difficulty badge', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -121,11 +116,7 @@ describe('PodcastDetailPage — normal', () => {
   })
 
   test('Displays formatted duration', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -136,11 +127,7 @@ describe('PodcastDetailPage — normal', () => {
   })
 
   test('Does not expose raw article IDs to the reader', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -149,11 +136,7 @@ describe('PodcastDetailPage — normal', () => {
   })
 
   test('Has a back link to the podcast list (/podcast)', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -163,11 +146,7 @@ describe('PodcastDetailPage — normal', () => {
   })
 
   test('Has a play button', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
 
@@ -182,11 +161,7 @@ describe('PodcastDetailPage — normal', () => {
 // ==========================================================
 describe('PodcastDetailPage — play', () => {
   test('再生ボタンは usePlaybackActions().startEpisode(id) を呼ぶ (verifies: CI-P4-31)', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
 
     renderDetailPage()
     await waitFor(() => {
@@ -205,17 +180,13 @@ describe('PodcastDetailPage — play', () => {
 // ==========================================================
 describe('PodcastDetailPage — transcript', () => {
   test('Given segments, displays each speaker label and text', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({
-        ...SAMPLE_PODCAST,
-        segments: [
-          { speaker: 'A', text: 'Good morning, everyone.' },
-          { speaker: 'B', text: 'Thanks for joining us today.' },
-        ],
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: {
+      ...SAMPLE_PODCAST,
+      segments: [
+        { speaker: 'A', text: 'Good morning, everyone.' },
+        { speaker: 'B', text: 'Thanks for joining us today.' },
+      ],
+    } })
 
     renderDetailPage()
 
@@ -229,11 +200,7 @@ describe('PodcastDetailPage — transcript', () => {
   })
 
   test('Given segments is null, shows fallback message without crashing and keeps existing content', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, segments: null }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, segments: null } })
 
     renderDetailPage()
 
@@ -246,12 +213,8 @@ describe('PodcastDetailPage — transcript', () => {
   })
 
   test('Given segments field is entirely missing (legacy episode), shows fallback without crashing', async () => {
-    const { createApiClient } = await import('@/lib/api')
     // segments フィールド自体が欠落した旧データを模擬
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST } })
 
     renderDetailPage()
 
@@ -266,47 +229,45 @@ describe('PodcastDetailPage — transcript', () => {
 // ==========================================================
 describe('PodcastDetailPage — vocabulary glossary', () => {
   test('registers a glossary term with podcast_id + term and changes to the subdued registered state', async () => {
-    const saveVocabulary = vi.fn().mockResolvedValue({
-      vocabulary_id: 'p1__accelerate',
-      podcast_id: 'p1',
-      term: 'accelerate',
-      meaning: '加速する',
-      example: 'The car began to accelerate quickly.',
-      registered_at: '2026-07-29T00:00:00Z',
+    gw.respond('POST', VOCABULARY_PATH, {
+      ok: true,
+      value: {
+        vocabulary_id: 'p1__accelerate',
+        podcast_id: 'p1',
+        term: 'accelerate',
+        meaning: '加速する',
+        example: 'The car began to accelerate quickly.',
+        registered_at: '2026-07-29T00:00:00Z',
+      },
     })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({
-        ...SAMPLE_PODCAST,
-        vocabulary: [
-          { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
-        ],
-      }),
-      saveVocabulary,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: {
+      ...SAMPLE_PODCAST,
+      vocabulary: [
+        { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
+      ],
+    } })
 
     renderDetailPage()
     await userEvent.click(await screen.findByRole('button', { name: 'accelerate を習得' }))
 
-    expect(saveVocabulary).toHaveBeenCalledWith('p1', 'accelerate')
+    expect(gw.calls).toContainEqual({
+      method: 'POST',
+      path: VOCABULARY_PATH,
+      body: { podcast_id: 'p1', term: 'accelerate' },
+    })
     const registered = await screen.findByText('登録済み')
     expect(registered).toHaveClass('vocabulary-registered')
     expect(screen.queryByRole('button', { name: 'accelerate を習得' })).not.toBeInTheDocument()
   })
 
   test('Given vocabulary entries, displays term / meaning_ja / example for each entry', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({
-        ...SAMPLE_PODCAST,
-        vocabulary: [
-          { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
-          { term: 'quarter', meaning_ja: '四半期', example: 'Profits rose in the third quarter.' },
-        ],
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: {
+      ...SAMPLE_PODCAST,
+      vocabulary: [
+        { term: 'accelerate', meaning_ja: '加速する', example: 'The car began to accelerate quickly.' },
+        { term: 'quarter', meaning_ja: '四半期', example: 'Profits rose in the third quarter.' },
+      ],
+    } })
 
     renderDetailPage()
 
@@ -321,11 +282,7 @@ describe('PodcastDetailPage — vocabulary glossary', () => {
   })
 
   test('Given vocabulary is null (legacy episode), hides the section and keeps existing content', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: null }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, vocabulary: null } })
 
     renderDetailPage()
 
@@ -337,11 +294,7 @@ describe('PodcastDetailPage — vocabulary glossary', () => {
   })
 
   test('Given vocabulary field is entirely missing (legacy episode), hides the section without crashing', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST } })
 
     renderDetailPage()
 
@@ -352,11 +305,7 @@ describe('PodcastDetailPage — vocabulary glossary', () => {
   })
 
   test('Given vocabulary is an empty array, hides the section', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, vocabulary: [] }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, vocabulary: [] } })
 
     renderDetailPage()
 
@@ -367,17 +316,13 @@ describe('PodcastDetailPage — vocabulary glossary', () => {
   })
 
   test('Given a vocabulary term appears in the transcript, highlights it with a <mark>', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({
-        ...SAMPLE_PODCAST,
-        segments: [{ speaker: 'A', text: 'The economy will accelerate next quarter.' }],
-        vocabulary: [
-          { term: 'accelerate', meaning_ja: '加速する', example: 'Sales accelerated fast.' },
-        ],
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: {
+      ...SAMPLE_PODCAST,
+      segments: [{ speaker: 'A', text: 'The economy will accelerate next quarter.' }],
+      vocabulary: [
+        { term: 'accelerate', meaning_ja: '加速する', example: 'Sales accelerated fast.' },
+      ],
+    } })
 
     renderDetailPage()
 
@@ -425,12 +370,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   }
 
   test('Given quiz questions, displays each question and its options', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
 
     renderDetailPage()
 
@@ -448,11 +388,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Given quiz is null (legacy episode), hides the section and keeps existing content', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: null }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: null } })
 
     renderDetailPage()
 
@@ -463,11 +399,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Given quiz field is entirely missing (legacy episode), hides the section without crashing', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST } })
 
     renderDetailPage()
 
@@ -478,11 +410,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Given quiz is an empty array, hides the section', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: [] }),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: [] } })
 
     renderDetailPage()
 
@@ -493,12 +421,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Submit button is disabled until every question has a selected answer', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers: vi.fn(),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
 
     renderDetailPage()
     await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
@@ -516,13 +439,8 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Submitting sends the selected answer indices in question order', async () => {
-    const submitQuizAnswers = vi.fn().mockResolvedValue(SAMPLE_GRADE_RESULT)
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', QUIZ_PATH, { ok: true, value: SAMPLE_GRADE_RESULT })
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
 
     renderDetailPage()
     await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
@@ -535,18 +453,13 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
 
     expect(prepareSfx).toHaveBeenCalled()
     await waitFor(() => {
-      expect(submitQuizAnswers).toHaveBeenCalledWith('p1', [1, 0])
+      expect(gw.calls).toContainEqual({ method: 'POST', path: QUIZ_PATH, body: { answers: [1, 0] } })
     })
   })
 
   test('Shows the score and per-question correct/incorrect feedback from the graded response', async () => {
-    const submitQuizAnswers = vi.fn().mockResolvedValue(SAMPLE_GRADE_RESULT)
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', QUIZ_PATH, { ok: true, value: SAMPLE_GRADE_RESULT })
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
 
     renderDetailPage()
     await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
@@ -578,12 +491,8 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
         { question_index: 1, selected_index: 1, correct_index: 1, is_correct: true },
       ],
     }
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers: vi.fn().mockResolvedValue(perfectResult),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
+    gw.respond('POST', QUIZ_PATH, { ok: true, value: perfectResult })
 
     const { container } = renderDetailPage()
     await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
@@ -602,13 +511,8 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
   })
 
   test('Given the submission fails, shows an error message and keeps the quiz retryable', async () => {
-    const submitQuizAnswers = vi.fn().mockRejectedValue(new Error('network error'))
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue({ ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ }),
-      submitQuizAnswers,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('POST', QUIZ_PATH, { ok: false, failure: { kind: 'network' } })
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: { ...SAMPLE_PODCAST, quiz: SAMPLE_QUIZ } })
 
     renderDetailPage()
     await waitFor(() => screen.getByRole('heading', { name: /理解度チェック/ }))
@@ -632,11 +536,7 @@ describe('PodcastDetailPage — comprehension quiz (ADR-070)', () => {
 // ==========================================================
 describe('PodcastDetailPage — 404', () => {
   test('Given 404, shows "エピソードが見つかりません" and link to list', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockRejectedValue(new ApiError(404, 'Podcast not found')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', '/api/backend/podcasts/missing', { ok: false, failure: { kind: 'not_found' } })
 
     renderDetailPage({ id: 'missing' })
 
@@ -653,16 +553,12 @@ describe('PodcastDetailPage — 404', () => {
 // Podcast 詳細 — オフライン保存（issue #167）
 // ==========================================================
 describe('PodcastDetailPage — offline download (issue #167)', () => {
-  async function loadSample() {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(SAMPLE_PODCAST),
-    } as unknown as ReturnType<typeof createApiClient>)
+  function loadSample() {
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: SAMPLE_PODCAST })
   }
 
   test('shows an オフライン保存 button once the episode is loaded (not yet saved)', async () => {
-    await loadSample()
+    loadSample()
 
     renderDetailPage()
 
@@ -674,7 +570,7 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
   })
 
   test('保存に成功すると offline.save(id) を呼び、「保存済み」に切り替える (verifies: CI-P4-31)', async () => {
-    await loadSample()
+    loadSample()
     renderDetailPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
@@ -690,7 +586,7 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
 
   test('offline.has が true なら最初から「保存済み」で、再保存しない (verifies: CI-P4-31)', async () => {
     has.mockResolvedValue(true)
-    await loadSample()
+    loadSample()
 
     renderDetailPage()
 
@@ -705,7 +601,7 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
     ['reject する', () => save.mockRejectedValue(new Error('network error'))],
   ])('保存が %s と、エラー toast を出し、再試行できるまま (verifies: CI-P4-31)', async (_name, arrange) => {
     arrange()
-    await loadSample()
+    loadSample()
     renderDetailPage()
     await waitFor(() => screen.getByRole('button', { name: 'オフライン保存' }))
 
@@ -721,7 +617,7 @@ describe('PodcastDetailPage — offline download (issue #167)', () => {
 
   test('offline.has が reject しても、保存ボタンは表示され続ける (verifies: CI-P4-31)', async () => {
     has.mockRejectedValue(new Error('cache open failed'))
-    await loadSample()
+    loadSample()
 
     renderDetailPage()
 
@@ -756,16 +652,11 @@ describe('PodcastDetailPage — attribution', () => {
   }
 
   function mockPodcast(podcast: unknown) {
-    return import('@/lib/api').then(({ createApiClient }) => {
-      vi.mocked(createApiClient).mockReturnValue({
-        getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-        getPodcast: vi.fn().mockResolvedValue(podcast),
-      } as unknown as ReturnType<typeof createApiClient>)
-    })
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: podcast })
   }
 
   test('Shows source name and original article link for each source', async () => {
-    await mockPodcast(withSources)
+    mockPodcast(withSources)
 
     renderDetailPage()
 
@@ -779,7 +670,7 @@ describe('PodcastDetailPage — attribution', () => {
   })
 
   test('Shows CC BY-SA 4.0 license notice when source_kind is featured', async () => {
-    await mockPodcast({ ...withSources, source_kind: 'featured' })
+    mockPodcast({ ...withSources, source_kind: 'featured' })
 
     renderDetailPage()
 
@@ -801,7 +692,7 @@ describe('PodcastDetailPage — attribution', () => {
     async (_label, sourceKind) => {
       const podcast =
         sourceKind === undefined ? withSources : { ...withSources, source_kind: sourceKind }
-      await mockPodcast(podcast)
+      mockPodcast(podcast)
 
       renderDetailPage()
 
@@ -813,7 +704,7 @@ describe('PodcastDetailPage — attribution', () => {
   )
 
   test('Does not render raw article IDs', async () => {
-    await mockPodcast(withSources)
+    mockPodcast(withSources)
 
     renderDetailPage()
 
@@ -822,7 +713,7 @@ describe('PodcastDetailPage — attribution', () => {
   })
 
   test('Omits the attribution block when the podcast has no sources', async () => {
-    await mockPodcast({ ...SAMPLE_PODCAST, source_articles: null })
+    mockPodcast({ ...SAMPLE_PODCAST, source_articles: null })
 
     renderDetailPage()
 
@@ -839,11 +730,7 @@ describe('PodcastDetailPage — attribution', () => {
 // ==========================================================
 describe('PodcastDetailPage — Episode kinds (web-contract-14)', () => {
   async function loadPodcast(podcast: unknown) {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getVocabulary: vi.fn().mockResolvedValue({ vocabulary: [], count: 0 }),
-      getPodcast: vi.fn().mockResolvedValue(podcast),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PODCAST_PATH, { ok: true, value: podcast })
     renderDetailPage()
     await waitFor(() => screen.getByText(/これは日本語のイントロ全文です/))
   }

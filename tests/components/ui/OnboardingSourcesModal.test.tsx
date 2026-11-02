@@ -4,24 +4,21 @@ import userEvent from '@testing-library/user-event'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
 import type { FeaturedSource } from '@/types/index'
 
-const mockGetFeaturedSources = vi.fn().mockResolvedValue({ sites: [] })
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getFeaturedSources: mockGetFeaturedSources,
-    addSource: vi.fn(),
-    completeOnboarding: vi.fn(),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const FEATURED_PATH = '/api/backend/settings/featured-sources'
+
+let gw: GatewayDouble
 
 beforeEach(() => {
-  mockGetFeaturedSources.mockClear()
-  mockGetFeaturedSources.mockResolvedValue({ sites: [] })
+  gw = createGatewayDouble()
+  holder.gw = gw
+  gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [] } })
 })
 
 const defaultProps = {
@@ -83,12 +80,15 @@ describe('OnboardingSourcesModal', () => {
   })
 
   test('displays category section headers in fixed order (テクノロジー→ビジネス→スポーツ→芸能→カルチャー)', async () => {
-    mockGetFeaturedSources.mockResolvedValueOnce({
-      sites: [
-        { id: '1', name: 'Tech Site', url: 'https://tech.example.com', order: 0, category: 'tech' } as FeaturedSource,
-        { id: '2', name: 'Business Site', url: 'https://business.example.com', order: 1, category: 'business' } as FeaturedSource,
-        { id: '3', name: 'Sports Site', url: 'https://sports.example.com', order: 2, category: 'sports' } as FeaturedSource,
-      ],
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
+        sites: [
+          { id: '1', name: 'Tech Site', url: 'https://tech.example.com', order: 0, category: 'tech' } as FeaturedSource,
+          { id: '2', name: 'Business Site', url: 'https://business.example.com', order: 1, category: 'business' } as FeaturedSource,
+          { id: '3', name: 'Sports Site', url: 'https://sports.example.com', order: 2, category: 'sports' } as FeaturedSource,
+        ],
+      },
     })
 
     render(<OnboardingSourcesModal {...defaultProps} />)
@@ -101,10 +101,13 @@ describe('OnboardingSourcesModal', () => {
   })
 
   test('hides category headers when category has 0 items', async () => {
-    mockGetFeaturedSources.mockResolvedValueOnce({
-      sites: [
-        { id: '1', name: 'Tech Site', url: 'https://tech.example.com', order: 0, category: 'tech' } as FeaturedSource,
-      ],
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
+        sites: [
+          { id: '1', name: 'Tech Site', url: 'https://tech.example.com', order: 0, category: 'tech' } as FeaturedSource,
+        ],
+      },
     })
 
     render(<OnboardingSourcesModal {...defaultProps} />)
@@ -116,11 +119,14 @@ describe('OnboardingSourcesModal', () => {
   })
 
   test('normalizes missing category field to tech', async () => {
-    mockGetFeaturedSources.mockResolvedValueOnce({
-      sites: [
-        { id: '1', name: 'Legacy Site', url: 'https://legacy.example.com', order: 0 } as FeaturedSource,
-        { id: '2', name: 'Explicit Tech', url: 'https://tech.example.com', order: 1, category: 'tech' } as FeaturedSource,
-      ],
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
+        sites: [
+          { id: '1', name: 'Legacy Site', url: 'https://legacy.example.com', order: 0 } as FeaturedSource,
+          { id: '2', name: 'Explicit Tech', url: 'https://tech.example.com', order: 1, category: 'tech' } as FeaturedSource,
+        ],
+      },
     })
 
     render(<OnboardingSourcesModal {...defaultProps} />)
