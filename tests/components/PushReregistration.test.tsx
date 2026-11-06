@@ -6,29 +6,20 @@ import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushSubscriptionJSON } from '@/types/index'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
 type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 
-const {
-  authState,
-  mockUseAuth,
-  fakePortHolder,
-  mockGetVapidPublicKey,
-  mockSubscribePush,
-  mockUnsubscribePush,
-} = vi.hoisted(() => {
+const { authState, mockUseAuth, fakePortHolder } = vi.hoisted(() => {
   const authState: { status: AuthStatus } = { status: 'unknown' }
   const mockUseAuth = vi.fn(() => ({ status: authState.status }))
   const fakePortHolder: { port: PushBrowserPort | null } = { port: null }
-  return {
-    authState,
-    mockUseAuth,
-    fakePortHolder,
-    mockGetVapidPublicKey: vi.fn(),
-    mockSubscribePush: vi.fn(),
-    mockUnsubscribePush: vi.fn(),
-  }
+  return { authState, mockUseAuth, fakePortHolder }
 })
+
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
 vi.mock('@/contexts/AuthProvider', () => ({ useAuth: mockUseAuth }))
 
@@ -40,17 +31,35 @@ vi.mock('@/lib/pushBrowserPort', async (importOriginal) => {
   }
 })
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getVapidPublicKey: mockGetVapidPublicKey,
-    subscribePush: mockSubscribePush,
-    unsubscribePush: mockUnsubscribePush,
-  })),
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 const EXISTING: PushSubscriptionJSON = {
   endpoint: 'https://fcm.example.com/existing',
   keys: { p256dh: 'p256dh-val', auth: 'auth-val' },
+}
+
+const VAPID_PATH = '/api/backend/notifications/vapid-public-key'
+const SUBSCRIPTIONS_PATH = '/api/backend/notifications/subscriptions'
+const UNSUBSCRIBE_PREFIX = `${SUBSCRIPTIONS_PATH}?endpoint=`
+const UNSUBSCRIBE_PATH = `${UNSUBSCRIBE_PREFIX}${encodeURIComponent(EXISTING.endpoint)}`
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
+
+function vapidCalls() {
+  return callsTo('GET', VAPID_PATH)
+}
+
+function subscribeCalls() {
+  return callsTo('POST', SUBSCRIPTIONS_PATH)
+}
+
+// endpoint は path に入るので、引数を問わず DELETE ＋ 前方一致で数える
+function unsubscribeCalls() {
+  return gw.calls.filter((c) => c.method === 'DELETE' && c.path.startsWith(UNSUBSCRIBE_PREFIX))
 }
 
 function setComponentPort(port: PushBrowserPort) {
@@ -74,10 +83,14 @@ async function flushMacrotask() {
 }
 
 /** waitFor で回数に達するのを待ち、1 macrotask 流した後も同じ回数であることを確かめる（改訂 10）。 */
-async function expectStableCallCount(mockFn: { mock: { calls: unknown[] } }, times: number) {
-  await waitFor(() => expect(mockFn.mock.calls.length).toBe(times))
+async function expectStableCallCount(
+  target: { mock: { calls: unknown[] } } | (() => number),
+  times: number,
+) {
+  const getCount = 'mock' in target ? () => target.mock.calls.length : target
+  await waitFor(() => expect(getCount()).toBe(times))
   await flushMacrotask()
-  expect(mockFn.mock.calls.length).toBe(times)
+  expect(getCount()).toBe(times)
 }
 
 type UnhandledRejectionListener = (reason: unknown, promise: Promise<unknown>) => void
@@ -90,12 +103,14 @@ function watchUnhandledRejection() {
 }
 
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
   vi.clearAllMocks()
   authState.status = 'unknown'
   fakePortHolder.port = null
-  mockGetVapidPublicKey.mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
-  mockSubscribePush.mockResolvedValue({})
-  mockUnsubscribePush.mockResolvedValue({})
+  gw.respond('GET', VAPID_PATH, { ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+  gw.respond('POST', SUBSCRIPTIONS_PATH, { ok: true, value: {} })
+  gw.respond('DELETE', UNSUBSCRIBE_PATH, { ok: true, value: {} })
 })
 
 afterEach(() => {
@@ -127,15 +142,15 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
 
     const { container, rerender } = render(<PushReregistration />)
     await expectStableCallCount(getExistingSubscription, 1)
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(container.firstChild).toBeNull()
 
     authState.status = 'authenticated'
     rerender(<PushReregistration />)
 
-    await expectStableCallCount(mockSubscribePush, 1)
-    expect(mockSubscribePush).toHaveBeenCalledWith(EXISTING)
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled()
+    await expectStableCallCount(() => subscribeCalls().length, 1)
+    expect(gw.calls).toContainEqual({ method: 'POST', path: SUBSCRIPTIONS_PATH, body: EXISTING })
+    expect(vapidCalls()).toHaveLength(0)
     expect(container.firstChild).toBeNull()
     await expectStableCallCount(getExistingSubscription, 2)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
@@ -149,9 +164,9 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
 
     const { container } = render(<PushReregistration />)
 
-    await expectStableCallCount(mockSubscribePush, 1)
-    expect(mockSubscribePush).toHaveBeenCalledWith(EXISTING)
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled()
+    await expectStableCallCount(() => subscribeCalls().length, 1)
+    expect(gw.calls).toContainEqual({ method: 'POST', path: SUBSCRIPTIONS_PATH, body: EXISTING })
+    expect(vapidCalls()).toHaveLength(0)
     expect(container.firstChild).toBeNull()
     await expectStableCallCount(getExistingSubscription, 2)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
@@ -166,7 +181,7 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
     render(<PushReregistration />)
 
     await expectStableCallCount(getExistingSubscription, 2)
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -179,7 +194,7 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
     const { container } = render(<PushReregistration />)
 
     await expectStableCallCount(getExistingSubscription, 1)
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(container.firstChild).toBeNull()
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
@@ -193,7 +208,7 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
     const { container } = render(<PushReregistration />)
 
     await expectStableCallCount(getExistingSubscription, 1)
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(container.firstChild).toBeNull()
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
@@ -202,14 +217,14 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
   test('R6, CI-RR3, CI-RR4: 再送の subscribePush が reject しても throw せず unhandled rejection も出ない', async () => {
     const spy = watchUnhandledRejection()
     const getExistingSubscription = vi.fn(async () => EXISTING)
-    mockSubscribePush.mockRejectedValue(new Error('server down'))
+    gw.respondWith('POST', SUBSCRIPTIONS_PATH, () => Promise.reject(new Error('server down')))
     setComponentPort(createFakePushBrowserPort({ getExistingSubscription }))
     authState.status = 'authenticated'
 
     expect(() => render(<PushReregistration />)).not.toThrow()
 
-    await expectStableCallCount(mockSubscribePush, 1)
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled()
+    await expectStableCallCount(() => subscribeCalls().length, 1)
+    expect(vapidCalls()).toHaveLength(0)
     expect(spy).not.toHaveBeenCalled()
     await expectStableCallCount(getExistingSubscription, 2)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
@@ -222,16 +237,16 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
     authState.status = 'authenticated'
 
     const { rerender } = render(<PushReregistration />)
-    await expectStableCallCount(mockSubscribePush, 1)
+    await expectStableCallCount(() => subscribeCalls().length, 1)
 
     authState.status = 'unauthenticated'
     rerender(<PushReregistration />)
     await flushMacrotask()
-    expect(mockSubscribePush.mock.calls.length).toBe(1)
+    expect(subscribeCalls()).toHaveLength(1)
 
     authState.status = 'authenticated'
     rerender(<PushReregistration />)
-    await expectStableCallCount(mockSubscribePush, 2)
+    await expectStableCallCount(() => subscribeCalls().length, 2)
 
     await expectStableCallCount(getExistingSubscription, 3)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
@@ -244,13 +259,13 @@ describe('PushReregistration — 部品（useAuth().status を渡すだけ）', 
     authState.status = 'authenticated'
 
     const { rerender } = render(<PushReregistration />)
-    await expectStableCallCount(mockSubscribePush, 1)
+    await expectStableCallCount(() => subscribeCalls().length, 1)
     await expectStableCallCount(getExistingSubscription, 2)
 
     rerender(<PushReregistration />)
     await flushMacrotask()
 
-    expect(mockSubscribePush.mock.calls.length).toBe(1)
+    expect(subscribeCalls()).toHaveLength(1)
     expect(getExistingSubscription.mock.calls.length).toBe(2)
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
   })
@@ -265,7 +280,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     renderHook(() => useWebPushSubscription({ port }))
 
     await expectStableCallCount(getExistingSubscription, 1)
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
   })
 
   // T60（改訂 3）
@@ -276,7 +291,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const { result } = renderHook(() => useWebPushSubscription({ port, authStatus: 'authenticated' }))
 
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
-    await expectStableCallCount(mockSubscribePush, 1)
+    await expectStableCallCount(() => subscribeCalls().length, 1)
     await expectStableCallCount(getExistingSubscription, 2)
   })
 
@@ -285,8 +300,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => EXISTING)
     const portUnsubscribe = vi.fn(async () => true)
     const port = createFakePushBrowserPort({ getExistingSubscription, unsubscribe: portUnsubscribe })
-    const deferred = createDeferred<Record<string, unknown>>()
-    mockSubscribePush.mockReturnValue(deferred.promise)
+    const deferred = createDeferred<Result<unknown, ApiFailure>>()
+    gw.respondWith('POST', SUBSCRIPTIONS_PATH, () => deferred.promise)
 
     const { result, rerender } = renderHook(
       ({ s }: { s: AuthStatus }) => useWebPushSubscription({ port, authStatus: s }),
@@ -300,10 +315,10 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('unsubscribed')
 
     rerender({ s: 'authenticated' })
-    await waitFor(() => expect(mockSubscribePush).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(subscribeCalls()).toHaveLength(1))
 
     await act(async () => {
-      deferred.resolve({})
+      deferred.resolve({ ok: true, value: {} })
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
 
@@ -316,14 +331,14 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
   test('CI-H5, CI-RR4: 再送の失敗で state を error にしない', async () => {
     const getExistingSubscription = vi.fn(async () => EXISTING)
     const port = createFakePushBrowserPort({ getExistingSubscription })
-    const deferred = createDeferred<Record<string, unknown>>()
-    mockSubscribePush.mockReturnValue(deferred.promise)
+    const deferred = createDeferred<Result<unknown, ApiFailure>>()
+    gw.respondWith('POST', SUBSCRIPTIONS_PATH, () => deferred.promise)
 
     const { result } = renderHook(() => useWebPushSubscription({ port, authStatus: 'authenticated' }))
 
     await waitFor(() => {
       expect(result.current.state).toBe('subscribed')
-      expect(mockSubscribePush).toHaveBeenCalledTimes(1)
+      expect(subscribeCalls()).toHaveLength(1)
     })
 
     await act(async () => {
@@ -354,7 +369,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     await waitFor(() => expect(result.current.state).toBe('error'))
 
     expect(spy).not.toHaveBeenCalled()
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(getPermission.mock.calls.length).toBe(3)
     expect(getExistingSubscription).not.toHaveBeenCalled()
     expect(mockUseAuth.mock.calls.length).toBeGreaterThanOrEqual(1)
@@ -406,7 +421,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => EXISTING)
     const portUnsubscribe = vi.fn(async () => true)
     const port = createFakePushBrowserPort({ getExistingSubscription, unsubscribe: portUnsubscribe })
-    mockUnsubscribePush.mockRejectedValue(new Error('server error'))
+    gw.respondWith('DELETE', UNSUBSCRIBE_PATH, () => Promise.reject(new Error('server error')))
 
     const { result } = renderHook(() => useWebPushSubscription({ port }))
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
@@ -418,7 +433,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('error')
     await expectStableCallCount(getExistingSubscription, 2)
     expect(portUnsubscribe).toHaveBeenCalledTimes(1)
-    expect(mockUnsubscribePush).toHaveBeenCalledTimes(1)
+    expect(unsubscribeCalls()).toHaveLength(1)
   })
 
   // T70（改訂 8）
@@ -438,7 +453,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(Object.keys(result.current).sort()).toEqual(['state', 'subscribe', 'unsubscribe'])
     expect(v1).toBeUndefined()
     expect(v2).toBeUndefined()
-    await expectStableCallCount(mockGetVapidPublicKey, 1)
+    await expectStableCallCount(() => vapidCalls().length, 1)
   })
 
   // T71（改訂 11）
@@ -472,9 +487,9 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('unsubscribed')
     expect(requestPermission).toHaveBeenCalledTimes(1)
     expect(registerServiceWorker).not.toHaveBeenCalled()
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled()
+    expect(vapidCalls()).toHaveLength(0)
     expect(portSubscribe).not.toHaveBeenCalled()
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
   })
 
@@ -509,9 +524,9 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('denied')
     expect(requestPermission).toHaveBeenCalledTimes(1)
     expect(registerServiceWorker).not.toHaveBeenCalled()
-    expect(mockGetVapidPublicKey).not.toHaveBeenCalled()
+    expect(vapidCalls()).toHaveLength(0)
     expect(portSubscribe).not.toHaveBeenCalled()
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
   })
 
@@ -528,7 +543,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
       subscribe: portSubscribe,
       getExistingSubscription,
     })
-    mockGetVapidPublicKey.mockRejectedValue(new Error('x'))
+    gw.respondWith('GET', VAPID_PATH, () => Promise.reject(new Error('x')))
 
     const { result } = renderHook(() => useWebPushSubscription({ port }))
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
@@ -547,9 +562,9 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('error')
     expect(requestPermission).toHaveBeenCalledTimes(1)
     expect(registerServiceWorker).toHaveBeenCalledWith('/sw.js')
-    expect(mockGetVapidPublicKey).toHaveBeenCalledTimes(1)
+    expect(vapidCalls()).toHaveLength(1)
     expect(portSubscribe).not.toHaveBeenCalled()
-    expect(mockSubscribePush).not.toHaveBeenCalled()
+    expect(subscribeCalls()).toHaveLength(0)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
   })
 
@@ -569,7 +584,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     expect(result.current.state).toBe('unsubscribed')
     expect(getExistingSubscription).toHaveBeenCalledTimes(2)
     expect(portUnsubscribe).toHaveBeenCalledWith(EXISTING.endpoint)
-    expect(mockUnsubscribePush).toHaveBeenCalledWith(EXISTING.endpoint)
+    expect(gw.calls).toContainEqual({ method: 'DELETE', path: UNSUBSCRIBE_PATH, body: undefined })
   })
 
   // T75（改訂 11）

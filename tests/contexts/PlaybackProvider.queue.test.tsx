@@ -15,12 +15,13 @@ import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 import type { Podcast } from '@/types'
 
-// AuthProvider は initialSession で認証済みの A を渡す。logout・login だけ API を double にする（実通信を起こさない）。
-const { authLogout, authLogin } = vi.hoisted(() => ({ authLogout: vi.fn(), authLogin: vi.fn() }))
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/api')>()
-  return { ...actual, createApiClient: () => ({ logout: authLogout, login: authLogin }) }
-})
+// AuthProvider は initialSession で認証済みの A を渡す。AuthProvider が組む API クライアントの gateway だけ double にする（実通信を起こさない）。
+// 再生側の gateway（ApiClientProvider に渡す）とは別の double。
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const LOGOUT_PATH = '/api/backend/auth/logout'
+const LOGIN_PATH = '/api/backend/auth/login'
 
 // 実の PlaybackProvider と実の browser adapter を、Audio の stub と gateway の double で動かす結合テスト。
 // 旧 AudioPlayerContext.queue / completion / gateway の観点（キュー・自動の次へ・完聴の送信・取得失敗）を新しい入口に対して固定する。
@@ -73,6 +74,7 @@ function Capture() {
 }
 
 let gateway: GatewayDouble
+let authGw: GatewayDouble
 let audio: TestAudio
 let AudioCtor: ReturnType<typeof vi.fn>
 
@@ -130,8 +132,9 @@ beforeEach(() => {
     return audio
   })
   vi.stubGlobal('Audio', AudioCtor)
-  authLogout.mockReset().mockResolvedValue({ status: 'ok' })
-  authLogin.mockReset()
+  authGw = createGatewayDouble()
+  holder.gw = authGw
+  authGw.respond('POST', LOGOUT_PATH, { ok: true, value: { status: 'ok' } })
   gateway = createGatewayDouble()
   for (const id of ['a', 'b', 'c', 'd']) {
     gateway.respond('GET', `/api/backend/podcasts/${id}`, { ok: true, value: pod(id) })
@@ -249,9 +252,12 @@ describe('主体離脱の再生停止 (verifies: web-dec-73, shared-leave-07, we
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1-u-a')
     vi.spyOn(cacheStorage, 'delete').mockReturnValue(new Promise<boolean>(() => {}))
-    authLogin.mockResolvedValue({
-      token: 't',
-      user: { user_id: 'u-b', username: 'bob', role: 'user', display_name: 'Bob' },
+    authGw.respond('POST', LOGIN_PATH, {
+      ok: true,
+      value: {
+        token: 't',
+        user: { user_id: 'u-b', username: 'bob', role: 'user', display_name: 'Bob' },
+      },
     })
     render(tree())
     await startAndPlay('a')

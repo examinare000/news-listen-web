@@ -6,6 +6,8 @@ import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { setupMockCaches } from '../helpers/mockCaches'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -26,17 +28,19 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 // 消す。音声は主体別 audio-v1-{user_id}（ADR-104 決定 27 / web-dec-83）: 実行中の 401 では消さず（次回起動の回収が消す）、
 // mount 後の最初の確定事象が 401 のとき（起動時の 401）は回収が audio-v1* を全削除する。
 // C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
-// モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api のみ
-// createApiClient を差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
-const getMe = vi.fn()
+// モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api/gateway の
+// createGateway だけを gateway double に差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/api')>()
-  return {
-    ...actual,
-    createApiClient: () => ({ getMe }),
-  }
-})
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const ME_PATH = '/api/backend/auth/me'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 // web-contract-18 の失効 cleanup の発火条件は 2026-09-17 の user 裁定で候補 (b) に確定した
 // （`err instanceof ApiError && err.status === 401` のときのみ発火。直前 status は問わない）。
@@ -85,6 +89,8 @@ function renderAuth(initial: 'authenticated' | 'resolving' = 'authenticated') {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
   localStorage.clear()
 })
 
@@ -99,13 +105,12 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('audio-v1-u-alice')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
-    const { ApiError } = await import('@/lib/api')
-    getMe.mockResolvedValueOnce({ user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' })
+    gw.respond('GET', ME_PATH, { ok: true, value: { user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' } })
     renderAuth('resolving')
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
     // 起動時の回収（旧名 audio-v1 を消す）が終わってから 401 にする。途中に 401 が入ると回収の keep が null になる。
     await waitFor(() => expect(cacheStorage.has('audio-v1')).resolves.toBe(false))
-    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
 
     await userEvent.click(screen.getByText('refresh'))
 
@@ -120,8 +125,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('shell-pages-v1')
     vi.spyOn(cacheStorage, 'delete').mockRejectedValue(new Error('quota'))
-    const { ApiError } = await import('@/lib/api')
-    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
     renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
@@ -136,7 +140,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
     await cacheStorage.open('audio-v1-u-alice')
-    getMe.mockResolvedValue({ user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' })
+    gw.respond('GET', ME_PATH, { ok: true, value: { user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' } })
     renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
@@ -155,8 +159,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
-    const { ApiError } = await import('@/lib/api')
-    getMe.mockRejectedValue(new ApiError(0, 'Network error'))
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'network' } })
     renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
@@ -174,8 +177,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
-    const { ApiError } = await import('@/lib/api')
-    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
     renderAuth('resolving')
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
@@ -189,8 +191,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
     await cacheStorage.open('api-v1')
-    const { ApiError } = await import('@/lib/api')
-    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
     renderAuth()
 
     await userEvent.click(screen.getByText('refresh'))
@@ -207,23 +208,23 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
 
 describe('AuthProvider initialSession (verifies: web-contract-18)', () => {
   test('initialSession を渡したときは、refresh を押すまで getMe を呼ばない（自動解決しない）', async () => {
-    getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
+    gw.respond('GET', ME_PATH, { ok: true, value: { username: 'alice', role: 'user', display_name: 'Alice' } })
     renderAuth('authenticated')
 
     // 自動解決が走るなら effect が非同期に getMe を呼ぶ。描画後に十分待っても 0 回であること
     await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('authenticated'))
     await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(getMe).toHaveBeenCalledTimes(0)
+    expect(callsTo('GET', ME_PATH)).toHaveLength(0)
 
     await userEvent.click(screen.getByText('refresh'))
-    await waitFor(() => expect(getMe).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(callsTo('GET', ME_PATH)).toHaveLength(1))
   })
 
   test('initialSession を渡さないと、mount 時に getMe を 1 回呼んで解決する', async () => {
-    getMe.mockResolvedValue({ username: 'alice', role: 'user', display_name: 'Alice' })
+    gw.respond('GET', ME_PATH, { ok: true, value: { username: 'alice', role: 'user', display_name: 'Alice' } })
     renderAuth('resolving')
 
     await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('authenticated'))
-    expect(getMe).toHaveBeenCalledTimes(1)
+    expect(callsTo('GET', ME_PATH)).toHaveLength(1)
   })
 })

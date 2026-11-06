@@ -2,17 +2,26 @@ import React from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { StreakProvider, useStreak } from '@/contexts/StreakContext'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
-const { getListeningStreak, playSfx } = vi.hoisted(() => ({
-  getListeningStreak: vi.fn(),
+const { playSfx } = vi.hoisted(() => ({
   playSfx: vi.fn(),
 }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({ getListeningStreak }),
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 vi.mock('@/lib/sfx', () => ({ playSfx }))
+
+const STREAK_PATH = '/api/backend/users/me/listening-streak'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return <StreakProvider>{children}</StreakProvider>
@@ -20,36 +29,51 @@ function wrapper({ children }: { children: React.ReactNode }) {
 
 describe('StreakProvider shared listening streak', () => {
   beforeEach(() => {
+    gw = createGatewayDouble()
+    holder.gw = gw
     vi.clearAllMocks()
     vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
   })
 
   test('loads the streak once and exposes it to all shell consumers', async () => {
-    getListeningStreak.mockResolvedValue({
-      current_streak_days: 4,
-      today_listened: true,
-      last_listened_day: '2026-07-29',
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
+        current_streak_days: 4,
+        today_listened: true,
+        last_listened_day: '2026-07-29',
+      },
     })
 
     const { result } = renderHook(() => useStreak(), { wrapper })
 
     await waitFor(() => expect(result.current.streak?.current_streak_days).toBe(4))
-    expect(getListeningStreak).toHaveBeenCalledTimes(1)
+    expect(callsTo('GET', STREAK_PATH)).toHaveLength(1)
     expect(playSfx).not.toHaveBeenCalled()
   })
 
   test('focus refreshes only after the shared value is five minutes stale', async () => {
-    getListeningStreak
-      .mockResolvedValueOnce({
-        current_streak_days: 4,
-        today_listened: true,
-        last_listened_day: '2026-07-29',
-      })
-      .mockResolvedValueOnce({
-        current_streak_days: 5,
-        today_listened: true,
-        last_listened_day: '2026-07-30',
-      })
+    gw.respondWith('GET', STREAK_PATH, () =>
+      Promise.resolve(
+        callsTo('GET', STREAK_PATH).length === 1
+          ? {
+              ok: true,
+              value: {
+                current_streak_days: 4,
+                today_listened: true,
+                last_listened_day: '2026-07-29',
+              },
+            }
+          : {
+              ok: true,
+              value: {
+                current_streak_days: 5,
+                today_listened: true,
+                last_listened_day: '2026-07-30',
+              },
+            },
+      ),
+    )
 
     const { result } = renderHook(() => useStreak(), { wrapper })
     await waitFor(() => expect(result.current.streak?.current_streak_days).toBe(4))
@@ -57,7 +81,7 @@ describe('StreakProvider shared listening streak', () => {
     act(() => {
       window.dispatchEvent(new Event('focus'))
     })
-    expect(getListeningStreak).toHaveBeenCalledTimes(1)
+    expect(callsTo('GET', STREAK_PATH)).toHaveLength(1)
 
     vi.mocked(Date.now).mockReturnValue(1_300_001)
     act(() => {
@@ -65,18 +89,23 @@ describe('StreakProvider shared listening streak', () => {
     })
 
     await waitFor(() => expect(result.current.streak?.current_streak_days).toBe(5))
-    expect(getListeningStreak).toHaveBeenCalledTimes(2)
+    expect(callsTo('GET', STREAK_PATH)).toHaveLength(2)
     expect(playSfx).toHaveBeenCalledWith('streak')
   })
 
   test('silently retains the prior streak when a stale refresh fails', async () => {
-    getListeningStreak
-      .mockResolvedValueOnce({
-        current_streak_days: 7,
-        today_listened: false,
-        last_listened_day: '2026-07-28',
-      })
-      .mockRejectedValueOnce(new Error('network'))
+    gw.respondWith('GET', STREAK_PATH, () =>
+      callsTo('GET', STREAK_PATH).length === 1
+        ? Promise.resolve({
+            ok: true,
+            value: {
+              current_streak_days: 7,
+              today_listened: false,
+              last_listened_day: '2026-07-28',
+            },
+          })
+        : Promise.reject(new Error('network')),
+    )
 
     const { result } = renderHook(() => useStreak(), { wrapper })
     await waitFor(() => expect(result.current.streak?.current_streak_days).toBe(7))
@@ -86,7 +115,7 @@ describe('StreakProvider shared listening streak', () => {
       window.dispatchEvent(new Event('focus'))
     })
 
-    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', STREAK_PATH)).toHaveLength(2))
     expect(result.current.streak?.current_streak_days).toBe(7)
   })
 })

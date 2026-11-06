@@ -5,7 +5,6 @@ import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
-import { ApiError } from '@/lib/api'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 import { podcastPositionKey } from '@/lib/config'
@@ -30,12 +29,12 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-// AuthProvider の refreshMe だけ getMe を double にする（web-dec-80 の通信断の再現）。
-const { getMe } = vi.hoisted(() => ({ getMe: vi.fn() }))
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/api')>()
-  return { ...actual, createApiClient: () => ({ getMe }) }
-})
+// AuthProvider が組む API クライアントの gateway だけを double にする（web-dec-80 の通信断の再現）。
+// 再生側の gateway（ApiClientProvider に渡す）とは別の double。
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const ME_PATH = '/api/backend/auth/me'
 
 // 実の PlaybackProvider が組む保存庫（Cache Storage・Object URL・fetch）を、test-local の差し替えで動かす結合テスト。
 // 保存済みの回は gateway を引かず、Object URL の音源で再生する。旧 AudioPlayerContext.offline の観点を新しい入口に対して固定する。
@@ -78,6 +77,7 @@ function Capture() {
 }
 
 let gateway: GatewayDouble
+let authGw: GatewayDouble
 let audio: TestAudio
 let fetchMock: ReturnType<typeof vi.fn>
 let createObjectURL: ReturnType<typeof vi.fn>
@@ -143,7 +143,8 @@ beforeEach(() => {
   createObjectURL = vi.fn(() => 'blob:test/a')
   Object.defineProperty(URL, 'createObjectURL', { configurable: true, writable: true, value: createObjectURL })
   Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, writable: true, value: vi.fn() })
-  getMe.mockReset()
+  authGw = createGatewayDouble()
+  holder.gw = authGw
   gateway = createGatewayDouble()
   gateway.respond('GET', '/api/backend/podcasts/a', { ok: true, value: pod('a', { playback_position_seconds: 0 }) })
   gateway.respond('PATCH', '/api/backend/podcasts/a/position', { ok: true, value: undefined })
@@ -240,7 +241,7 @@ describe('主体別の保存庫 (verifies: web-dec-74, web-dec-80, shared-leave-
   test('web-dec-80: A の音声を保存してから getMe が通信断（unavailable）になっても、offline.has は true のまま', async () => {
     renderProvider()
     await saveA()
-    getMe.mockRejectedValue(new ApiError(0, 'Network error'))
+    authGw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'network' } })
 
     await act(async () => {
       await authCap.refreshMe()
@@ -255,7 +256,7 @@ describe('主体別の保存庫 (verifies: web-dec-74, web-dec-80, shared-leave-
   test('web-dec-80 shared-leave-10: 401 で未認証になると、保存庫は無効（has は false・save は unsupported）になる', async () => {
     renderProvider()
     await saveA()
-    getMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+    authGw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
 
     await act(async () => {
       await authCap.refreshMe()

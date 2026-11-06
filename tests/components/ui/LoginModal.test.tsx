@@ -10,12 +10,6 @@ vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({ login, status: 'unauthenticated', user: null, logout: vi.fn(), refreshMe: vi.fn() }),
 }))
 
-// LoginModal は ApiError の status を見て文言を切り替えるため実クラスを使う。
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/api')>()
-  return actual
-})
-
 beforeEach(() => {
   vi.clearAllMocks()
 })

@@ -5,57 +5,20 @@ import React from 'react'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { useAuth } from '@/contexts/AuthProvider'
 import type { PasskeyCredential } from '@/types/index'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
 // vi.hoisted で mock 変数を宣言する（vi.mock のホイスティングより前に評価される）
-const {
-  mockUpdateProfile,
-  mockChangePassword,
-  mockGetPasskeyCredentials,
-  mockDeletePasskeyCredential,
-  mockGetSessions,
-  mockRevokeSession,
-  mockRevokeOtherSessions,
-  mockRegisterPasskey,
-  mockLogout,
-  mockRefreshMe,
-  mockDeleteAccount,
-  mockRouterReplace,
-} = vi.hoisted(() => ({
-  mockUpdateProfile: vi.fn(),
-  mockChangePassword: vi.fn(),
-  mockGetPasskeyCredentials: vi.fn(),
-  mockDeletePasskeyCredential: vi.fn(),
-  mockGetSessions: vi.fn(),
-  mockRevokeSession: vi.fn(),
-  mockRevokeOtherSessions: vi.fn(),
+const { mockRegisterPasskey, mockLogout, mockRefreshMe, mockRouterReplace } = vi.hoisted(() => ({
   mockRegisterPasskey: vi.fn(),
   mockLogout: vi.fn(),
   mockRefreshMe: vi.fn(),
-  mockDeleteAccount: vi.fn(),
   mockRouterReplace: vi.fn(),
 }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    updateProfile: mockUpdateProfile,
-    changePassword: mockChangePassword,
-    getPasskeyCredentials: mockGetPasskeyCredentials,
-    deletePasskeyCredential: mockDeletePasskeyCredential,
-    getSessions: mockGetSessions,
-    revokeSession: mockRevokeSession,
-    revokeOtherSessions: mockRevokeOtherSessions,
-    deleteAccount: mockDeleteAccount,
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(
-      public status: number,
-      public detail: string,
-    ) {
-      super(detail)
-      this.name = 'ApiError'
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 // passkey.ts の registerPasskey をモック（browser port を使うため）
 vi.mock('@/lib/passkey', () => ({
@@ -111,17 +74,38 @@ const FAKE_CRED: PasskeyCredential = {
   last_used_at: '2025-06-01T12:00:00Z',
 }
 
+const ME_PATH = '/api/backend/auth/me'
+const PASSWORD_PATH = '/api/backend/auth/password'
+const CREDENTIALS_PATH = '/api/backend/auth/passkey/credentials'
+const CREDENTIALS_PREFIX = `${CREDENTIALS_PATH}/`
+const SESSIONS_PATH = '/api/backend/auth/sessions'
+const SESSIONS_PREFIX = `${SESSIONS_PATH}/`
+const REVOKE_OTHERS_PATH = '/api/backend/auth/sessions/revoke-others'
+
+const credentialPath = (id: string) => `${CREDENTIALS_PREFIX}${encodeURIComponent(id)}`
+const sessionPath = (id: string) => `${SESSIONS_PREFIX}${encodeURIComponent(id)}`
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
+
+function callsToPrefix(method: string, prefix: string) {
+  return gw.calls.filter((c) => c.method === method && c.path.startsWith(prefix))
+}
+
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
   vi.clearAllMocks()
-  mockGetPasskeyCredentials.mockResolvedValue({ credentials: [] })
-  mockGetSessions.mockResolvedValue({ sessions: [] })
-  mockRevokeSession.mockResolvedValue({ status: 'ok' })
-  mockRevokeOtherSessions.mockResolvedValue({ revoked_count: 0 })
+  gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [] } })
+  gw.respond('GET', SESSIONS_PATH, { ok: true, value: { sessions: [] } })
+  gw.respond('DELETE', sessionPath('sid-other'), { ok: true, value: { status: 'ok' } })
+  gw.respond('POST', REVOKE_OTHERS_PATH, { ok: true, value: { revoked_count: 0 } })
   // clearAllMocks はモック実装をリセットしないため、テスト間漏れを防ぐため明示的に reset する
   // （LogoutButton.test.tsx と同じ理由）。
   mockRouterReplace.mockReset()
-  mockDeleteAccount.mockReset()
-  mockChangePassword.mockReset()
 })
 
 const SESSIONS = {
@@ -145,7 +129,7 @@ const SESSIONS = {
 
 describe('AccountSection — ログイン中のデバイス（#84）', () => {
   test('セッション一覧を表示し、現在のデバイスにバッジを付ける', async () => {
-    mockGetSessions.mockResolvedValue(SESSIONS)
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
     render(<AccountSection />)
 
     expect(await screen.findByText('Chrome on macOS')).toBeInTheDocument()
@@ -154,7 +138,7 @@ describe('AccountSection — ログイン中のデバイス（#84）', () => {
   })
 
   test('現在のデバイスには個別ログアウトボタンが無く、他デバイスにはある', async () => {
-    mockGetSessions.mockResolvedValue(SESSIONS)
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
     render(<AccountSection />)
 
     await screen.findByText('Safari on iOS')
@@ -169,7 +153,7 @@ describe('AccountSection — ログイン中のデバイス（#84）', () => {
   })
 
   test('個別ログアウトは確認後に revokeSession を呼ぶ', async () => {
-    mockGetSessions.mockResolvedValue(SESSIONS)
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
     render(<AccountSection />)
 
     await screen.findByText('Safari on iOS')
@@ -178,12 +162,14 @@ describe('AccountSection — ログイン中のデバイス（#84）', () => {
     )
     await userEvent.click(screen.getByRole('button', { name: /Safari on iOS をログアウト/ }))
 
-    await waitFor(() => expect(mockRevokeSession).toHaveBeenCalledWith('sid-other'))
+    await waitFor(() =>
+      expect(gw.calls).toContainEqual({ method: 'DELETE', path: sessionPath('sid-other'), body: undefined }),
+    )
   })
 
   test('「他のデバイスからログアウト」は確認後に revokeOtherSessions を呼び件数を表示', async () => {
-    mockGetSessions.mockResolvedValue(SESSIONS)
-    mockRevokeOtherSessions.mockResolvedValue({ revoked_count: 2 })
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
+    gw.respond('POST', REVOKE_OTHERS_PATH, { ok: true, value: { revoked_count: 2 } })
     render(<AccountSection />)
 
     await screen.findByText('Safari on iOS')
@@ -193,12 +179,12 @@ describe('AccountSection — ログイン中のデバイス（#84）', () => {
       screen.getByRole('button', { name: '他のデバイスからログアウトを実行' }),
     )
 
-    await waitFor(() => expect(mockRevokeOtherSessions).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('POST', REVOKE_OTHERS_PATH)).not.toHaveLength(0))
     expect(await screen.findByText(/他の 2 台のデバイスからログアウトしました/)).toBeInTheDocument()
   })
 
   test('他デバイスが無ければ一括ログアウトボタンは無効', async () => {
-    mockGetSessions.mockResolvedValue({ sessions: [SESSIONS.sessions[0]] }) // current のみ
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: { sessions: [SESSIONS.sessions[0]] } }) // current のみ
     render(<AccountSection />)
 
     await screen.findByText('Chrome on macOS')
@@ -225,9 +211,12 @@ describe('AccountSection — Passkey 登録', () => {
 
   test('登録成功後に成功メッセージを表示し一覧を再取得する', async () => {
     mockRegisterPasskey.mockResolvedValue(undefined)
-    mockGetPasskeyCredentials
-      .mockResolvedValueOnce({ credentials: [] })
-      .mockResolvedValueOnce({ credentials: [FAKE_CRED] })
+    gw.respondWith('GET', CREDENTIALS_PATH, () =>
+      Promise.resolve({
+        ok: true,
+        value: callsTo('GET', CREDENTIALS_PATH).length === 1 ? { credentials: [] } : { credentials: [FAKE_CRED] },
+      }),
+    )
 
     render(<AccountSection />)
 
@@ -235,7 +224,7 @@ describe('AccountSection — Passkey 登録', () => {
 
     await waitFor(() => screen.getByText(/登録しました/i))
     // 再取得後に一覧が更新される
-    expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2)
+    expect(callsTo('GET', CREDENTIALS_PATH)).toHaveLength(2)
   })
 
   test('登録中キャンセル (NotAllowedError) 時は汎用エラーメッセージを表示する', async () => {
@@ -262,7 +251,7 @@ describe('AccountSection — Passkey 登録', () => {
 
 describe('AccountSection — Passkey 一覧の読み込み失敗（issue #164）', () => {
   test('読み込み失敗時はエラーメッセージと再試行ボタンを表示し、空一覧の文言は出さない', async () => {
-    mockGetPasskeyCredentials.mockRejectedValue(new Error('network error'))
+    gw.respondWith('GET', CREDENTIALS_PATH, () => Promise.reject(new Error('network error')))
     render(<AccountSection />)
 
     await screen.findByText(/passkey 一覧の読み込みに失敗しました/i)
@@ -270,16 +259,18 @@ describe('AccountSection — Passkey 一覧の読み込み失敗（issue #164）
   })
 
   test('再試行ボタンをクリックすると getPasskeyCredentials を再度呼び、成功すれば一覧を表示する', async () => {
-    mockGetPasskeyCredentials
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({ credentials: [FAKE_CRED] })
+    gw.respondWith('GET', CREDENTIALS_PATH, () =>
+      callsTo('GET', CREDENTIALS_PATH).length === 1
+        ? Promise.reject(new Error('network error'))
+        : Promise.resolve({ ok: true, value: { credentials: [FAKE_CRED] } }),
+    )
     render(<AccountSection />)
 
     await userEvent.click(
       await screen.findByRole('button', { name: /passkey 一覧を再試行/i }),
     )
 
-    await waitFor(() => expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', CREDENTIALS_PATH)).toHaveLength(2))
     await screen.findByText('My Passkey')
     expect(screen.queryByText(/passkey 一覧の読み込みに失敗しました/i)).not.toBeInTheDocument()
   })
@@ -287,7 +278,7 @@ describe('AccountSection — Passkey 一覧の読み込み失敗（issue #164）
 
 describe('AccountSection — ログイン中デバイス一覧の読み込み失敗（issue #164）', () => {
   test('読み込み失敗時はエラーメッセージと再試行ボタンを表示し、空一覧の文言は出さない', async () => {
-    mockGetSessions.mockRejectedValue(new Error('network error'))
+    gw.respondWith('GET', SESSIONS_PATH, () => Promise.reject(new Error('network error')))
     render(<AccountSection />)
 
     await screen.findByText(/ログイン中のデバイスの読み込みに失敗しました/i)
@@ -295,16 +286,18 @@ describe('AccountSection — ログイン中デバイス一覧の読み込み失
   })
 
   test('再試行ボタンをクリックすると getSessions を再度呼び、成功すれば一覧を表示する', async () => {
-    mockGetSessions
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce(SESSIONS)
+    gw.respondWith('GET', SESSIONS_PATH, () =>
+      callsTo('GET', SESSIONS_PATH).length === 1
+        ? Promise.reject(new Error('network error'))
+        : Promise.resolve({ ok: true, value: SESSIONS }),
+    )
     render(<AccountSection />)
 
     await userEvent.click(
       await screen.findByRole('button', { name: /ログイン中のデバイスを再試行/i }),
     )
 
-    await waitFor(() => expect(mockGetSessions).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', SESSIONS_PATH)).toHaveLength(2))
     await screen.findByText('Chrome on macOS')
     expect(screen.queryByText(/ログイン中のデバイスの読み込みに失敗しました/i)).not.toBeInTheDocument()
   })
@@ -312,7 +305,7 @@ describe('AccountSection — ログイン中デバイス一覧の読み込み失
 
 describe('AccountSection — 登録済み Passkey 一覧', () => {
   test('クレデンシャルが表示される', async () => {
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [FAKE_CRED] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [FAKE_CRED] } })
 
     render(<AccountSection />)
 
@@ -322,7 +315,7 @@ describe('AccountSection — 登録済み Passkey 一覧', () => {
 
   test('name が null の場合は credential_id を truncate して表示する', async () => {
     const credWithoutName: PasskeyCredential = { ...FAKE_CRED, name: null }
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [credWithoutName] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [credWithoutName] } })
 
     render(<AccountSection />)
 
@@ -331,7 +324,7 @@ describe('AccountSection — 登録済み Passkey 一覧', () => {
   })
 
   test('クレデンシャルが 0 件のときは「登録済みなし」を表示する', async () => {
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [] } })
 
     render(<AccountSection />)
 
@@ -341,7 +334,7 @@ describe('AccountSection — 登録済み Passkey 一覧', () => {
 
 describe('AccountSection — Passkey 削除', () => {
   test('削除ボタンをクリックすると確認 UI が表示される', async () => {
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [FAKE_CRED] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [FAKE_CRED] } })
 
     render(<AccountSection />)
 
@@ -351,12 +344,12 @@ describe('AccountSection — Passkey 削除', () => {
     // 確認 UI が表示される
     await waitFor(() => screen.getByText(/削除しますか/i))
     // API はまだ呼ばれていない
-    expect(mockDeletePasskeyCredential).not.toHaveBeenCalled()
+    expect(callsToPrefix('DELETE', CREDENTIALS_PREFIX)).toHaveLength(0)
   })
 
   test('確認 UI で「削除する」をクリックすると API が呼ばれる', async () => {
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [FAKE_CRED] })
-    mockDeletePasskeyCredential.mockResolvedValue({ status: 'ok' })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [FAKE_CRED] } })
+    gw.respond('DELETE', credentialPath(FAKE_CRED.credential_id), { ok: true, value: { status: 'ok' } })
 
     render(<AccountSection />)
 
@@ -367,12 +360,16 @@ describe('AccountSection — Passkey 削除', () => {
     await userEvent.click(await screen.findByRole('button', { name: /My Passkey を削除/i }))
 
     await waitFor(() =>
-      expect(mockDeletePasskeyCredential).toHaveBeenCalledWith(FAKE_CRED.credential_id),
+      expect(gw.calls).toContainEqual({
+        method: 'DELETE',
+        path: credentialPath(FAKE_CRED.credential_id),
+        body: undefined,
+      }),
     )
   })
 
   test('確認 UI で「キャンセル」をクリックすると削除されない', async () => {
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [FAKE_CRED] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [FAKE_CRED] } })
 
     render(<AccountSection />)
 
@@ -388,14 +385,17 @@ describe('AccountSection — Passkey 削除', () => {
     // 確認 UI が閉じられる
     await waitFor(() => expect(screen.queryByText(/削除しますか/i)).not.toBeInTheDocument())
     // API は呼ばれていない
-    expect(mockDeletePasskeyCredential).not.toHaveBeenCalled()
+    expect(callsToPrefix('DELETE', CREDENTIALS_PREFIX)).toHaveLength(0)
   })
 
   test('削除後に一覧が再取得される', async () => {
-    mockGetPasskeyCredentials
-      .mockResolvedValueOnce({ credentials: [FAKE_CRED] })
-      .mockResolvedValueOnce({ credentials: [] })
-    mockDeletePasskeyCredential.mockResolvedValue({ status: 'ok' })
+    gw.respondWith('GET', CREDENTIALS_PATH, () =>
+      Promise.resolve({
+        ok: true,
+        value: callsTo('GET', CREDENTIALS_PATH).length === 1 ? { credentials: [FAKE_CRED] } : { credentials: [] },
+      }),
+    )
+    gw.respond('DELETE', credentialPath(FAKE_CRED.credential_id), { ok: true, value: { status: 'ok' } })
 
     render(<AccountSection />)
 
@@ -405,7 +405,7 @@ describe('AccountSection — Passkey 削除', () => {
     // 「削除する」をクリック（aria-label で検索）
     await userEvent.click(await screen.findByRole('button', { name: /My Passkey を削除/i }))
 
-    await waitFor(() => expect(mockGetPasskeyCredentials).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', CREDENTIALS_PATH)).toHaveLength(2))
     await screen.findByText(/登録済みの passkey はありません/i)
   })
 })
@@ -424,7 +424,7 @@ describe('AccountSection — パスワード変更', () => {
     await waitFor(() =>
       screen.getByText('新しいパスワードは12文字以上にしてください')
     )
-    expect(mockChangePassword).not.toHaveBeenCalled()
+    expect(callsTo('POST', PASSWORD_PATH)).toHaveLength(0)
   })
 
   test('12文字で2クラスのみのパスワード送信は前ブロックで拒否', async () => {
@@ -441,7 +441,7 @@ describe('AccountSection — パスワード変更', () => {
     await waitFor(() =>
       screen.getByText('小文字・大文字・数字・記号のうち3種類以上を含めてください')
     )
-    expect(mockChangePassword).not.toHaveBeenCalled()
+    expect(callsTo('POST', PASSWORD_PATH)).toHaveLength(0)
   })
 
   test('空白を含む12文字2クラスのパスワード送信は前ブロックで拒否（backend と一致）', async () => {
@@ -458,7 +458,7 @@ describe('AccountSection — パスワード変更', () => {
     await waitFor(() =>
       screen.getByText('小文字・大文字・数字・記号のうち3種類以上を含めてください')
     )
-    expect(mockChangePassword).not.toHaveBeenCalled()
+    expect(callsTo('POST', PASSWORD_PATH)).toHaveLength(0)
   })
 
   test('21文字のパスワード送信は前ブロックで拒否（上限20文字）', async () => {
@@ -470,21 +470,27 @@ describe('AccountSection — パスワード変更', () => {
     await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
 
     await waitFor(() => screen.getByText('新しいパスワードは20文字以下にしてください'))
-    expect(mockChangePassword).not.toHaveBeenCalled()
+    expect(callsTo('POST', PASSWORD_PATH)).toHaveLength(0)
   })
 
   test.each([
     ['12文字', 'Abcd12345678'],
     ['20文字', 'Abcdefghij1234567890'],
   ])('%s（3種）のパスワードは送信される（境界値）', async (_label, password) => {
-    mockChangePassword.mockResolvedValue({ status: 'ok' })
+    gw.respond('POST', PASSWORD_PATH, { ok: true, value: { status: 'ok' } })
     render(<AccountSection />)
 
     await userEvent.type(screen.getByLabelText('現在のパスワード'), 'current-password')
     await userEvent.type(screen.getByLabelText('新しいパスワード'), password)
     await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
 
-    await waitFor(() => expect(mockChangePassword).toHaveBeenCalledWith('current-password', password))
+    await waitFor(() =>
+      expect(gw.calls).toContainEqual({
+        method: 'POST',
+        path: PASSWORD_PATH,
+        body: { current_password: 'current-password', new_password: password },
+      }),
+    )
     expect(screen.queryByText('新しいパスワードは20文字以下にしてください')).not.toBeInTheDocument()
   })
 
@@ -505,7 +511,7 @@ describe('AccountSection — パスワード変更', () => {
     await waitFor(() =>
       screen.getByText('現在のパスワードを入力してください')
     )
-    expect(mockChangePassword).not.toHaveBeenCalled()
+    expect(callsTo('POST', PASSWORD_PATH)).toHaveLength(0)
   })
 
   test.each([
@@ -525,8 +531,7 @@ describe('AccountSection — パスワード変更', () => {
   ])(
     '422 %s → 日本語対訳を表示',
     async (englishDetail, japaneseExpected) => {
-      const { ApiError } = await import('@/lib/api')
-      mockChangePassword.mockRejectedValue(new ApiError(422, englishDetail))
+      gw.respond('POST', PASSWORD_PATH, { ok: false, failure: { kind: 'validation', detail: englishDetail } })
       render(<AccountSection />)
 
       await userEvent.type(
@@ -540,13 +545,12 @@ describe('AccountSection — パスワード変更', () => {
       await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
 
       await waitFor(() => screen.getByText(japaneseExpected))
-      expect(mockChangePassword).toHaveBeenCalled()
+      expect(callsTo('POST', PASSWORD_PATH)).not.toHaveLength(0)
     }
   )
 
   test('422 未知 detail → 原文付き文言を表示', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockChangePassword.mockRejectedValue(new ApiError(422, 'unknown error detail'))
+    gw.respond('POST', PASSWORD_PATH, { ok: false, failure: { kind: 'validation', detail: 'unknown error detail' } })
     render(<AccountSection />)
 
     await userEvent.type(
@@ -565,8 +569,7 @@ describe('AccountSection — パスワード変更', () => {
   })
 
   test('400 → 「現在のパスワードが正しくありません」を表示', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockChangePassword.mockRejectedValue(new ApiError(400, 'Invalid password'))
+    gw.respond('POST', PASSWORD_PATH, { ok: false, failure: { kind: 'unknown', status: 400 } })
     render(<AccountSection />)
 
     await userEvent.type(
@@ -585,7 +588,7 @@ describe('AccountSection — パスワード変更', () => {
   })
 
   test('成功後は成功文言を表示し入力をクリア', async () => {
-    mockChangePassword.mockResolvedValue({ status: 'ok' })
+    gw.respond('POST', PASSWORD_PATH, { ok: true, value: { status: 'ok' } })
     render(<AccountSection />)
 
     const currentPwInput = screen.getByLabelText('現在のパスワード')
@@ -598,7 +601,11 @@ describe('AccountSection — パスワード変更', () => {
     await waitFor(() =>
       screen.getByText('パスワードを変更しました')
     )
-    expect(mockChangePassword).toHaveBeenCalledWith('current-password', 'Abcd1234567!')
+    expect(gw.calls).toContainEqual({
+      method: 'POST',
+      path: PASSWORD_PATH,
+      body: { current_password: 'current-password', new_password: 'Abcd1234567!' },
+    })
     // 入力フィールドがクリアされていることを確認
     expect(currentPwInput).toHaveValue('')
     expect(newPwInput).toHaveValue('')
@@ -613,7 +620,7 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
 
     expect(screen.getByText(/削除され、復元できません/)).toBeInTheDocument()
     expect(screen.getByLabelText('退会確認用の現在のパスワード')).toBeInTheDocument()
-    expect(mockDeleteAccount).not.toHaveBeenCalled()
+    expect(callsTo('DELETE', ME_PATH)).toHaveLength(0)
   })
 
   test('確認 UI で「キャンセル」をクリックすると閉じて deleteAccount は呼ばれない', async () => {
@@ -623,25 +630,30 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
     await userEvent.click(screen.getByRole('button', { name: 'キャンセル' }))
 
     expect(screen.queryByText(/削除され、復元できません/)).not.toBeInTheDocument()
-    expect(mockDeleteAccount).not.toHaveBeenCalled()
+    expect(callsTo('DELETE', ME_PATH)).toHaveLength(0)
   })
 
   test('パスワードを入力して実行すると deleteAccount を呼び、成功後は認証状態をクリアしてログイン画面へ遷移する', async () => {
-    mockDeleteAccount.mockResolvedValue(undefined)
+    gw.respond('DELETE', ME_PATH, { ok: true, value: undefined })
     render(<AccountSection />)
 
     await userEvent.click(screen.getByRole('button', { name: '退会する' }))
     await userEvent.type(screen.getByLabelText('退会確認用の現在のパスワード'), 'my-password')
     await userEvent.click(screen.getByRole('button', { name: '退会を実行する' }))
 
-    await waitFor(() => expect(mockDeleteAccount).toHaveBeenCalledWith('my-password'))
+    await waitFor(() =>
+      expect(gw.calls).toContainEqual({
+        method: 'DELETE',
+        path: ME_PATH,
+        body: { current_password: 'my-password' },
+      }),
+    )
     await waitFor(() => expect(mockLogout).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(mockRouterReplace).toHaveBeenCalledWith('/'))
   })
 
   test('パスワードが誤っている場合（403）は専用のエラーメッセージを表示し、ログアウトや遷移は行わない', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockDeleteAccount.mockRejectedValue(new ApiError(403, 'Invalid password'))
+    gw.respond('DELETE', ME_PATH, { ok: false, failure: { kind: 'forbidden' } })
     render(<AccountSection />)
 
     await userEvent.click(screen.getByRole('button', { name: '退会する' }))
@@ -654,8 +666,7 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
   })
 
   test('最後の管理者の場合（409）は専用のエラーメッセージを表示する', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockDeleteAccount.mockRejectedValue(new ApiError(409, 'Cannot delete the last admin account'))
+    gw.respond('DELETE', ME_PATH, { ok: false, failure: { kind: 'conflict' } })
     render(<AccountSection />)
 
     await userEvent.click(screen.getByRole('button', { name: '退会する' }))
@@ -672,9 +683,8 @@ describe('AccountSection — アカウント削除（退会・issue #133）', ()
 // ==========================================================
 describe('AccountSection — accessibility', () => {
   test('Given Passkey credentials load fails, error message has role="alert"', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockGetPasskeyCredentials.mockRejectedValue(new ApiError(500, 'Server error'))
-    mockGetSessions.mockResolvedValue({ sessions: [] })
+    gw.respond('GET', CREDENTIALS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: { sessions: [] } })
 
     render(<AccountSection />)
 
@@ -685,9 +695,8 @@ describe('AccountSection — accessibility', () => {
   })
 
   test('Given sessions load fails, error message has role="alert"', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockGetPasskeyCredentials.mockResolvedValue({ credentials: [] })
-    mockGetSessions.mockRejectedValue(new ApiError(500, 'Server error'))
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [] } })
+    gw.respond('GET', SESSIONS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
 
     render(<AccountSection />)
 

@@ -4,30 +4,28 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
-// API の mock
-const mockGetVapidPublicKey = vi.fn().mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
-const mockSubscribePush = vi.fn().mockResolvedValue({})
-const mockUnsubscribePush = vi.fn().mockResolvedValue({})
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getVapidPublicKey: mockGetVapidPublicKey,
-    subscribePush: mockSubscribePush,
-    unsubscribePush: mockUnsubscribePush,
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const VAPID_PATH = '/api/backend/notifications/vapid-public-key'
+const SUBSCRIPTIONS_PATH = '/api/backend/notifications/subscriptions'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
   vi.clearAllMocks()
-  mockGetVapidPublicKey.mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
-  mockSubscribePush.mockResolvedValue({})
-  mockUnsubscribePush.mockResolvedValue({})
+  gw.respond('GET', VAPID_PATH, { ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+  gw.respond('POST', SUBSCRIPTIONS_PATH, { ok: true, value: {} })
 })
 
 describe('PushNotificationSection', () => {
@@ -75,7 +73,7 @@ describe('PushNotificationSection', () => {
     await userEvent.click(button)
 
     // 購読後、バックエンド登録が呼ばれることを確認
-    expect(mockSubscribePush).toHaveBeenCalled()
+    expect(callsTo('POST', SUBSCRIPTIONS_PATH).length).toBeGreaterThan(0)
   })
 
   test('unsubscribed 状態の説明文を表示する', async () => {

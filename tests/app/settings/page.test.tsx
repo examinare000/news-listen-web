@@ -7,26 +7,33 @@ import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvi
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { StreakProvider } from '@/contexts/StreakContext'
 import { ToastProvider } from '@/components/ui/Toast'
-import type { createApiClient } from '@/lib/api'
-import type { UserPreferences, UserPreferencesPatch } from '@/types/index'
+import type { UserPreferencesPatch } from '@/types/index'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    checkHealth: vi.fn(),
-    updateProfile: vi.fn(),
-    changePassword: vi.fn(),
-    getPreferences: vi.fn(),
-    updatePreferences: vi.fn(),
-    getGenerationQuota: vi.fn(),
-    getListeningStreak: vi.fn(),
-    getDifficultySuggestion: vi.fn(),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+type GatewayResult = Parameters<GatewayDouble['respond']>[2]
+
+const PREFS_PATH = '/api/backend/settings/preferences'
+const QUOTA_PATH = '/api/backend/users/me/generation-quota'
+const STREAK_PATH = '/api/backend/users/me/listening-streak'
+const SUGGESTION_PATH = '/api/backend/users/me/difficulty-suggestion'
+
+const PREFS_TOEIC_600 = {
+  default_difficulty: 'toeic_600',
+  default_playback_speed: 1.0,
+  digest_enabled: true,
+  digest_article_count: 10,
+}
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 // issue #167: オフラインキャッシュセクション用。保存庫は usePlayback().offline の公開面だけを使う。
 // 既定は「未保存・容量取得不可」に倒す（port の usage が null を返す graceful degradation と同じ）。
@@ -65,6 +72,8 @@ function renderSettingsPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
   localStorage.clear()
   list.mockResolvedValue([])
   usage.mockResolvedValue(null)
@@ -77,18 +86,8 @@ beforeEach(() => {
 // ==========================================================
 describe('SettingsPage — display', () => {
   test('Displays difficulty selector label', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
     await waitFor(() => {
@@ -201,18 +200,11 @@ describe('SettingsPage — restyle (section card structure)', () => {
 // ==========================================================
 describe('SettingsPage — default difficulty (C群#13)', () => {
   test('Renders difficulty selector with 6 difficulty levels', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_900',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, {
+      ok: true,
+      value: { ...PREFS_TOEIC_600, default_difficulty: 'toeic_900' },
+    })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -223,18 +215,8 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
   })
 
   test('Displays option labels as text (not nested components)', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -247,18 +229,11 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
   })
 
   test('Loads initial difficulty from getPreferences', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'ielts_7',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, {
+      ok: true,
+      value: { ...PREFS_TOEIC_600, default_difficulty: 'ielts_7' },
+    })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -269,19 +244,8 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
   })
 
   test('Calls updatePreferences when difficulty changes', async () => {
-    const updatePreferences = vi.fn().mockResolvedValue({})
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -293,16 +257,17 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
     await userEvent.selectOptions(diffSelect, 'eiken_p1')
 
     await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ default_difficulty: 'eiken_p1' })
+      expect(gw.calls).toContainEqual({
+        method: 'PUT',
+        path: PREFS_PATH,
+        body: { default_difficulty: 'eiken_p1' },
+      })
     })
   })
 
   test('Falls back to toeic_600 if getPreferences fails', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -314,11 +279,8 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
 
   // issue #164: 設定読み込み失敗をサイレントにせず、トースト表示と再試行導線を出す
   test('Given getPreferences fails, shows an error toast and a retry affordance', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
@@ -331,27 +293,21 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
   })
 
   test('Given retry button clicked after getPreferences failure, refetches and clears the error on success', async () => {
-    const getPreferences = vi
-      .fn()
-      .mockRejectedValueOnce(new (await import('@/lib/api')).ApiError(500, 'Server error'))
-      .mockResolvedValueOnce({
-        default_difficulty: 'ielts_7',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences,
-      updatePreferences: vi.fn().mockResolvedValue({}),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respondWith('GET', PREFS_PATH, () =>
+      Promise.resolve(
+        callsTo('GET', PREFS_PATH).length === 1
+          ? { ok: false, failure: { kind: 'server', status: 500 } }
+          : { ok: true, value: { ...PREFS_TOEIC_600, default_difficulty: 'ielts_7' } },
+      ),
+    )
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
 
     renderSettingsPage()
 
     await waitFor(() => screen.getByRole('button', { name: /設定を再読み込み/ }))
     await userEvent.click(screen.getByRole('button', { name: /設定を再読み込み/ }))
 
-    await waitFor(() => expect(getPreferences).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(2))
     // WHY: エラートーストは TOAST_DURATION_MS (3秒) 経過まで実タイマーで残るため、
     // 消滅を待つのではなく、成功時にのみ消える再試行ボタンの有無で復帰を検証する。
     await waitFor(() => {
@@ -363,18 +319,8 @@ describe('SettingsPage — default difficulty (C群#13)', () => {
 
   // issue #164: 難易度保存失敗をサイレントにせず、エラートースト表示 + サーバー値へロールバックする
   test('Given updatePreferences fails, shows an error toast and reverts the select to the previous value', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
 
     renderSettingsPage()
 
@@ -421,23 +367,18 @@ describe('SettingsPage — design divergences (D21/D22)', () => {
 // ==========================================================
 describe('SettingsPage — generation quota (issue #164)', () => {
   test('Given limit > 0, shows remaining / limit', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 5,
         used: 2,
         remaining: 3,
         reset_at: '2026-07-07T00:00:00Z',
         monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSettingsPage()
 
@@ -448,23 +389,18 @@ describe('SettingsPage — generation quota (issue #164)', () => {
   })
 
   test('Given limit === 0 (unlimited), hides the quota row', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 0,
         used: 12,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
         monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSettingsPage()
 
@@ -475,34 +411,29 @@ describe('SettingsPage — generation quota (issue #164)', () => {
   })
 
   test('Given getGenerationQuota fails, shows an inline error with a retry button that refetches', async () => {
-    const getGenerationQuota = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce({
-        limit: 5,
-        used: 1,
-        remaining: 4,
-        reset_at: '2026-07-07T00:00:00Z',
-        monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
-      })
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respondWith('GET', QUOTA_PATH, () =>
+      callsTo('GET', QUOTA_PATH).length === 1
+        ? Promise.reject(new Error('network error'))
+        : Promise.resolve({
+            ok: true,
+            value: {
+              limit: 5,
+              used: 1,
+              remaining: 4,
+              reset_at: '2026-07-07T00:00:00Z',
+              monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
+            },
+          }),
+    )
 
     renderSettingsPage()
 
     await waitFor(() => screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
     await userEvent.click(screen.getByRole('button', { name: /残り生成回数を再読み込み/ }))
 
-    await waitFor(() => expect(getGenerationQuota).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(callsTo('GET', QUOTA_PATH)).toHaveLength(2))
     await waitFor(() => {
       expect(screen.getByText('4 / 5 回')).toBeInTheDocument()
     })
@@ -510,17 +441,9 @@ describe('SettingsPage — generation quota (issue #164)', () => {
 
   // Graceful degradation: 404（エンドポイント未実装）時は quota セクション非表示
   test('Given getGenerationQuota returns 404, hides quota section silently (graceful degradation)', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockRejectedValue(new ApiError(404, 'Not Found')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, { ok: false, failure: { kind: 'not_found' } })
 
     renderSettingsPage()
 
@@ -535,17 +458,9 @@ describe('SettingsPage — generation quota (issue #164)', () => {
 
   // 404 以外のエラーは既存どおり「エラー + 再試行」を出す
   test('Given getGenerationQuota returns 500, shows error banner with retry button (not graceful)', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockRejectedValue(new ApiError(500, 'Server error')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
 
     renderSettingsPage()
 
@@ -558,16 +473,11 @@ describe('SettingsPage — generation quota (issue #164)', () => {
   // issue #82 / ADR-073 決定5: 月次クォータ（GenerationQuotaResponse.monthly）の可視化。
   // backend/api/schemas.py MonthlyGenerationQuotaResponse と同じフィールド名。
   test('Given monthly.limit > 0, shows monthly remaining / limit and reset date', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 5,
         used: 2,
         remaining: 3,
@@ -578,8 +488,8 @@ describe('SettingsPage — generation quota (issue #164)', () => {
           remaining: 60,
           reset_at: '2026-08-01T00:00:00Z',
         },
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSettingsPage()
 
@@ -591,16 +501,11 @@ describe('SettingsPage — generation quota (issue #164)', () => {
   })
 
   test('Given monthly.limit === 0 (unlimited), hides the monthly row', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 5,
         used: 2,
         remaining: 3,
@@ -611,8 +516,8 @@ describe('SettingsPage — generation quota (issue #164)', () => {
           remaining: null,
           reset_at: '2026-08-01T00:00:00Z',
         },
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderSettingsPage()
 
@@ -630,37 +535,32 @@ describe('SettingsPage — generation quota (issue #164)', () => {
 // Settings 画面 — 聴取ストリークの可視化（issue #165 / ADR-062）
 // ==========================================================
 describe('SettingsPage — listening streak (issue #165)', () => {
-  function mockClientWithStreak(getListeningStreak: ReturnType<typeof vi.fn>) {
-    return {
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+  // 設定・日次クォータの既定。streak 以外は本 describe の観測対象ではない。
+  function registerBaseline() {
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 0,
         used: 0,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
         monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
-      }),
-      getListeningStreak,
-    } as unknown as ReturnType<typeof createApiClient>
+      },
+    })
   }
 
   test('Given a positive streak and today already listened, shows the streak count and a today-done indicator', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(
-        vi.fn().mockResolvedValue({
-          current_streak_days: 5,
-          today_listened: true,
-          last_listened_day: '2026-07-07',
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
+        current_streak_days: 5,
+        today_listened: true,
+        last_listened_day: '2026-07-07',
+      },
+    })
 
     renderSettingsPage()
 
@@ -671,16 +571,15 @@ describe('SettingsPage — listening streak (issue #165)', () => {
   })
 
   test('Given a positive streak but today not yet listened, shows the streak count without a today-done indicator', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(
-        vi.fn().mockResolvedValue({
-          current_streak_days: 5,
-          today_listened: false,
-          last_listened_day: '2026-07-06',
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
+        current_streak_days: 5,
+        today_listened: false,
+        last_listened_day: '2026-07-06',
+      },
+    })
 
     renderSettingsPage()
 
@@ -691,16 +590,15 @@ describe('SettingsPage — listening streak (issue #165)', () => {
   })
 
   test('Given current_streak_days is 0 with a non-null last_listened_day, shows the broken-streak message with the last listened date', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(
-        vi.fn().mockResolvedValue({
-          current_streak_days: 0,
-          today_listened: false,
-          last_listened_day: '2026-07-01',
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
+        current_streak_days: 0,
+        today_listened: false,
+        last_listened_day: '2026-07-01',
+      },
+    })
 
     renderSettingsPage()
 
@@ -710,16 +608,15 @@ describe('SettingsPage — listening streak (issue #165)', () => {
   })
 
   test('Given last_listened_day is null, shows a never-listened message', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(
-        vi.fn().mockResolvedValue({
-          current_streak_days: 0,
-          today_listened: false,
-          last_listened_day: null,
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
+        current_streak_days: 0,
+        today_listened: false,
+        last_listened_day: null,
+      },
+    })
 
     renderSettingsPage()
 
@@ -730,10 +627,8 @@ describe('SettingsPage — listening streak (issue #165)', () => {
 
   // Graceful degradation: 404（エンドポイント未実装）時は streak セクション非表示
   test('Given getListeningStreak returns 404, hides the streak section silently (graceful degradation)', async () => {
-    const { createApiClient, ApiError } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithStreak(vi.fn().mockRejectedValue(new ApiError(404, 'Not Found'))),
-    )
+    registerBaseline()
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
 
     renderSettingsPage()
 
@@ -747,15 +642,12 @@ describe('SettingsPage — listening streak (issue #165)', () => {
   })
 
   test('Given shared streak refresh fails, hides the section silently without a page-level duplicate retry', async () => {
-    const getListeningStreak = vi
-      .fn()
-      .mockRejectedValue(new Error('network error'))
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(mockClientWithStreak(getListeningStreak))
+    registerBaseline()
+    gw.respondWith('GET', STREAK_PATH, () => Promise.reject(new Error('network error')))
 
     renderSettingsPage()
 
-    await waitFor(() => expect(getListeningStreak).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(callsTo('GET', STREAK_PATH)).toHaveLength(1))
     expect(screen.queryByText(/聴取ストリークの取得に失敗/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /聴取ストリークを再読み込み/ })).not.toBeInTheDocument()
   })
@@ -763,21 +655,20 @@ describe('SettingsPage — listening streak (issue #165)', () => {
 
 describe('SettingsPage — weekly learning goal (ADR-086)', () => {
   test('loads 3/5/7/10 choices and saves only weekly_goal_episodes', async () => {
-    const updatePreferences = vi.fn().mockResolvedValue({})
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, {
+      ok: true,
+      value: {
         default_difficulty: 'toeic_600',
         default_playback_speed: 1,
         digest_enabled: true,
         digest_article_count: 10,
         weekly_goal_episodes: 5,
-      }),
-      updatePreferences,
-      getGenerationQuota: vi.fn().mockRejectedValue(new Error('not relevant')),
-      getListeningStreak: vi.fn().mockRejectedValue(new Error('not relevant')),
-      getDifficultySuggestion: vi.fn().mockResolvedValue({ has_suggestion: false }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respondWith('GET', QUOTA_PATH, () => Promise.reject(new Error('not relevant')))
+    gw.respondWith('GET', STREAK_PATH, () => Promise.reject(new Error('not relevant')))
+    gw.respond('GET', SUGGESTION_PATH, { ok: true, value: { has_suggestion: false } })
 
     renderSettingsPage()
 
@@ -791,7 +682,11 @@ describe('SettingsPage — weekly learning goal (ADR-086)', () => {
     await userEvent.click(within(goalGroup).getByRole('radio', { name: '7 本' }))
 
     await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ weekly_goal_episodes: 7 })
+      expect(gw.calls).toContainEqual({
+        method: 'PUT',
+        path: PREFS_PATH,
+        body: { weekly_goal_episodes: 7 },
+      })
     })
     expect(screen.getByText('1 日あたり平均 1.0 本')).toBeInTheDocument()
   })
@@ -810,44 +705,42 @@ describe('SettingsPage — weekly learning goal (ADR-086)', () => {
 // Settings 画面 — おすすめ難易度バナー（ADR-071 F3 難易度自動適応）
 // ==========================================================
 describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
-  function mockClientWithSuggestion(getDifficultySuggestion: ReturnType<typeof vi.fn>) {
-    return {
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+  // 設定・日次クォータ・streak の既定。おすすめ難易度以外は本 describe の観測対象ではない。
+  function registerBaseline() {
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 0,
         used: 0,
         remaining: null,
         reset_at: '2026-07-07T00:00:00Z',
         monthly: { limit: 0, used: 0, remaining: null, reset_at: '2026-08-01T00:00:00Z' },
-      }),
-      getListeningStreak: vi.fn().mockResolvedValue({
+      },
+    })
+    gw.respond('GET', STREAK_PATH, {
+      ok: true,
+      value: {
         current_streak_days: 0,
         today_listened: false,
         last_listened_day: null,
-      }),
-      getDifficultySuggestion,
-    } as unknown as ReturnType<typeof createApiClient>
+      },
+    })
   }
 
   test('Given has_suggestion is true, shows the reason and an apply button for the suggested difficulty', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithSuggestion(
-        vi.fn().mockResolvedValue({
-          has_suggestion: true,
-          current: 'toeic_600',
-          suggested: 'ielts_55',
-          direction: 'up',
-          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', SUGGESTION_PATH, {
+      ok: true,
+      value: {
+        has_suggestion: true,
+        current: 'toeic_600',
+        suggested: 'ielts_55',
+        direction: 'up',
+        reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+      },
+    })
 
     renderSettingsPage()
 
@@ -859,18 +752,17 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
   })
 
   test('Given has_suggestion is false, hides the banner', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithSuggestion(
-        vi.fn().mockResolvedValue({
-          has_suggestion: false,
-          current: 'toeic_600',
-          suggested: null,
-          direction: null,
-          reason: null,
-        }),
-      ),
-    )
+    registerBaseline()
+    gw.respond('GET', SUGGESTION_PATH, {
+      ok: true,
+      value: {
+        has_suggestion: false,
+        current: 'toeic_600',
+        suggested: null,
+        direction: null,
+        reason: null,
+      },
+    })
 
     renderSettingsPage()
 
@@ -882,10 +774,8 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
 
   // Graceful: フェッチ失敗（404含む・エンドポイント未提供の旧デプロイ等）は常にバナー非表示。画面は壊さない。
   test('Given getDifficultySuggestion fails, hides the banner without crashing the page', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue(
-      mockClientWithSuggestion(vi.fn().mockRejectedValue(new Error('network error'))),
-    )
+    registerBaseline()
+    gw.respondWith('GET', SUGGESTION_PATH, () => Promise.reject(new Error('network error')))
 
     renderSettingsPage()
 
@@ -896,19 +786,16 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
   })
 
   test('Clicking apply calls updatePreferences with default_difficulty set to the suggested difficulty, then hides the banner', async () => {
-    const updatePreferences = vi.fn().mockResolvedValue({})
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      ...mockClientWithSuggestion(
-        vi.fn().mockResolvedValue({
-          has_suggestion: true,
-          current: 'toeic_600',
-          suggested: 'ielts_55',
-          direction: 'up',
-          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
-        }),
-      ),
-      updatePreferences,
+    registerBaseline()
+    gw.respond('GET', SUGGESTION_PATH, {
+      ok: true,
+      value: {
+        has_suggestion: true,
+        current: 'toeic_600',
+        suggested: 'ielts_55',
+        direction: 'up',
+        reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+      },
     })
 
     renderSettingsPage()
@@ -917,7 +804,11 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
     await userEvent.click(screen.getByRole('button', { name: /適用/ }))
 
     await waitFor(() => {
-      expect(updatePreferences).toHaveBeenCalledWith({ default_difficulty: 'ielts_55' })
+      expect(gw.calls).toContainEqual({
+        method: 'PUT',
+        path: PREFS_PATH,
+        body: { default_difficulty: 'ielts_55' },
+      })
     })
     await waitFor(() => {
       expect(screen.queryByText('おすすめ難易度')).not.toBeInTheDocument()
@@ -931,35 +822,36 @@ describe('SettingsPage — difficulty suggestion banner (ADR-071 F3)', () => {
   // いれば、stale な失敗は無視されて適用済みの値が保持されるはずである。
   test('Given a slower difficulty-change request is still in flight, applying the suggestion is not later rolled back by its stale failure', async () => {
     const rejectStack: Array<() => void> = []
-    const updatePreferences = vi.fn(async (params: UserPreferencesPatch): Promise<UserPreferences> => {
+    registerBaseline()
+    gw.respond('GET', SUGGESTION_PATH, {
+      ok: true,
+      value: {
+        has_suggestion: true,
+        current: 'toeic_600',
+        suggested: 'ielts_55',
+        direction: 'up',
+        reason: '直近の理解度が高いため IELTS 5.5 を提案します',
+      },
+    })
+    gw.respondWith('PUT', PREFS_PATH, (call) => {
+      const params = call.body as UserPreferencesPatch
       if (params.default_difficulty === 'toeic_900') {
         // ドロップダウン変更（先行・遅延・後で失敗する）
-        return new Promise<UserPreferences>((_resolve, reject) => {
+        return new Promise<GatewayResult>((_resolve, reject) => {
           rejectStack.push(() => reject(new Error('network error')))
         })
       }
       // バナー適用（後続・即座に成功する）
-      return {
-        default_difficulty: params.default_difficulty ?? 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-        weekly_goal_episodes: 3,
-      }
-    })
-
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      ...mockClientWithSuggestion(
-        vi.fn().mockResolvedValue({
-          has_suggestion: true,
-          current: 'toeic_600',
-          suggested: 'ielts_55',
-          direction: 'up',
-          reason: '直近の理解度が高いため IELTS 5.5 を提案します',
-        }),
-      ),
-      updatePreferences,
+      return Promise.resolve({
+        ok: true,
+        value: {
+          default_difficulty: params.default_difficulty ?? 'toeic_600',
+          default_playback_speed: 1.0,
+          digest_enabled: true,
+          digest_article_count: 10,
+          weekly_goal_episodes: 3,
+        },
+      })
     })
 
     renderSettingsPage()
@@ -1002,26 +894,17 @@ describe('SettingsPage — difficulty change race condition', () => {
   test('Given two difficulty changes in succession, only the latest response is applied (stale responses ignored)', async () => {
     const resolveStack: Array<() => void> = []
 
-    const updatePreferences = vi.fn(async (params: { default_difficulty: string }) => {
-      // 1回目（eiken_p1）は遅延、2回目（ielts_7）は即座に返す
+    // 1回目（eiken_p1）は遅延、2回目（ielts_7）は即座に返す
+    gw.respondWith('PUT', PREFS_PATH, (call) => {
+      const params = call.body as { default_difficulty: string }
       if (params.default_difficulty === 'eiken_p1') {
-        return new Promise<void>((resolve) => {
-          resolveStack.push(resolve)
+        return new Promise<GatewayResult>((resolve) => {
+          resolveStack.push(() => resolve({ ok: true, value: undefined }))
         })
       }
-      return Promise.resolve()
+      return Promise.resolve({ ok: true, value: undefined })
     })
-
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi.fn().mockResolvedValue({
-        default_difficulty: 'toeic_600',
-        default_playback_speed: 1.0,
-        digest_enabled: true,
-        digest_article_count: 10,
-      }),
-      updatePreferences,
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
 
     renderSettingsPage()
 
@@ -1149,27 +1032,20 @@ describe('SettingsPage — offline cache (issue #167)', () => {
 // ==========================================================
 describe('SettingsPage — generation quota with missing monthly (issue #82 / ADR-073)', () => {
   test('gracefully handles missing monthly field without crashing', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 10,
         used: 5,
         remaining: 5,
         reset_at: '2026-07-21T00:00:00Z',
         // monthly は undefined（backend 版ずれ）
-      }),
-      getListeningStreak: vi.fn().mockRejectedValue({ status: 404 }),
-      getDifficultySuggestion: vi.fn().mockRejectedValue({ status: 404 }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', SUGGESTION_PATH, { ok: false, failure: { kind: 'not_found' } })
 
     renderSettingsPage()
 
@@ -1183,18 +1059,11 @@ describe('SettingsPage — generation quota with missing monthly (issue #82 / AD
   })
 
   test('displays monthly quota when monthly field is present', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getPreferences: vi
-        .fn()
-        .mockResolvedValue({
-          default_difficulty: 'toeic_600',
-          default_playback_speed: 1.0,
-          digest_enabled: true,
-          digest_article_count: 10,
-        }),
-      updatePreferences: vi.fn().mockResolvedValue({}),
-      getGenerationQuota: vi.fn().mockResolvedValue({
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    gw.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
         limit: 10,
         used: 5,
         remaining: 5,
@@ -1205,10 +1074,10 @@ describe('SettingsPage — generation quota with missing monthly (issue #82 / AD
           remaining: 50,
           reset_at: '2026-08-01T00:00:00Z',
         },
-      }),
-      getListeningStreak: vi.fn().mockRejectedValue({ status: 404 }),
-      getDifficultySuggestion: vi.fn().mockRejectedValue({ status: 404 }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', SUGGESTION_PATH, { ok: false, failure: { kind: 'not_found' } })
 
     renderSettingsPage()
 
