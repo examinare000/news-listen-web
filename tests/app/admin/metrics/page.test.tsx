@@ -3,22 +3,25 @@ import { render, screen, waitFor } from '@testing-library/react'
 import React from 'react'
 import AdminMetricsPage from '@/app/(app)/admin/metrics/page'
 import type { MetricsSnapshot } from '@/types/index'
+import { createGatewayDouble } from '../../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 
 // ADR-075 決定E1: 管理者向け read-only リテンション計測ダッシュボード。
 // AdminUsersPage と同じ認証ゲート様式（useAuth・isAdmin・useEffect ロード）に倣う。
 // レスポンス契約は backend api/schemas.py 確定版（ラッパー無し・d7/d30 トップレベル・
 // rate_started/rate_delivered・total_stars/active_users/avg_per_active_user）。
 
-const getMetrics = vi.fn()
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({ getMetrics }),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const METRICS_PATH = '/api/backend/admin/metrics'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 const authOverride = vi.hoisted(() => ({
   current: { username: 'admin', role: 'admin', display_name: 'Admin' },
@@ -49,8 +52,10 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
   authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
-  getMetrics.mockResolvedValue(FULL_SNAPSHOT)
+  gw.respond('GET', METRICS_PATH, { ok: true, value: FULL_SNAPSHOT })
 })
 
 describe('AdminMetricsPage', () => {
@@ -59,18 +64,18 @@ describe('AdminMetricsPage', () => {
     renderPage()
 
     expect(screen.getByText(/管理者のみ利用できます/)).toBeInTheDocument()
-    expect(getMetrics).not.toHaveBeenCalled()
+    expect(callsTo('GET', METRICS_PATH)).toHaveLength(0)
   })
 
   test('calls getMetrics on mount for admin users', async () => {
     renderPage()
-    await waitFor(() => expect(getMetrics).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', METRICS_PATH).length).toBeGreaterThan(0))
   })
 
   // issue #83: プレーンな「読み込み中…」テキストのみだとローディング中であることが
   // 支援技術に通知されないため、role="status" + aria-live="polite" を付与する。
   test('Given getMetrics has not resolved yet, shows a loading status announced to assistive tech (#83)', () => {
-    getMetrics.mockReturnValue(new Promise(() => {})) // never resolves
+    gw.respondWith('GET', METRICS_PATH, () => new Promise(() => {})) // never resolves
     renderPage()
 
     const status = screen.getByRole('status')
@@ -103,32 +108,34 @@ describe('AdminMetricsPage', () => {
   })
 
   test('shows an empty state on 404 (aggregation job has not run yet for the date)', async () => {
-    const { ApiError } = await import('@/lib/api')
-    getMetrics.mockRejectedValue(new ApiError(404, 'Metrics snapshot not found'))
+    gw.respond('GET', METRICS_PATH, { ok: false, failure: { kind: 'not_found' } })
     renderPage()
-    await waitFor(() => expect(getMetrics).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', METRICS_PATH).length).toBeGreaterThan(0))
 
     expect(screen.getByText(/集計データがまだありません/)).toBeInTheDocument()
   })
 
   test('renders "—" for null rate fields without crashing (defensive rendering)', async () => {
-    getMetrics.mockResolvedValue({
-      date: '2026-07-14',
-      d7: { eligible: 0, retained: 0, rate: null },
-      d30: { eligible: 0, retained: 0, rate: null },
-      completion: {
-        started: 0,
-        completed: 0,
-        delivered: 0,
-        rate_started: null,
-        rate_delivered: null,
-      },
-      weekly_star: { total_stars: 0, active_users: 0, avg_per_active_user: null },
-      generated_at: '2026-07-15T00:10:00Z',
-    } satisfies MetricsSnapshot)
+    gw.respond('GET', METRICS_PATH, {
+      ok: true,
+      value: {
+        date: '2026-07-14',
+        d7: { eligible: 0, retained: 0, rate: null },
+        d30: { eligible: 0, retained: 0, rate: null },
+        completion: {
+          started: 0,
+          completed: 0,
+          delivered: 0,
+          rate_started: null,
+          rate_delivered: null,
+        },
+        weekly_star: { total_stars: 0, active_users: 0, avg_per_active_user: null },
+        generated_at: '2026-07-15T00:10:00Z',
+      } satisfies MetricsSnapshot,
+    })
     renderPage()
 
-    await waitFor(() => expect(getMetrics).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', METRICS_PATH).length).toBeGreaterThan(0))
     // 描画は getMetrics の解決より後に来るので、'—' の出現も待つ（2026-10-31 takt verify で負荷時に落ちた）
     await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThan(0))
   })
@@ -136,22 +143,25 @@ describe('AdminMetricsPage', () => {
   test('renders "—" without crashing when unknown/missing fields are returned by backend (schema drift)', async () => {
     // backend との契約は確定済みだが、念のため想定外に欠落したフィールドがあっても
     // 壊れないことを固定する（防御的アクセスの回帰防止）。
-    getMetrics.mockResolvedValue({
-      date: '2026-07-14',
-      d7: {},
-      d30: {},
-      completion: {},
-      weekly_star: {},
-      generated_at: '2026-07-15T00:10:00Z',
+    gw.respond('GET', METRICS_PATH, {
+      ok: true,
+      value: {
+        date: '2026-07-14',
+        d7: {},
+        d30: {},
+        completion: {},
+        weekly_star: {},
+        generated_at: '2026-07-15T00:10:00Z',
+      },
     })
 
     expect(() => renderPage()).not.toThrow()
-    await waitFor(() => expect(getMetrics).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', METRICS_PATH).length).toBeGreaterThan(0))
     await waitFor(() => expect(screen.getAllByText('—').length).toBeGreaterThan(0))
   })
 
   test('shows a graceful error message on load failure (non-404)', async () => {
-    getMetrics.mockRejectedValue(new Error('network error'))
+    gw.respondWith('GET', METRICS_PATH, () => Promise.reject(new Error('network error')))
     renderPage()
 
     await waitFor(() => expect(screen.getByText(/取得に失敗しました/)).toBeInTheDocument())

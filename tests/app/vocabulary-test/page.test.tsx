@@ -3,35 +3,35 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import VocabularyTestPage from '@/app/(app)/vocabulary-test/page'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
-const {
-  getVocabularyTestSession,
-  submitVocabularyTestResult,
-  playSfx,
-  prepareSfx,
-  showToast,
-} = vi.hoisted(
+const { playSfx, prepareSfx, showToast } = vi.hoisted(
   () => ({
-    getVocabularyTestSession: vi.fn(),
-    submitVocabularyTestResult: vi.fn(),
     playSfx: vi.fn(),
     prepareSfx: vi.fn(),
     showToast: vi.fn(),
   }),
 )
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({
-    getVocabularyTestSession,
-    submitVocabularyTestResult,
-  }),
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx }))
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast }),
 }))
+
+const SESSION_PATH = '/api/backend/vocabulary/test-session'
+const RESULT_PATH = '/api/backend/vocabulary/test-result'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 const ITEMS = [
   {
@@ -60,8 +60,10 @@ const ITEMS = [
 describe('VocabularyTestPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getVocabularyTestSession.mockResolvedValue({ items: ITEMS })
-    submitVocabularyTestResult.mockResolvedValue({ updated: 3 })
+    gw = createGatewayDouble()
+    holder.gw = gw
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: ITEMS } })
+    gw.respond('POST', RESULT_PATH, { ok: true, value: { updated: 3 } })
   })
 
   test('supports button and swipe classification, then retests only unknown words and submits a bare result batch', async () => {
@@ -96,16 +98,20 @@ describe('VocabularyTestPage', () => {
 
     await screen.findByText('知ってる 1 語')
     expect(playSfx).toHaveBeenCalledWith('incorrect')
-    expect(submitVocabularyTestResult).toHaveBeenCalledWith([
-      { vocabulary_id: 'v1', self_known: true, retest_correct: null },
-      { vocabulary_id: 'v2', self_known: false, retest_correct: true },
-      { vocabulary_id: 'v3', self_known: false, retest_correct: false },
-    ])
+    expect(gw.calls).toContainEqual({
+      method: 'POST',
+      path: RESULT_PATH,
+      body: [
+        { vocabulary_id: 'v1', self_known: true, retest_correct: null },
+        { vocabulary_id: 'v2', self_known: false, retest_correct: true },
+        { vocabulary_id: 'v3', self_known: false, retest_correct: false },
+      ],
+    })
   })
 
   test('submits directly when every word is known', async () => {
-    getVocabularyTestSession.mockResolvedValue({ items: [ITEMS[0]] })
-    submitVocabularyTestResult.mockResolvedValue({ updated: 1 })
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: [ITEMS[0]] } })
+    gw.respond('POST', RESULT_PATH, { ok: true, value: { updated: 1 } })
 
     render(<VocabularyTestPage />)
     await screen.findByRole('heading', { name: 'accelerate' })
@@ -113,16 +119,18 @@ describe('VocabularyTestPage', () => {
     await userEvent.click(screen.getByRole('button', { name: '知ってる' }))
 
     await waitFor(() => expect(prepareSfx).toHaveBeenCalled())
-    await waitFor(() => expect(submitVocabularyTestResult).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('POST', RESULT_PATH).length).toBeGreaterThan(0))
     expect(await screen.findByText('すべて知っている単語でした')).toBeInTheDocument()
-    expect(submitVocabularyTestResult).toHaveBeenCalledWith([
-      { vocabulary_id: 'v1', self_known: true, retest_correct: null },
-    ])
+    expect(gw.calls).toContainEqual({
+      method: 'POST',
+      path: RESULT_PATH,
+      body: [{ vocabulary_id: 'v1', self_known: true, retest_correct: null }],
+    })
   })
 
   test('supports arrow-key classification from the focusable assessment surface', async () => {
-    getVocabularyTestSession.mockResolvedValue({ items: [ITEMS[0]] })
-    submitVocabularyTestResult.mockResolvedValue({ updated: 1 })
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: [ITEMS[0]] } })
+    gw.respond('POST', RESULT_PATH, { ok: true, value: { updated: 1 } })
 
     render(<VocabularyTestPage />)
 
@@ -135,18 +143,23 @@ describe('VocabularyTestPage', () => {
     fireEvent.keyDown(card, { key: 'ArrowRight' })
 
     expect(await screen.findByText('すべて知っている単語でした')).toBeInTheDocument()
-    expect(submitVocabularyTestResult).toHaveBeenCalledWith([
-      { vocabulary_id: 'v1', self_known: true, retest_correct: null },
-    ])
+    expect(gw.calls).toContainEqual({
+      method: 'POST',
+      path: RESULT_PATH,
+      body: [{ vocabulary_id: 'v1', self_known: true, retest_correct: null }],
+    })
   })
 
   test('limits a defensive oversized response to ten words', async () => {
-    getVocabularyTestSession.mockResolvedValue({
-      items: Array.from({ length: 12 }, (_, index) => ({
-        ...ITEMS[0],
-        vocabulary_id: `v${index}`,
-        term: `term-${index}`,
-      })),
+    gw.respond('GET', SESSION_PATH, {
+      ok: true,
+      value: {
+        items: Array.from({ length: 12 }, (_, index) => ({
+          ...ITEMS[0],
+          vocabulary_id: `v${index}`,
+          term: `term-${index}`,
+        })),
+      },
     })
 
     render(<VocabularyTestPage />)
@@ -155,7 +168,7 @@ describe('VocabularyTestPage', () => {
   })
 
   test('shows a neutral direct-route empty state when no words are due', async () => {
-    getVocabularyTestSession.mockResolvedValue({ items: [] })
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: [] } })
 
     render(<VocabularyTestPage />)
 

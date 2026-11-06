@@ -1,7 +1,7 @@
 /**
  * AuthProvider の passkey ログイン経路テスト。
  *
- * vi.mock('@/lib/api') でクライアントをモック化し、
+ * @/lib/api/gateway の createGateway を gateway double に差し替えて通信を記録・応答し、
  * createFakeWebAuthnBrowserPort() でブラウザ境界をフェイク化する。
  * AuthProvider + passkey.ts の連携を統合的に検証する
  * （passkey モジュールはモックしない）。
@@ -13,9 +13,10 @@ import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
-import { ApiError } from '@/lib/api'
 import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import { setupMockCaches } from '../helpers/mockCaches'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -35,28 +36,19 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 const FAKE_OPTIONS = { challenge_id: 'cid-test', options: '{"challenge":"abc"}' }
 const FAKE_USER = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
 
-const mockGetMe = vi.fn()
-const mockGetPasskeyLoginOptions = vi.fn()
-const mockVerifyPasskeyLogin = vi.fn()
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({
-    getMe: mockGetMe,
-    login: vi.fn(),
-    logout: vi.fn(),
-    getPasskeyLoginOptions: mockGetPasskeyLoginOptions,
-    verifyPasskeyLogin: mockVerifyPasskeyLogin,
-  }),
-  ApiError: class ApiError extends Error {
-    constructor(
-      public status: number,
-      public detail: string,
-    ) {
-      super(detail)
-      this.name = 'ApiError'
-    }
-  },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const ME_PATH = '/api/backend/auth/me'
+const OPTIONS_PATH = '/api/backend/auth/passkey/login/options'
+const VERIFY_PATH = '/api/backend/auth/passkey/login/verify'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 /** passkey ログインボタンをもつ Consumer。port は fake を直接注入。 */
 function PasskeyConsumer() {
@@ -94,8 +86,10 @@ function renderAuth() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
   // 初期 /auth/me は 401（未認証状態から開始）
-  mockGetMe.mockRejectedValue(new ApiError(401, 'Unauthorized'))
+  gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
 })
 
 // shared-leave-09 の場面だけ setupMockCaches() で global の caches を差し替えるので、既存の場面へ漏らさない
@@ -105,8 +99,8 @@ afterEach(() => {
 
 describe('AuthProvider — loginWithPasskey 状態遷移', () => {
   test('成功: authenticated に遷移し user がセットされる', async () => {
-    mockGetPasskeyLoginOptions.mockResolvedValue(FAKE_OPTIONS)
-    mockVerifyPasskeyLogin.mockResolvedValue({ token: 'tok', user: FAKE_USER })
+    gw.respond('POST', OPTIONS_PATH, { ok: true, value: FAKE_OPTIONS })
+    gw.respond('POST', VERIFY_PATH, { ok: true, value: { token: 'tok', user: FAKE_USER } })
 
     renderAuth()
     await waitFor(() =>
@@ -122,7 +116,7 @@ describe('AuthProvider — loginWithPasskey 状態遷移', () => {
   })
 
   test('失敗: status は変わらず error が伝播する', async () => {
-    mockGetPasskeyLoginOptions.mockRejectedValue(new Error('503'))
+    gw.respondWith('POST', OPTIONS_PATH, () => Promise.reject(new Error('503')))
 
     renderAuth()
     await waitFor(() =>
@@ -137,8 +131,8 @@ describe('AuthProvider — loginWithPasskey 状態遷移', () => {
   })
 
   test('verifyPasskeyLogin 401 失敗: status は変わらず error が伝播する', async () => {
-    mockGetPasskeyLoginOptions.mockResolvedValue(FAKE_OPTIONS)
-    mockVerifyPasskeyLogin.mockRejectedValue(new Error('401 Unauthorized'))
+    gw.respond('POST', OPTIONS_PATH, { ok: true, value: FAKE_OPTIONS })
+    gw.respondWith('POST', VERIFY_PATH, () => Promise.reject(new Error('401 Unauthorized')))
 
     renderAuth()
     await waitFor(() =>
@@ -159,11 +153,11 @@ describe('AuthProvider — 未確定の後の passkey 成功で回収 (verifies:
     await cacheStorage.open('audio-v1-u-a')
     await cacheStorage.open('audio-v1-u-b')
     await cacheStorage.open('shell-pages-v1')
-    mockGetMe.mockRejectedValue(new ApiError(0, 'Network error'))
-    mockGetPasskeyLoginOptions.mockResolvedValue(FAKE_OPTIONS)
-    mockVerifyPasskeyLogin.mockResolvedValue({ token: 'tok', user: { ...FAKE_USER, user_id: 'u-b' } })
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'network' } })
+    gw.respond('POST', OPTIONS_PATH, { ok: true, value: FAKE_OPTIONS })
+    gw.respond('POST', VERIFY_PATH, { ok: true, value: { token: 'tok', user: { ...FAKE_USER, user_id: 'u-b' } } })
     renderAuth()
-    await waitFor(() => expect(mockGetMe).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(callsTo('GET', ME_PATH)).toHaveLength(1))
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unknown'))
     // 通信断では回収しない
     await expect(cacheStorage.has('audio-v1')).resolves.toBe(true)

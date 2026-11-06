@@ -6,6 +6,8 @@ import AdminInvitesPage from '@/app/(app)/admin/invites/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
+import { createGatewayDouble } from '../../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -22,18 +24,18 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-const listInvites = vi.fn()
-const createInvite = vi.fn()
-const revokeInvite = vi.fn()
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({ listInvites, createInvite, revokeInvite }),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const INVITES_PATH = '/api/backend/admin/invites'
+const invitePath = (id: string) => `${INVITES_PATH}/${encodeURIComponent(id)}`
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
 
 const authOverride = vi.hoisted(() => ({
   current: { username: 'admin', role: 'admin', display_name: 'Admin' },
@@ -56,24 +58,29 @@ function renderPage() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
   writeText.mockClear().mockResolvedValue(undefined)
   Object.assign(navigator, { clipboard: { writeText } })
   authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
-  listInvites.mockResolvedValue({
-    invites: [
-      {
-        id: 'inv1',
-        note: 'for alice',
-        created_by: 'admin',
-        max_uses: 1,
-        use_count: 0,
-        used_by: [],
-        expires_at: '2026-08-01T00:00:00Z',
-        revoked_at: null,
-        created_at: '2026-07-01T00:00:00Z',
-        status: 'active',
-      },
-    ],
+  gw.respond('GET', INVITES_PATH, {
+    ok: true,
+    value: {
+      invites: [
+        {
+          id: 'inv1',
+          note: 'for alice',
+          created_by: 'admin',
+          max_uses: 1,
+          use_count: 0,
+          used_by: [],
+          expires_at: '2026-08-01T00:00:00Z',
+          revoked_at: null,
+          created_at: '2026-07-01T00:00:00Z',
+          status: 'active',
+        },
+      ],
+    },
   })
 })
 
@@ -82,27 +89,30 @@ describe('AdminInvitesPage', () => {
     authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
     renderPage()
     expect(screen.getByText(/管理者のみ利用できます/)).toBeInTheDocument()
-    expect(listInvites).not.toHaveBeenCalled()
+    expect(callsTo('GET', INVITES_PATH)).toHaveLength(0)
   })
 
   test('lists invites on mount', async () => {
     renderPage()
     await waitFor(() => expect(screen.getByText('for alice')).toBeInTheDocument())
-    expect(listInvites).toHaveBeenCalled()
+    expect(callsTo('GET', INVITES_PATH).length).toBeGreaterThan(0)
   })
 
   test('creating an invite shows the invite_url once, with a copy button', async () => {
-    createInvite.mockResolvedValue({
-      id: 'inv2',
-      code: 'NEWCODE',
-      invite_url: 'https://example.com/signup?invite=NEWCODE',
-      note: 'for bob',
-      max_uses: 1,
-      expires_at: null,
-      created_at: '2026-07-08T00:00:00Z',
+    gw.respond('POST', INVITES_PATH, {
+      ok: true,
+      value: {
+        id: 'inv2',
+        code: 'NEWCODE',
+        invite_url: 'https://example.com/signup?invite=NEWCODE',
+        note: 'for bob',
+        max_uses: 1,
+        expires_at: null,
+        created_at: '2026-07-08T00:00:00Z',
+      },
     })
     renderPage()
-    await waitFor(() => expect(listInvites).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', INVITES_PATH).length).toBeGreaterThan(0))
 
     await userEvent.type(screen.getByLabelText('メモ'), 'for bob')
     await userEvent.click(screen.getByRole('button', { name: '招待コードを作成' }))
@@ -117,13 +127,15 @@ describe('AdminInvitesPage', () => {
   })
 
   test('revoking an invite calls the API after confirmation', async () => {
-    revokeInvite.mockResolvedValue(undefined)
+    gw.respond('DELETE', invitePath('inv1'), { ok: true, value: undefined })
     renderPage()
     await waitFor(() => expect(screen.getByText('for alice')).toBeInTheDocument())
 
     await userEvent.click(screen.getByLabelText('for alice を失効'))
     await userEvent.click(screen.getByRole('button', { name: '確認' }))
 
-    await waitFor(() => expect(revokeInvite).toHaveBeenCalledWith('inv1'))
+    await waitFor(() =>
+      expect(gw.calls).toContainEqual({ method: 'DELETE', path: invitePath('inv1'), body: undefined }),
+    )
   })
 })

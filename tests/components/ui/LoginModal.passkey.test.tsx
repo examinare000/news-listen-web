@@ -18,12 +18,6 @@ vi.mock('@/contexts/AuthProvider', () => ({
   }),
 }))
 
-// ApiError は status を見るため実クラスを使う
-vi.mock('@/lib/api', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/api')>()
-  return actual
-})
-
 // createRealWebAuthnBrowserPort は LoginModal 内部で使用するのでモック
 vi.mock('@/lib/webauthnBrowserPort', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/webauthnBrowserPort')>()

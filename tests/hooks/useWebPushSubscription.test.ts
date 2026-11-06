@@ -2,25 +2,29 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
-const mockGetVapidPublicKey = vi.fn().mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
-const mockSubscribePush = vi.fn().mockResolvedValue({})
-const mockUnsubscribePush = vi.fn().mockResolvedValue({})
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getVapidPublicKey: mockGetVapidPublicKey,
-    subscribePush: mockSubscribePush,
-    unsubscribePush: mockUnsubscribePush,
-  })),
-  ApiError: class ApiError extends Error { constructor(public status: number, public detail: string) { super(detail) } },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const VAPID_PATH = '/api/backend/notifications/vapid-public-key'
+const SUBSCRIPTIONS_PATH = '/api/backend/notifications/subscriptions'
+const UNSUBSCRIBE_PREFIX = `${SUBSCRIPTIONS_PATH}?endpoint=`
+
+let gw: GatewayDouble
 
 beforeEach(() => {
+  gw = createGatewayDouble()
+  holder.gw = gw
   vi.clearAllMocks()
-  mockGetVapidPublicKey.mockResolvedValue({ public_key: 'BNVa2nUfxEMGkLfDNj3test' })
-  mockSubscribePush.mockResolvedValue({})
-  mockUnsubscribePush.mockResolvedValue({})
+  gw.respond('GET', VAPID_PATH, { ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+  gw.respond('POST', SUBSCRIPTIONS_PATH, { ok: true, value: {} })
+  gw.respond('DELETE', `${UNSUBSCRIBE_PREFIX}${encodeURIComponent('https://fcm.example.com/existing')}`, {
+    ok: true,
+    value: {},
+  })
 })
 
 describe('useWebPushSubscription — 初期化', () => {
@@ -65,7 +69,7 @@ describe('useWebPushSubscription — subscribe 遷移', () => {
   })
 
   test('VAPID 公開鍵取得失敗時に error 状態になる', async () => {
-    mockGetVapidPublicKey.mockRejectedValue(new Error('Network error'))
+    gw.respondWith('GET', VAPID_PATH, () => Promise.reject(new Error('Network error')))
     const port = createFakePushBrowserPort()
     const { result } = renderHook(() => useWebPushSubscription({ port }))
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })

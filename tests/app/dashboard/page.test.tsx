@@ -4,6 +4,9 @@ import userEvent from '@testing-library/user-event'
 import DashboardPage from '@/app/(app)/dashboard/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
+import { createGatewayDouble } from '../../helpers/gatewayDouble'
+import type { GatewayDouble } from '../../helpers/gatewayDouble'
 
 const { playSfx, showToast } = vi.hoisted(() => ({
   playSfx: vi.fn(),
@@ -15,16 +18,31 @@ vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast }),
 }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: vi.fn(() => ({
-    getLearningDashboard: vi.fn(),
-  })),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-    }
-  },
-}))
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const DASHBOARD_PATH = '/api/backend/users/me/learning-dashboard'
+const VOCABULARY_PATH = '/api/backend/vocabulary'
+const TEST_SESSION_PATH = '/api/backend/vocabulary/test-session'
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
+
+function respondDashboard(value: unknown) {
+  gw.respond('GET', DASHBOARD_PATH, { ok: true, value })
+}
+
+// 呼出順に応答を返す。Error は非 ApiError の reject としてそのまま届ける
+function respondDashboardInOrder(...outcomes: Array<Result<unknown, ApiFailure> | Error>) {
+  gw.respondWith('GET', DASHBOARD_PATH, () => {
+    const outcome = outcomes[callsTo('GET', DASHBOARD_PATH).length - 1]
+    return outcome instanceof Error ? Promise.reject(outcome) : Promise.resolve(outcome)
+  })
+}
 
 const POPULATED_DASHBOARD = {
   streak: { current_streak_days: 5, today_listened: true, last_listened_day: '2026-07-12' },
@@ -90,6 +108,8 @@ function renderDashboard(initial: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
 })
 
 // ==========================================================
@@ -97,10 +117,7 @@ beforeEach(() => {
 // ==========================================================
 describe('DashboardPage — display', () => {
   test('renders the page header', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(EMPTY_DASHBOARD)
 
     renderDashboard()
 
@@ -108,10 +125,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders streak days', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -119,10 +133,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders total_episodes labeled 生成済みエピソード数', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -131,10 +142,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders vocabulary_acquired labeled 習得語彙数', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -143,10 +151,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders quiz stats (quizzed_episodes + average_correct_rate) and trend labeled クイズ成績の推移', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -160,10 +165,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders monthly_activity labeled 月別活動', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -175,10 +177,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('Given a populated response, renders current_difficulty as a human-readable label', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -186,10 +185,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('renders weekly progress, factual history, and CSS activity bars without warning language', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -200,10 +196,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('renders all seven catalog achievements with unlocked date and subdued locked entries', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     renderDashboard()
 
@@ -216,20 +209,19 @@ describe('DashboardPage — display', () => {
   })
 
   test('detects only achievements added after the initial response and emits editorial toast + sound', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    const getLearningDashboard = vi
-      .fn()
-      .mockResolvedValueOnce(POPULATED_DASHBOARD)
-      .mockResolvedValueOnce({
-        ...POPULATED_DASHBOARD,
-        achievements: [
-          ...POPULATED_DASHBOARD.achievements,
-          { id: 'first_quiz_correct', unlocked_at: '2026-07-29' },
-        ],
-      })
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard,
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboardInOrder(
+      { ok: true, value: POPULATED_DASHBOARD },
+      {
+        ok: true,
+        value: {
+          ...POPULATED_DASHBOARD,
+          achievements: [
+            ...POPULATED_DASHBOARD.achievements,
+            { id: 'first_quiz_correct', unlocked_at: '2026-07-29' },
+          ],
+        },
+      },
+    )
 
     // 初回の応答に含まれる解錠済み実績は「見た」扱いである、という前提を保存値で明示する
     renderDashboard({ seen_achievement_ids: JSON.stringify(['first_episode_completed']) })
@@ -245,10 +237,7 @@ describe('DashboardPage — display', () => {
   })
 
   test('seen_achievement_ids の保存値が壊れていれば空とみなし、解除済みの実績を音つきでトースト表示して既読として保存する', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(POPULATED_DASHBOARD)
 
     const saved = renderDashboard({ seen_achievement_ids: 'not-json' })
 
@@ -260,10 +249,10 @@ describe('DashboardPage — display', () => {
   })
 
   test('shows registered vocabulary count/latest five and hides the test link when no words are due', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(POPULATED_DASHBOARD),
-      getVocabulary: vi.fn().mockResolvedValue({
+    respondDashboard(POPULATED_DASHBOARD)
+    gw.respond('GET', VOCABULARY_PATH, {
+      ok: true,
+      value: {
         count: 6,
         vocabulary: Array.from({ length: 6 }, (_, index) => ({
           vocabulary_id: `v${index}`,
@@ -273,9 +262,9 @@ describe('DashboardPage — display', () => {
           example: `example-${index}`,
           registered_at: `2026-07-${29 - index}`,
         })),
-      }),
-      getVocabularyTestSession: vi.fn().mockResolvedValue({ items: [] }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
+    gw.respond('GET', TEST_SESSION_PATH, { ok: true, value: { items: [] } })
 
     renderDashboard()
 
@@ -288,11 +277,11 @@ describe('DashboardPage — display', () => {
   })
 
   test('shows the vocabulary test link when at least one due word exists', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
-      getVocabulary: vi.fn().mockResolvedValue({ count: 0, vocabulary: [] }),
-      getVocabularyTestSession: vi.fn().mockResolvedValue({
+    respondDashboard(EMPTY_DASHBOARD)
+    gw.respond('GET', VOCABULARY_PATH, { ok: true, value: { count: 0, vocabulary: [] } })
+    gw.respond('GET', TEST_SESSION_PATH, {
+      ok: true,
+      value: {
         items: [{
           vocabulary_id: 'v1',
           term: 'accelerate',
@@ -300,8 +289,8 @@ describe('DashboardPage — display', () => {
           example: 'Sales accelerate.',
           distractors: [],
         }],
-      }),
-    } as unknown as ReturnType<typeof createApiClient>)
+      },
+    })
 
     renderDashboard()
 
@@ -314,10 +303,7 @@ describe('DashboardPage — display', () => {
 
 describe('DashboardPage — graceful degradation', () => {
   test('Given a new-user (all-zero) response, renders without crashing', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockResolvedValue(EMPTY_DASHBOARD),
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboard(EMPTY_DASHBOARD)
 
     renderDashboard()
 
@@ -327,10 +313,7 @@ describe('DashboardPage — graceful degradation', () => {
   })
 
   test('Given fetch failure, renders without crashing and shows a neutral empty state', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard: vi.fn().mockRejectedValue(new Error('network error')),
-    } as unknown as ReturnType<typeof createApiClient>)
+    gw.respondWith('GET', DASHBOARD_PATH, () => Promise.reject(new Error('network error')))
 
     renderDashboard()
 
@@ -341,14 +324,7 @@ describe('DashboardPage — graceful degradation', () => {
   // ADR-072 決定5・決定8: fetch 失敗時は前回値を保持し、再試行導線を出す（settings の
   // quota/streak ローダーと同じ慣習）。null 上書きによる前回値の破棄は不具合として扱う。
   test('Given fetch failure, the retry button re-invokes getLearningDashboard and renders data on success', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    const getLearningDashboard = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('network error'))
-      .mockResolvedValueOnce(POPULATED_DASHBOARD)
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard,
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboardInOrder(new Error('network error'), { ok: true, value: POPULATED_DASHBOARD })
 
     renderDashboard()
 
@@ -357,18 +333,11 @@ describe('DashboardPage — graceful degradation', () => {
     await userEvent.click(screen.getByRole('button', { name: /ダッシュボードを再読み込み/ }))
 
     expect(await screen.findByText(/5日連続/)).toBeInTheDocument()
-    expect(getLearningDashboard).toHaveBeenCalledTimes(2)
+    expect(callsTo('GET', DASHBOARD_PATH)).toHaveLength(2)
   })
 
   test('Given a successful load, a subsequent failed re-fetch does not blank the previously-shown dashboard', async () => {
-    const { createApiClient } = await import('@/lib/api')
-    const getLearningDashboard = vi
-      .fn()
-      .mockResolvedValueOnce(POPULATED_DASHBOARD)
-      .mockRejectedValueOnce(new Error('network error'))
-    vi.mocked(createApiClient).mockReturnValue({
-      getLearningDashboard,
-    } as unknown as ReturnType<typeof createApiClient>)
+    respondDashboardInOrder({ ok: true, value: POPULATED_DASHBOARD }, new Error('network error'))
 
     renderDashboard()
 
@@ -379,6 +348,6 @@ describe('DashboardPage — graceful degradation', () => {
     // 再取得が失敗しても、直前に表示していたダッシュボードは消えない（前回値保持）
     await screen.findByText(/最新のデータ取得に失敗しました/)
     expect(screen.getByText(/5日連続/)).toBeInTheDocument()
-    expect(getLearningDashboard).toHaveBeenCalledTimes(2)
+    expect(callsTo('GET', DASHBOARD_PATH)).toHaveLength(2)
   })
 })

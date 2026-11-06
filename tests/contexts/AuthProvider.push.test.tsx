@@ -8,6 +8,8 @@ import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import type { PushSubscriptionJSON } from '@/types/index'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -24,21 +26,40 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-const getMe = vi.fn()
-const login = vi.fn()
-const logout = vi.fn()
-const register = vi.fn()
-const unsubscribePush = vi.fn()
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
-vi.mock('@/lib/api', () => ({
-  createApiClient: () => ({ getMe, login, logout, register, unsubscribePush }),
-  ApiError: class ApiError extends Error {
-    constructor(public status: number, public detail: string) {
-      super(detail)
-      this.name = 'ApiError'
-    }
-  },
-}))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const LOGOUT_PATH = '/api/backend/auth/logout'
+const UNSUBSCRIBE_PREFIX = '/api/backend/notifications/subscriptions?endpoint='
+
+let gw: GatewayDouble
+
+function callsTo(method: string, path: string) {
+  return gw.calls.filter((c) => c.method === method && c.path === path)
+}
+
+function callsStartingWith(method: string, prefix: string) {
+  return gw.calls.filter((c) => c.method === method && c.path.startsWith(prefix))
+}
+
+function firstIndexOfCall(method: string, path: string) {
+  return gw.calls.findIndex((c) => c.method === method && c.path === path)
+}
+
+function firstIndexStartingWith(method: string, prefix: string) {
+  return gw.calls.findIndex((c) => c.method === method && c.path.startsWith(prefix))
+}
+
+// logout request の応答時点で、port の getExistingSubscription が何回呼ばれていたかを記録する
+let existingCallsAtLogout: number | null = null
+
+function respondLogoutRecording(existingCalls: () => number) {
+  gw.respondWith('POST', LOGOUT_PATH, () => {
+    existingCallsAtLogout = existingCalls()
+    return Promise.resolve({ ok: true, value: { status: 'ok' } })
+  })
+}
 
 const { reclaimAudioCaches, deleteSubjectAudio } = vi.hoisted(() => ({
   reclaimAudioCaches: vi.fn().mockResolvedValue(undefined),
@@ -66,6 +87,8 @@ const EXISTING: PushSubscriptionJSON = {
   endpoint: 'https://fcm.example.com/existing',
   keys: { p256dh: 'p256dh-val', auth: 'auth-val' },
 }
+
+const EXISTING_UNSUBSCRIBE_PATH = `${UNSUBSCRIBE_PREFIX}${encodeURIComponent(EXISTING.endpoint)}`
 
 function setLogoutPort(port: PushBrowserPort) {
   fakePortHolder.port = port
@@ -110,8 +133,12 @@ function renderAuth(authRef: AuthRef) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
+  existingCallsAtLogout = null
   fakePortHolder.port = null
-  logout.mockResolvedValue({ status: 'ok' })
+  gw.respond('POST', LOGOUT_PATH, { ok: true, value: { status: 'ok' } })
+  gw.respond('DELETE', EXISTING_UNSUBSCRIBE_PATH, { ok: true, value: undefined })
   reclaimAudioCaches.mockResolvedValue(undefined)
   deleteSubjectAudio.mockResolvedValue(undefined)
   clearManagedServiceWorkerCaches.mockResolvedValue(undefined)
@@ -134,10 +161,10 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     await userEvent.click(screen.getByText('logout'))
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
-    expect(unsubscribePush).toHaveBeenCalledTimes(1)
-    expect(unsubscribePush).toHaveBeenCalledWith(EXISTING.endpoint)
+    expect(callsStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toHaveLength(1)
+    expect(gw.calls).toContainEqual({ method: 'DELETE', path: EXISTING_UNSUBSCRIBE_PATH, body: undefined })
     expect(portUnsubscribe).not.toHaveBeenCalled()
-    expect(unsubscribePush.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
+    expect(firstIndexStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toBeLessThan(firstIndexOfCall('POST', LOGOUT_PATH))
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
   })
 
@@ -146,7 +173,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     const isSupported = vi.fn(() => true)
     const getExistingSubscription = vi.fn(async () => EXISTING)
     setLogoutPort(createFakePushBrowserPort({ isSupported, getExistingSubscription }))
-    unsubscribePush.mockRejectedValue(new Error('server error'))
+    gw.respondWith('DELETE', EXISTING_UNSUBSCRIBE_PATH, () => Promise.reject(new Error('server error')))
     const authRef: AuthRef = { current: null }
     renderAuth(authRef)
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
@@ -154,10 +181,10 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     await userEvent.click(screen.getByText('logout'))
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
-    expect(unsubscribePush).toHaveBeenCalledWith(EXISTING.endpoint)
-    expect(unsubscribePush).toHaveBeenCalledTimes(1)
-    expect(unsubscribePush.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
-    expect(logout).toHaveBeenCalledTimes(1)
+    expect(gw.calls).toContainEqual({ method: 'DELETE', path: EXISTING_UNSUBSCRIBE_PATH, body: undefined })
+    expect(callsStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toHaveLength(1)
+    expect(firstIndexStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toBeLessThan(firstIndexOfCall('POST', LOGOUT_PATH))
+    expect(callsTo('POST', LOGOUT_PATH)).toHaveLength(1)
     // logout の後始末は await されない（web-dec-79 / shared-dec-28）ので、完了を待って確かめる
     await waitFor(() => expect(deleteSubjectAudio).toHaveBeenCalledTimes(1))
     expect(deleteSubjectAudio).toHaveBeenCalledWith(null, 'u-alice')
@@ -171,6 +198,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     const isSupported = vi.fn(() => true)
     const getExistingSubscription = vi.fn(async () => { throw new Error('boom') })
     setLogoutPort(createFakePushBrowserPort({ isSupported, getExistingSubscription }))
+    respondLogoutRecording(() => getExistingSubscription.mock.calls.length)
     const authRef: AuthRef = { current: null }
     renderAuth(authRef)
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
@@ -179,8 +207,8 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
-    expect(getExistingSubscription.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
-    expect(unsubscribePush).not.toHaveBeenCalled()
+    expect(existingCallsAtLogout).toBeGreaterThanOrEqual(1)
+    expect(callsStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toHaveLength(0)
     expect(isSupported).toHaveBeenCalledTimes(1)
   })
 
@@ -189,6 +217,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
     const isSupported = vi.fn(() => true)
     const getExistingSubscription = vi.fn(async () => null)
     setLogoutPort(createFakePushBrowserPort({ isSupported, getExistingSubscription }))
+    respondLogoutRecording(() => getExistingSubscription.mock.calls.length)
     const authRef: AuthRef = { current: null }
     renderAuth(authRef)
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
@@ -197,8 +226,8 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
 
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
-    expect(getExistingSubscription.mock.invocationCallOrder[0]).toBeLessThan(logout.mock.invocationCallOrder[0])
-    expect(unsubscribePush).not.toHaveBeenCalled()
+    expect(existingCallsAtLogout).toBeGreaterThanOrEqual(1)
+    expect(callsStartingWith('DELETE', UNSUBSCRIBE_PREFIX)).toHaveLength(0)
     expect(isSupported).toHaveBeenCalledTimes(1)
   })
 
@@ -219,7 +248,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
       await vi.advanceTimersByTimeAsync(600_000)
     })
 
-    expect(logout).not.toHaveBeenCalled()
+    expect(callsTo('POST', LOGOUT_PATH)).toHaveLength(0)
     expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
     expect(isSupported).toHaveBeenCalledTimes(1)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
@@ -230,7 +259,7 @@ describe('AuthProvider logout — push 購読解除（web-dec-04）', () => {
       await pending
     })
 
-    expect(logout).toHaveBeenCalledTimes(1)
+    expect(callsTo('POST', LOGOUT_PATH)).toHaveLength(1)
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
     expect(isSupported).toHaveBeenCalledTimes(1)
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)
