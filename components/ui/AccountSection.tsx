@@ -4,9 +4,22 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthProvider'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import {
+  changePassword,
+  deleteAccount,
+  deletePasskeyCredential,
+  getPasskeyCredentials,
+  getPasskeyLoginOptions,
+  getPasskeyRegisterOptions,
+  getSessions,
+  revokeOtherSessions,
+  revokeSession,
+  updateProfile,
+  verifyPasskeyLogin,
+  verifyPasskeyRegistration,
+} from '@/lib/account/infrastructure/api'
 import { validatePassword } from '@/lib/account/domain/password'
-import { ApiError } from '@/lib/api'
 import { registerPasskey } from '@/lib/passkey'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
 import { formatAuthUserLabel } from '@/lib/format'
@@ -46,7 +59,7 @@ function translatePasswordPolicyDetail(detail: string) {
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
 export function AccountSection() {
   const { user, refreshMe, logout } = useAuth()
-  const client = createApiClient()
+  const gateway = useApiClient()
   const router = useRouter()
 
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
@@ -84,25 +97,33 @@ export function AccountSection() {
 
   const loadCredentials = useCallback(async () => {
     try {
-      const res = await client.getPasskeyCredentials()
-      setPasskeyCredentials(res.credentials)
+      const res = await getPasskeyCredentials(gateway)
+      if (!res.ok) {
+        setCredentialsLoadError(true)
+        return
+      }
+      setPasskeyCredentials(res.value.credentials)
       setCredentialsLoadError(false)
     } catch {
       // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
       setCredentialsLoadError(true)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gateway])
 
   const loadSessions = useCallback(async () => {
     try {
-      const res = await client.getSessions()
-      setSessions(res.sessions)
+      const res = await getSessions(gateway)
+      if (!res.ok) {
+        setSessionsLoadError(true)
+        return
+      }
+      setSessions(res.value.sessions)
       setSessionsLoadError(false)
     } catch {
       // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
       setSessionsLoadError(true)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gateway])
 
   useEffect(() => {
     loadCredentials()
@@ -121,7 +142,11 @@ export function AccountSection() {
   async function handleProfileSave() {
     setProfileMsg(null)
     try {
-      await client.updateProfile(displayName)
+      const res = await updateProfile(gateway, displayName)
+      if (!res.ok) {
+        setProfileMsg({ kind: 'error', text: '表示名の更新に失敗しました' })
+        return
+      }
       await refreshMe()
       setProfileMsg({ kind: 'ok', text: '表示名を更新しました' })
     } catch {
@@ -141,18 +166,23 @@ export function AccountSection() {
       return
     }
     try {
-      await client.changePassword(currentPassword, newPassword)
+      const res = await changePassword(gateway, currentPassword, newPassword)
+      if (!res.ok) {
+        let text = 'パスワード変更に失敗しました'
+        if (res.failure.kind === 'validation') {
+          text =
+            res.failure.reason === 'rule'
+              ? '現在のパスワードが正しくありません'
+              : translatePasswordPolicyDetail(res.failure.detail)
+        }
+        setPwMsg({ kind: 'error', text })
+        return
+      }
       setCurrentPassword('')
       setNewPassword('')
       setPwMsg({ kind: 'ok', text: 'パスワードを変更しました' })
-    } catch (err) {
-      let text = 'パスワード変更に失敗しました'
-      if (err instanceof ApiError && err.status === 400) {
-        text = '現在のパスワードが正しくありません'
-      } else if (err instanceof ApiError && err.status === 422) {
-        text = translatePasswordPolicyDetail(err.detail)
-      }
-      setPwMsg({ kind: 'error', text })
+    } catch {
+      setPwMsg({ kind: 'error', text: 'パスワード変更に失敗しました' })
     }
   }
 
@@ -160,7 +190,20 @@ export function AccountSection() {
     setRegisteringPasskey(true)
     setPasskeyMsg(null)
     try {
-      await registerPasskey(client, createRealWebAuthnBrowserPort())
+      const res = await registerPasskey(
+        {
+          getPasskeyRegisterOptions: () => getPasskeyRegisterOptions(gateway),
+          verifyPasskeyRegistration: (challengeId, credential) =>
+            verifyPasskeyRegistration(gateway, challengeId, credential),
+          getPasskeyLoginOptions: () => getPasskeyLoginOptions(gateway),
+          verifyPasskeyLogin: (challengeId, credential) => verifyPasskeyLogin(gateway, challengeId, credential),
+        },
+        createRealWebAuthnBrowserPort(),
+      )
+      if (!res.ok) {
+        setPasskeyMsg({ kind: 'error', text: 'Passkey の登録に失敗しました' })
+        return
+      }
       setPasskeyMsg({ kind: 'ok', text: 'Passkey を登録しました' })
       await loadCredentials()
     } catch (err) {
@@ -193,7 +236,11 @@ export function AccountSection() {
     setDeletingCredentialId(credentialId)
     setPasskeyMsg(null)
     try {
-      await client.deletePasskeyCredential(credentialId)
+      const res = await deletePasskeyCredential(gateway, credentialId)
+      if (!res.ok) {
+        setPasskeyMsg({ kind: 'error', text: 'Passkey の削除に失敗しました' })
+        return
+      }
       await loadCredentials()
       setPasskeyMsg({ kind: 'ok', text: 'Passkey を削除しました' })
     } catch {
@@ -217,7 +264,11 @@ export function AccountSection() {
     setRevokingSessionId(sessionId)
     setSessionsMsg(null)
     try {
-      await client.revokeSession(sessionId)
+      const res = await revokeSession(gateway, sessionId)
+      if (!res.ok) {
+        setSessionsMsg({ kind: 'error', text: 'ログアウトに失敗しました' })
+        return
+      }
       await loadSessions()
       setSessionsMsg({ kind: 'ok', text: 'デバイスからログアウトしました' })
     } catch {
@@ -232,9 +283,13 @@ export function AccountSection() {
     setRevokingOthers(true)
     setSessionsMsg(null)
     try {
-      const res = await client.revokeOtherSessions()
+      const res = await revokeOtherSessions(gateway)
+      if (!res.ok) {
+        setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
+        return
+      }
       await loadSessions()
-      setSessionsMsg({ kind: 'ok', text: `他の ${res.revoked_count} 台のデバイスからログアウトしました` })
+      setSessionsMsg({ kind: 'ok', text: `他の ${res.value.revoked_count} 台のデバイスからログアウトしました` })
     } catch {
       setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
     } finally {
@@ -258,19 +313,24 @@ export function AccountSection() {
     setDeletingAccount(true)
     setDeleteAccountError(null)
     try {
-      await client.deleteAccount(deleteAccountPassword)
+      const res = await deleteAccount(gateway, deleteAccountPassword)
+      if (!res.ok) {
+        const text =
+          res.failure.kind === 'forbidden'
+            ? 'パスワードが正しくありません'
+            : res.failure.kind === 'conflict'
+              ? '最後の管理者は削除できません'
+              : 'アカウントの削除に失敗しました'
+        setDeleteAccountError(text)
+        setDeletingAccount(false)
+        return
+      }
       // WHY: サーバー側でセッションは既に失効済みだが、ローカルの認証状態も
       //      LogoutButton と同じ後処理（logout → ログイン画面へ replace）で揃える。
       await logout()
       router.replace('/')
-    } catch (err) {
-      const text =
-        err instanceof ApiError && err.status === 403
-          ? 'パスワードが正しくありません'
-          : err instanceof ApiError && err.status === 409
-            ? '最後の管理者は削除できません'
-            : 'アカウントの削除に失敗しました'
-      setDeleteAccountError(text)
+    } catch {
+      setDeleteAccountError('アカウントの削除に失敗しました')
       setDeletingAccount(false)
     }
   }

@@ -2,7 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import {
+  getLearningDashboard,
+  getVocabulary,
+  getVocabularyTestSession,
+} from '@/lib/learning/infrastructure/api'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { useToast } from '@/components/ui/Toast'
 import { usePreferences } from '@/contexts/PreferencesProvider'
@@ -33,21 +38,21 @@ function formatPercent(rate: number): string {
 export default function DashboardPage() {
   const { showToast } = useToast()
   const { get, set } = usePreferences()
+  const gateway = useApiClient()
   const [dashboard, setDashboard] = useState<LearningDashboard | null>(null)
   const [vocabulary, setVocabulary] = useState<VocabularyListResponse | null>(null)
   const [testSession, setTestSession] = useState<VocabularyTestSessionResponse | null>(null)
   const [loadError, setLoadError] = useState(false)
 
   const loadDashboard = useCallback(async () => {
-    const client = createApiClient()
     const [dashboardResult, vocabularyResult, sessionResult] = await Promise.allSettled([
-      client.getLearningDashboard(),
-      client.getVocabulary?.(),
-      client.getVocabularyTestSession?.(),
+      getLearningDashboard(gateway),
+      getVocabulary(gateway),
+      getVocabularyTestSession(gateway),
     ])
 
-    if (dashboardResult.status === 'fulfilled') {
-      const data = dashboardResult.value
+    if (dashboardResult.status === 'fulfilled' && dashboardResult.value.ok) {
+      const data = dashboardResult.value.value
       const seenIdsSet = new Set(get(seenAchievementIds))
 
       const newlyUnlockedAndUnseen = data.achievements.filter(
@@ -74,13 +79,13 @@ export default function DashboardPage() {
       setLoadError(true)
     }
 
-    if (vocabularyResult.status === 'fulfilled' && vocabularyResult.value) {
-      setVocabulary(vocabularyResult.value)
+    if (vocabularyResult.status === 'fulfilled' && vocabularyResult.value.ok) {
+      setVocabulary(vocabularyResult.value.value)
     }
-    if (sessionResult.status === 'fulfilled' && sessionResult.value) {
-      setTestSession(sessionResult.value)
+    if (sessionResult.status === 'fulfilled' && sessionResult.value.ok) {
+      setTestSession(sessionResult.value.value)
     }
-  }, [showToast, get, set])
+  }, [gateway, showToast, get, set])
 
   useEffect(() => {
     void loadDashboard()

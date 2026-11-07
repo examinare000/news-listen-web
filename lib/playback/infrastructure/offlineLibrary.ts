@@ -1,5 +1,6 @@
 // 保存庫（OfflineLibrary の実装）。Cache の 3 entry の順序と key を持つ。Response と JSON を扱ってよいのはこのファイルと offlineRecord.ts だけ。
 import type { ApiGateway } from '@/lib/api/gateway'
+import { getPodcast } from '@/lib/api/podcasts'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { OfflineLibrary } from '@/lib/playback/application/ports'
 import { toOfflineEpisodeView, toStorageUsageView } from '@/lib/playback/application/readModels'
@@ -7,7 +8,6 @@ import type { OfflineEpisodeView } from '@/lib/playback/application/readModels'
 import type { CacheStore } from '@/lib/platform/cacheStore'
 import type { ObjectUrl } from '@/lib/platform/objectUrl'
 import type { StorageEstimate } from '@/lib/platform/storageEstimate'
-import type { Podcast } from '@/types'
 import { episodeResponse, metaResponse, readEpisodeRecord, readMeta } from './offlineRecord'
 
 // 音声の Cache は主体（backend の user_id）ごとに分ける（ADR-104 決定 2）。旧名 audio-v1 は回収が消す。
@@ -69,7 +69,7 @@ export function createOfflineLibrary(deps: OfflineLibraryDeps): OfflineLibrary {
       const userId = currentUserId()
       if (cacheStore === null || userId === null) return { ok: false, failure: { kind: 'unsupported' } }
       const cacheName = audioCacheName(userId)
-      const fetched = await gateway.request<Podcast>(`/api/backend/podcasts/${id}`)
+      const fetched = await getPodcast(gateway, id)
       if (!fetched.ok) return { ok: false, failure: { kind: 'download_failed', failure: fetched.failure } }
       const dto = fetched.value
       if (decodeEpisode(dto).kind !== 'playable') return { ok: false, failure: { kind: 'not_playable' } }

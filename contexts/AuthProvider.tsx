@@ -2,6 +2,8 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { AuthUser, RegisterInput } from '@/types/index'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
+import type { Result } from '@/lib/shared/result'
 import {
   RESOLVING_SESSION,
   reduce,
@@ -11,7 +13,20 @@ import {
 } from '@/lib/account/domain/authSession'
 import { subjectOf, type Subject } from '@/lib/account/domain/subject'
 import { createSubjectCleanup } from '@/lib/account/application/subjectCleanup'
-import { ApiError, createApiClient } from '@/lib/api'
+import { createGateway } from '@/lib/api/gateway'
+import type { ApiGateway } from '@/lib/api/gateway'
+import {
+  getMe,
+  getPasskeyLoginOptions,
+  getPasskeyRegisterOptions,
+  login as loginRequest,
+  logout as logoutRequest,
+  register as registerRequest,
+  verifyPasskeyLogin,
+  verifyPasskeyRegistration,
+} from '@/lib/account/infrastructure/api'
+import { subscribePush, unsubscribePush, getVapidPublicKey } from '@/lib/notifications/infrastructure/api'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { loginWithPasskey as passkeyLogin } from '@/lib/passkey'
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
@@ -41,18 +56,18 @@ interface AuthProviderValue {
   user: AuthSessionUser | null
   /** unavailable からの再試行。resolving に戻して /auth/me を解決し直す。 */
   retry: () => Promise<void>
-  /** パスワードログイン。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
-  login: (username: string, password: string) => Promise<void>
+  /** パスワードログイン。API の失敗は状態を変えず Result で返す（呼び出し側で文言表示）。 */
+  login: (username: string, password: string) => Promise<Result<void, ApiFailure>>
   logout: () => Promise<void>
-  /** 招待コードによる新規登録。失敗時は ApiError を throw する（呼び出し側で文言表示）。 */
-  register: (input: RegisterInput) => Promise<void>
+  /** 招待コードによる新規登録。API の失敗は状態を変えず Result で返す（呼び出し側で文言表示）。 */
+  register: (input: RegisterInput) => Promise<Result<void, ApiFailure>>
   /** GET /auth/me で状態を再解決する。401 失効時の cleanup 結果を返す。 */
   refreshMe: () => Promise<RefreshMeResult>
   /**
    * Passkey ログイン。port は WebAuthnBrowserPort を受け取る（テストでは fake を注入）。
-   * 失敗時はエラーを throw する（UI 層でキャッチして文言表示）。
+   * API の失敗は Result で返し、port の例外は throw する（UI 層で文言表示）。
    */
-  loginWithPasskey: (port: WebAuthnBrowserPort) => Promise<void>
+  loginWithPasskey: (port: WebAuthnBrowserPort) => Promise<Result<void, ApiFailure>>
   /**
    * 主体離脱の後始末 (d) が呼ぶ再生停止の登録口。最後に登録された 1 つを保持し、戻り値で解除する。
    * AuthProvider は再生を知らない（再生側が登録する。web-dec-73）。
@@ -78,13 +93,28 @@ function statusOf(session: AuthSession): AuthStatus {
 }
 
 // getMe の失敗を事象に分類する（web-dec-67）。401 だけが未認証で、それ以外は一時障害。
-// .status の数値比較はこの module に閉じる（許可リスト web-dep-08）。
-function classifyGetMeFailure(err: unknown): AuthEvent {
-  if (!(err instanceof ApiError)) return { type: 'failed', failure: { reason: 'unknown' } }
-  if (err.status === 401) return { type: 'unauthorized' }
-  if (err.status === 0) return { type: 'failed', failure: { reason: 'network' } }
-  if (err.status >= 500) return { type: 'failed', failure: { reason: 'server' } }
-  return { type: 'failed', failure: { reason: 'unknown' } }
+function classifyGetMeFailure(failure: ApiFailure): AuthEvent {
+  switch (failure.kind) {
+    case 'unauthorized':
+      return { type: 'unauthorized' }
+    case 'network':
+    case 'timeout':
+      return { type: 'failed', failure: { reason: 'network' } }
+    case 'server':
+      return { type: 'failed', failure: { reason: 'server' } }
+    default:
+      return { type: 'failed', failure: { reason: 'unknown' } }
+  }
+}
+
+// getMe の結果か reject を、成功の AuthUser か失敗の事象にまとめる。
+async function resolveMe(gateway: ApiGateway): Promise<Result<AuthUser, AuthEvent>> {
+  try {
+    const result = await getMe(gateway)
+    return result.ok ? result : { ok: false, failure: classifyGetMeFailure(result.failure) }
+  } catch {
+    return { ok: false, failure: { type: 'failed', failure: { reason: 'unknown' } } }
+  }
 }
 
 // AuthUser（応答）を session の user へ写す。user_id は subjectOf が検査する。
@@ -99,6 +129,8 @@ function toSessionUser(user: AuthUser): AuthSessionUser {
 
 export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   const { ready, clearSubjectScoped } = usePreferences()
+  // この gateway を自身の呼出と ApiClientProvider の両方で使う（AuthProvider の内側の Provider は自分から読めない）。
+  const [gateway] = useState(() => createGateway())
   const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
   const dispatch = useCallback((event: AuthEvent) => setSession((s) => reduce(s, event)), [])
 
@@ -150,20 +182,13 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     })()
   }, [currentUserId])
 
-  const client = useCallback(
-    () => createApiClient(),
-    [],
-  )
-
   const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
-    let me: AuthUser
-    try {
-      me = await client().getMe()
-    } catch (err) {
-      const event = classifyGetMeFailure(err)
+    const resolved = await resolveMe(gateway)
+    if (!resolved.ok) {
+      const event = resolved.failure
       dispatch(event)
       // 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
-      // network error（ApiError(0) 等）や 401 以外では shell-*/api-* を残す
+      // 通信断や 401 以外では shell-*/api-* を残す
       // （直前の状態は問わない — 初回 mount の自動解決でも同じ判定）。
       if (event.type !== 'unauthorized') return { cleanup: 'skipped' }
       const previous = lastSubjectRef.current
@@ -185,11 +210,12 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       await reclaiming
       return result
     }
+    const me = resolved.value
     lastSubjectRef.current = subjectOf(me.user_id)
     dispatch({ type: 'resolved', user: toSessionUser(me) })
     await reclaimOnce()
     return { cleanup: 'skipped' }
-  }, [client, dispatch, reclaimOnce, subjectCleanup])
+  }, [gateway, dispatch, reclaimOnce, subjectCleanup])
 
   const retry = useCallback(async () => {
     dispatch({ type: 'retry' })
@@ -211,31 +237,42 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   )
 
   const login = useCallback(
-    async (username: string, password: string) => {
-      // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する。
-      const res = await client().login(username, password)
-      establish(res.user)
+    async (username: string, password: string): Promise<Result<void, ApiFailure>> => {
+      // API の失敗は状態を変えず Result で返す。reject は伝播する。成功時のみ状態を更新する。
+      const res = await loginRequest(gateway, username, password)
+      if (!res.ok) return res
+      establish(res.value.user)
+      return { ok: true, value: undefined }
     },
-    [client, establish],
+    [gateway, establish],
   )
 
   const register = useCallback(
-    async (input: RegisterInput) => {
-      // 失敗時は ApiError がそのまま伝播する。成功時のみ状態を更新する（login と同じ方針）。
-      const res = await client().register(input)
-      establish(res.user)
+    async (input: RegisterInput): Promise<Result<void, ApiFailure>> => {
+      // login と同じ方針: API の失敗は Result で返し、成功時のみ状態を更新する。
+      const res = await registerRequest(gateway, input)
+      if (!res.ok) return res
+      establish(res.value.user)
+      return { ok: true, value: undefined }
     },
-    [client, establish],
+    [gateway, establish],
   )
 
   const logout = useCallback(async () => {
     try {
-      await createPushRegistration({ port: createRealPushBrowserPort(), client: client() }).detachFromSubject()
+      await createPushRegistration({
+        port: createRealPushBrowserPort(),
+        client: {
+          getVapidPublicKey: () => getVapidPublicKey(gateway),
+          subscribePush: (subscription) => subscribePush(gateway, subscription),
+          unsubscribePush: (endpoint) => unsubscribePush(gateway, endpoint),
+        },
+      }).detachFromSubject()
     } catch {
       // 購読行の削除はベストエフォート（決定 23）。失敗した行は次のログイン時の再送で上書きされる。
     }
     try {
-      await client().logout()
+      await logoutRequest(gateway)
     } catch {
       // ログアウトはベストエフォート（サーバー失効に失敗してもローカル状態は落とす）。
     }
@@ -244,17 +281,28 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     dispatch({ type: 'loggedOut' })
     // 後始末の完了は待たず、結果（CleanupIncomplete）も捨てる。端末全体の音声消去は残さない（§6.3 性質 1）。
     void subjectCleanup(previous, { audio: true })
-  }, [client, dispatch, subjectCleanup])
+  }, [gateway, dispatch, subjectCleanup])
 
   // WHY: passkey.ts の loginWithPasskey(client, port) を呼ぶ薄いラッパー。
-  //      client は DI（createApiClient）、port は呼び出し側から注入（テスト可能性を確保）。
+  //      client は gateway に束縛した Result を返す形、port は呼び出し側から注入（テスト可能性を確保）。
   const loginWithPasskey = useCallback(
-    async (port: WebAuthnBrowserPort) => {
-      // 失敗時はエラーがそのまま伝播する。成功時のみ状態を更新する。
-      const res = await passkeyLogin(client(), port)
-      establish(res.user)
+    async (port: WebAuthnBrowserPort): Promise<Result<void, ApiFailure>> => {
+      // API の失敗は Result で返し、port の例外は伝播する。成功時のみ状態を更新する。
+      const res = await passkeyLogin(
+        {
+          getPasskeyRegisterOptions: () => getPasskeyRegisterOptions(gateway),
+          verifyPasskeyRegistration: (challengeId, credential) =>
+            verifyPasskeyRegistration(gateway, challengeId, credential),
+          getPasskeyLoginOptions: () => getPasskeyLoginOptions(gateway),
+          verifyPasskeyLogin: (challengeId, credential) => verifyPasskeyLogin(gateway, challengeId, credential),
+        },
+        port,
+      )
+      if (!res.ok) return res
+      establish(res.value.user)
+      return { ok: true, value: undefined }
     },
-    [client, establish],
+    [gateway, establish],
   )
 
   // restore 完了後に /auth/me で認証状態を解決する。
@@ -282,7 +330,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
         currentUserId,
       }}
     >
-      {children}
+      <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>
     </AuthSessionContext.Provider>
   )
 }

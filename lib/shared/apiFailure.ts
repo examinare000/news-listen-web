@@ -11,6 +11,6 @@ export type ApiFailure =
       readonly scope: 'monthly' | 'daily' | 'unknown'
       readonly detail: string
     }
-  | { readonly kind: 'validation'; readonly detail: string }
+  | { readonly kind: 'validation'; readonly detail: string; readonly reason?: 'rule' | 'schema' }
   | { readonly kind: 'server'; readonly status: number }
   | { readonly kind: 'unknown'; readonly status: number }

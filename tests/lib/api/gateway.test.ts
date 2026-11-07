@@ -68,6 +68,7 @@ describe('ApiGateway.request — verifies: web-contract-15', () => {
       }
       if (kind === 'validation') {
         expect((r.failure as { detail: string }).detail).toBe('x')
+        expect((r.failure as { reason?: string }).reason).toBe(status === 400 ? 'rule' : 'schema')
       }
     }
   })
@@ -104,7 +105,10 @@ describe('ApiGateway.request — verifies: web-contract-15', () => {
   test('web-test-16-2 (null 本文): 非 2xx で json() が null でも reject せず Result になる（verifies: web-contract-15-1, web-contract-15-2）', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse(422, null)))
     const r = await makeGateway().request('/api/backend/x', { method: 'POST', body: {} })
-    expect(r).toEqual({ ok: false, failure: { kind: 'validation', detail: 'Unknown error' } })
+    expect(r).toEqual({
+      ok: false,
+      failure: { kind: 'validation', detail: 'Unknown error', reason: 'schema' },
+    })
 
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(errorResponse(500, null)))
     const r500 = await makeGateway().request('/api/backend/x')

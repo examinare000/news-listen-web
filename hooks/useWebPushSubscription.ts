@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getVapidPublicKey, subscribePush, unsubscribePush } from '@/lib/notifications/infrastructure/api'
 import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
 import { createPushRegistration } from '@/lib/push/pushRegistration'
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
@@ -34,7 +35,17 @@ export function useWebPushSubscription({
   const [pushState, setPushState] = useState<PushSubscriptionState>('unsubscribed')
   // ポートと登録協調オブジェクトはレンダリングをまたいで同一インスタンスを保持
   const [port] = useState<PushBrowserPort>(() => portProp ?? createRealPushBrowserPort())
-  const [registration] = useState(() => createPushRegistration({ port, client: createApiClient() }))
+  const gateway = useApiClient()
+  const [registration] = useState(() =>
+    createPushRegistration({
+      port,
+      client: {
+        getVapidPublicKey: () => getVapidPublicKey(gateway),
+        subscribePush: (subscription) => subscribePush(gateway, subscription),
+        unsubscribePush: (endpoint) => unsubscribePush(gateway, endpoint),
+      },
+    }),
+  )
 
   // 初期化: 機能検出 → 権限確認 → 既存購読確認
   useEffect(() => {

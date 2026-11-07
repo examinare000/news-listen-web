@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getPodcast } from '@/lib/catalog/infrastructure/api'
+import { getVocabulary, saveVocabulary, submitQuizAnswers } from '@/lib/learning/infrastructure/api'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
@@ -39,6 +41,7 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const { showToast } = useToast()
+  const gateway = useApiClient()
   const { offline } = usePlayback()
   const { startEpisode } = usePlaybackActions()
 
@@ -56,21 +59,25 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
     async function fetch() {
       try {
-        const data = await createApiClient().getPodcast(podcastId!)
-        setPodcast(data)
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 404) {
-          setNotFound(true)
-        } else {
-          showToast('読み込みに失敗しました', 'error')
+        const result = await getPodcast(gateway, podcastId!)
+        if (!result.ok) {
+          if (result.failure.kind === 'not_found') {
+            setNotFound(true)
+          } else {
+            showToast('読み込みに失敗しました', 'error')
+          }
+          return
         }
+        setPodcast(result.value)
+      } catch {
+        showToast('読み込みに失敗しました', 'error')
       } finally {
         setLoading(false)
       }
     }
 
     fetch()
-  }, [podcastId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [podcastId, gateway]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePlay() {
     if (!podcast) return
@@ -113,15 +120,15 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
   useEffect(() => {
     if (!podcast) return
-    const client = createApiClient()
-    client.getVocabulary()
-      .then((vocab) => {
-        setRegisteredTerms(new Set(vocab.vocabulary.map((item) => item.term)))
+    getVocabulary(gateway)
+      .then((result) => {
+        if (!result.ok) return
+        setRegisteredTerms(new Set(result.value.vocabulary.map((item) => item.term)))
       })
       .catch(() => {
         // best-effort: 失敗時は現状動作（空のセットのまま）
       })
-  }, [podcast])
+  }, [podcast, gateway])
   const [savingTerms, setSavingTerms] = useState<Set<string>>(() => new Set())
 
   function handleSelectQuizAnswer(questionIndex: number, optionIndex: number) {
@@ -138,9 +145,13 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     setSubmittingQuiz(true)
     try {
       const answers = podcast.quiz.map((_, index) => quizAnswers[index])
-      const result = await createApiClient().submitQuizAnswers(podcast.id, answers)
-      setQuizResult(result)
-      playSfx(result.correct_count / result.total >= 0.5 ? 'correct' : 'incorrect')
+      const result = await submitQuizAnswers(gateway, podcast.id, answers)
+      if (!result.ok) {
+        showToast('採点に失敗しました', 'error')
+        return
+      }
+      setQuizResult(result.value)
+      playSfx(result.value.correct_count / result.value.total >= 0.5 ? 'correct' : 'incorrect')
     } catch {
       showToast('採点に失敗しました', 'error')
     } finally {
@@ -152,7 +163,11 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     if (!podcast) return
     setSavingTerms((current) => new Set(current).add(term))
     try {
-      await createApiClient().saveVocabulary(podcast.id, term)
+      const result = await saveVocabulary(gateway, podcast.id, term)
+      if (!result.ok) {
+        showToast('語彙の登録に失敗しました', 'error')
+        return
+      }
       setRegisteredTerms((current) => new Set(current).add(term))
     } catch {
       showToast('語彙の登録に失敗しました', 'error')

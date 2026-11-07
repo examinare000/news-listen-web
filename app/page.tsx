@@ -7,7 +7,8 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { LandingPage } from '@/components/lp/LandingPage'
 import { LoginModal } from '@/components/ui/LoginModal'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getOnboardingStatus } from '@/lib/catalog/infrastructure/api'
 
 // Entry gate（ランディングページ導入後）:
 // - resolving / anonymous → LandingPage を即座に表示（LP は静的なので PreferencesProvider の ready を
@@ -22,6 +23,7 @@ export default function RootPage() {
   const { ready } = usePreferences()
   const { status: authStatus, session, retry } = useAuth()
   const router = useRouter()
+  const gateway = useApiClient()
 
   // ログイン済みになった後にだけ取得する onboarding ゲート状態。
   const [gate, setGate] = useState<OnboardingGate>('unknown')
@@ -32,11 +34,15 @@ export default function RootPage() {
   useEffect(() => {
     if (!ready || authStatus !== 'authenticated') return
     let cancelled = false
-    const client = createApiClient()
-    client
-      .getOnboardingStatus()
-      .then((status) => {
-        if (!cancelled) setGate(status.onboarding_completed ? 'done' : 'needed')
+    getOnboardingStatus(gateway)
+      .then((result) => {
+        if (cancelled) return
+        if (!result.ok) {
+          // 取得失敗時はオンボーディングを挟まずフィードへ進ませる（行き止まりを防ぐ）
+          setGate('done')
+          return
+        }
+        setGate(result.value.onboarding_completed ? 'done' : 'needed')
       })
       .catch(() => {
         // 取得失敗時はオンボーディングを挟まずフィードへ進ませる（行き止まりを防ぐ）
@@ -45,7 +51,7 @@ export default function RootPage() {
     return () => {
       cancelled = true
     }
-  }, [ready, authStatus])
+  }, [ready, authStatus, gateway])
 
   // onboarding 完了（または取得失敗）が確定したらフィードへ。
   useEffect(() => {

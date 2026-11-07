@@ -1,5 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AccountSection } from '@/components/ui/AccountSection'
@@ -7,6 +10,9 @@ import { useAuth } from '@/contexts/AuthProvider'
 import type { PasskeyCredential } from '@/types/index'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
 
 // vi.hoisted で mock 変数を宣言する（vi.mock のホイスティングより前に評価される）
 const { mockRegisterPasskey, mockLogout, mockRefreshMe, mockRouterReplace } = vi.hoisted(() => ({
@@ -201,7 +207,7 @@ describe('AccountSection — Passkey 登録', () => {
   })
 
   test('登録ボタンをクリックすると registerPasskey が呼ばれる', async () => {
-    mockRegisterPasskey.mockResolvedValue(undefined)
+    mockRegisterPasskey.mockResolvedValue({ ok: true, value: undefined })
     render(<AccountSection />)
 
     await userEvent.click(await screen.findByRole('button', { name: /passkey を登録/i }))
@@ -210,7 +216,7 @@ describe('AccountSection — Passkey 登録', () => {
   })
 
   test('登録成功後に成功メッセージを表示し一覧を再取得する', async () => {
-    mockRegisterPasskey.mockResolvedValue(undefined)
+    mockRegisterPasskey.mockResolvedValue({ ok: true, value: undefined })
     gw.respondWith('GET', CREDENTIALS_PATH, () =>
       Promise.resolve({
         ok: true,
@@ -239,8 +245,7 @@ describe('AccountSection — Passkey 登録', () => {
   })
 
   test('登録 API エラー時は失敗メッセージを表示する', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockRegisterPasskey.mockRejectedValue(new ApiError(400, 'Bad request'))
+    mockRegisterPasskey.mockResolvedValue({ ok: false, failure: { kind: 'server', status: 500 } })
     render(<AccountSection />)
 
     await userEvent.click(await screen.findByRole('button', { name: /passkey を登録/i }))
@@ -569,7 +574,7 @@ describe('AccountSection — パスワード変更', () => {
   })
 
   test('400 → 「現在のパスワードが正しくありません」を表示', async () => {
-    gw.respond('POST', PASSWORD_PATH, { ok: false, failure: { kind: 'unknown', status: 400 } })
+    gw.respond('POST', PASSWORD_PATH, { ok: false, failure: { kind: 'validation', detail: 'Bad request', reason: 'rule' } })
     render(<AccountSection />)
 
     await userEvent.type(

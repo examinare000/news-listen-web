@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getFeaturedSources, addSource, completeOnboarding } from '@/lib/catalog/infrastructure/api'
 import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, groupByCategoryInOrder } from '@/lib/featuredCategories'
 import type { FeaturedSource } from '@/types/index'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
@@ -18,7 +19,7 @@ interface OnboardingSourcesModalProps {
  * おすすめサイトをワンクリックで即購読でき、「完了」/「スキップ」で completeOnboarding を呼ぶ。
  */
 export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) {
-  const client = createApiClient()
+  const gateway = useApiClient()
 
   const [featured, setFeatured] = useState<FeaturedSource[]>([])
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
@@ -28,10 +29,10 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
 
   useEffect(() => {
     let cancelled = false
-    client
-      .getFeaturedSources()
-      .then((data) => {
-        if (!cancelled) setFeatured(data.sites)
+    getFeaturedSources(gateway)
+      .then((result) => {
+        if (cancelled) return
+        setFeatured(result.ok ? result.value.sites : [])
       })
       .catch(() => {
         if (!cancelled) setFeatured([])
@@ -39,18 +40,22 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [gateway])
 
   async function handleSubscribe(site: FeaturedSource) {
     setSubscribingId(site.id)
     try {
-      await client.addSource(site.name, site.url)
-      setAddedIds((prev) => new Set(prev).add(site.id))
-    } catch (err) {
-      // 既に登録済み（409）も「追加済み」として扱う
-      if (err instanceof ApiError && err.status === 409) {
-        setAddedIds((prev) => new Set(prev).add(site.id))
+      const result = await addSource(gateway, site.name, site.url)
+      if (!result.ok) {
+        // 既に登録済み（409）も「追加済み」として扱う
+        if (result.failure.kind === 'conflict') {
+          setAddedIds((prev) => new Set(prev).add(site.id))
+        }
+        return
       }
+      setAddedIds((prev) => new Set(prev).add(site.id))
+    } catch {
+      // 例外は従来どおり何もしない
     } finally {
       setSubscribingId(null)
     }
@@ -59,9 +64,10 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
   async function handleFinish() {
     setFinishing(true)
     try {
-      await client.completeOnboarding()
+      // 完了フラグの保存に失敗してもフィードへは進ませる（次回再表示されるだけ）ので、結果も例外も見ない。
+      await completeOnboarding(gateway)
     } catch {
-      // 完了フラグの保存に失敗してもフィードへは進ませる（次回再表示されるだけ）
+      // 上のコメントのとおり
     } finally {
       onDone()
     }

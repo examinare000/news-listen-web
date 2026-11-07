@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthProvider'
-import { ApiError } from '@/lib/api'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
@@ -55,14 +54,18 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
     setSubmitting(true)
     setError('')
     try {
-      await login(username, password)
-    } catch (err) {
-      // ユーザー存在の有無を露出しない汎用文言。
-      const detail =
-        err instanceof ApiError && err.status === 401
-          ? 'ユーザーIDまたはパスワードが正しくありません'
-          : 'ログインに失敗しました。接続設定を確認してください'
-      setError(detail)
+      const result = await login(username, password)
+      if (!result.ok) {
+        // ユーザー存在の有無を露出しない汎用文言。
+        setError(
+          result.failure.kind === 'unauthorized'
+            ? 'ユーザーIDまたはパスワードが正しくありません'
+            : 'ログインに失敗しました。接続設定を確認してください',
+        )
+        setSubmitting(false)
+      }
+    } catch {
+      setError('ログインに失敗しました。接続設定を確認してください')
       setSubmitting(false)
     }
   }
@@ -71,7 +74,11 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
     setSubmittingPasskey(true)
     setError('')
     try {
-      await loginWithPasskey(createRealWebAuthnBrowserPort())
+      const result = await loginWithPasskey(createRealWebAuthnBrowserPort())
+      if (!result.ok) {
+        setError('Passkey ログインに失敗しました')
+        setSubmittingPasskey(false)
+      }
     } catch (err) {
       // WHY: NotAllowedError はユーザーが自発的にキャンセルした場合。
       //      DOMException は環境によって instanceof Error が false になることがあるため

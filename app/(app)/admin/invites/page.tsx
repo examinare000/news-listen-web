@@ -2,7 +2,8 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { createInvite, listInvites, revokeInvite } from '@/lib/admin/infrastructure/api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AdminGate } from '@/components/AdminGate'
 import { useToast } from '@/components/ui/Toast'
@@ -46,7 +47,7 @@ export default function AdminInvitesPage() {
 }
 
 function AdminInvitesPanel() {
-  const client = createApiClient()
+  const gateway = useApiClient()
   const { showToast } = useToast()
 
   const [invites, setInvites] = useState<Invite[]>([])
@@ -68,12 +69,16 @@ function AdminInvitesPanel() {
   const reload = useCallback(async () => {
     setLoadError('')
     try {
-      const res = await client.listInvites()
-      setInvites(res.invites)
+      const result = await listInvites(gateway)
+      if (!result.ok) {
+        setLoadError('招待コード一覧の取得に失敗しました')
+        return
+      }
+      setInvites(result.value.invites)
     } catch {
       setLoadError('招待コード一覧の取得に失敗しました')
     }
-  }, [])
+  }, [gateway])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -97,12 +102,16 @@ function AdminInvitesPanel() {
 
     setCreating(true)
     try {
-      const res = await client.createInvite({
+      const result = await createInvite(gateway, {
         note: note.trim() || undefined,
         max_uses: maxUsesParsed,
         expires_in_days: expiresParsed,
       })
-      setCreatedInvite(res)
+      if (!result.ok) {
+        setFormError('招待コードの作成に失敗しました')
+        return
+      }
+      setCreatedInvite(result.value)
       setNote('')
       setMaxUses('1')
       setExpiresInDays('')
@@ -137,7 +146,11 @@ function AdminInvitesPanel() {
     const id = revokeTargetId
     setRevokeTargetId(null)
     try {
-      await client.revokeInvite(id)
+      const result = await revokeInvite(gateway, id)
+      if (!result.ok) {
+        setLoadError('招待コードの失効に失敗しました')
+        return
+      }
       await reload()
     } catch {
       setLoadError('招待コードの失効に失敗しました')

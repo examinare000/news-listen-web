@@ -1,11 +1,17 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
 import type { FeaturedSource } from '@/types/index'
 
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
 
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 

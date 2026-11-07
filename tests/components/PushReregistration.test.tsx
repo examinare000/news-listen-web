@@ -1,5 +1,8 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, renderHook, act, waitFor } from '@testing-library/react'
+import { render as rtlRender, renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react'
+import type { RenderHookOptions, RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import React from 'react'
 import { PushReregistration } from '@/components/PushReregistration'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
@@ -9,6 +12,13 @@ import type { PushSubscriptionJSON } from '@/types/index'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
+const renderHook = <Result, Props>(
+  callback: (props: Props) => Result,
+  options?: Omit<RenderHookOptions<Props>, 'wrapper'>,
+) => rtlRenderHook(callback, { wrapper: ApiClientProvider, ...options })
 
 type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 

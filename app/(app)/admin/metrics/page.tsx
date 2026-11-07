@@ -1,7 +1,8 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getMetrics } from '@/lib/admin/infrastructure/api'
 import { AdminGate } from '@/components/AdminGate'
 import type { MetricsSnapshot } from '@/types/index'
 
@@ -40,6 +41,7 @@ export default function AdminMetricsPage() {
 }
 
 function AdminMetricsPanel() {
+  const gateway = useApiClient()
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState(false)
@@ -49,21 +51,26 @@ function AdminMetricsPanel() {
     setLoadError(false)
     setNotFound(false)
     try {
-      const data = await createApiClient().getMetrics()
-      setMetrics(data)
-    } catch (err) {
-      setMetrics(null)
-      // 404 = 指定日のスナップショット未生成（集計ジョブ未実行・rollout 直後）。
-      // エラーではなく「まだデータが無い」正常系として扱う（ADR-075 決定E1）。
-      if (err instanceof ApiError && err.status === 404) {
-        setNotFound(true)
-      } else {
-        setLoadError(true)
+      const result = await getMetrics(gateway)
+      if (!result.ok) {
+        setMetrics(null)
+        // 404 = 指定日のスナップショット未生成（集計ジョブ未実行・rollout 直後）。
+        // エラーではなく「まだデータが無い」正常系として扱う（ADR-075 決定E1）。
+        if (result.failure.kind === 'not_found') {
+          setNotFound(true)
+        } else {
+          setLoadError(true)
+        }
+        return
       }
+      setMetrics(result.value)
+    } catch {
+      setMetrics(null)
+      setLoadError(true)
     } finally {
       setHasLoaded(true)
     }
-  }, [])
+  }, [gateway])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {

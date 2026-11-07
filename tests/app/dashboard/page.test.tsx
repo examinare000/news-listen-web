@@ -1,5 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import DashboardPage from '@/app/(app)/dashboard/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
@@ -7,6 +10,9 @@ import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
 
 const { playSfx, showToast } = vi.hoisted(() => ({
   playSfx: vi.fn(),
@@ -313,7 +319,7 @@ describe('DashboardPage — graceful degradation', () => {
   })
 
   test('Given fetch failure, renders without crashing and shows a neutral empty state', async () => {
-    gw.respondWith('GET', DASHBOARD_PATH, () => Promise.reject(new Error('network error')))
+    gw.respond('GET', DASHBOARD_PATH, { ok: false, failure: { kind: 'network' } })
 
     renderDashboard()
 
@@ -324,7 +330,7 @@ describe('DashboardPage — graceful degradation', () => {
   // ADR-072 決定5・決定8: fetch 失敗時は前回値を保持し、再試行導線を出す（settings の
   // quota/streak ローダーと同じ慣習）。null 上書きによる前回値の破棄は不具合として扱う。
   test('Given fetch failure, the retry button re-invokes getLearningDashboard and renders data on success', async () => {
-    respondDashboardInOrder(new Error('network error'), { ok: true, value: POPULATED_DASHBOARD })
+    respondDashboardInOrder({ ok: false, failure: { kind: 'network' } }, { ok: true, value: POPULATED_DASHBOARD })
 
     renderDashboard()
 
@@ -337,7 +343,7 @@ describe('DashboardPage — graceful degradation', () => {
   })
 
   test('Given a successful load, a subsequent failed re-fetch does not blank the previously-shown dashboard', async () => {
-    respondDashboardInOrder({ ok: true, value: POPULATED_DASHBOARD }, new Error('network error'))
+    respondDashboardInOrder({ ok: true, value: POPULATED_DASHBOARD }, { ok: false, failure: { kind: 'network' } })
 
     renderDashboard()
 

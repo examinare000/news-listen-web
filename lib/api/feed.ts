@@ -1,8 +1,8 @@
 import type {
   FeedResponse,
 } from '@/types/index'
-import { request } from '@/lib/api/legacyRequest'
+import type { ApiGateway } from '@/lib/api/gateway'
 
-export function getFeed() {
-  return request<FeedResponse>('/api/backend/feed', { method: 'GET' })
+export function getFeed(gateway: ApiGateway) {
+  return gateway.request<FeedResponse>('/api/backend/feed', { method: 'GET' })
 }

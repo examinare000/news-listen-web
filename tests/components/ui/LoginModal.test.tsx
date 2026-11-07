@@ -16,7 +16,7 @@ beforeEach(() => {
 
 describe('LoginModal', () => {
   test('submits username and password to login()', async () => {
-    login.mockResolvedValue(undefined)
+    login.mockResolvedValue({ ok: true, value: undefined })
     render(<LoginModal />)
 
     await userEvent.type(screen.getByLabelText('ユーザーID'), 'alice')
@@ -34,8 +34,7 @@ describe('LoginModal', () => {
   })
 
   test('shows generic error message on 401', async () => {
-    const { ApiError } = await import('@/lib/api')
-    login.mockRejectedValue(new ApiError(401, 'Invalid username or password'))
+    login.mockResolvedValue({ ok: false, failure: { kind: 'unauthorized' } })
     render(<LoginModal />)
 
     await userEvent.type(screen.getByLabelText('ユーザーID'), 'alice')

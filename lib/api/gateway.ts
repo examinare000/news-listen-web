@@ -176,8 +176,9 @@ function statusToFailure(raw: { status: number; detail: string; retryAfterSecond
     case 429:
       return { kind: 'rate_limited', retryAfterSeconds: raw.retryAfterSeconds, scope: 'unknown', detail: raw.detail }
     case 400:
+      return { kind: 'validation', detail: raw.detail, reason: 'rule' }
     case 422:
-      return { kind: 'validation', detail: raw.detail }
+      return { kind: 'validation', detail: raw.detail, reason: 'schema' }
     default:
       return raw.status >= 500 && raw.status <= 599
         ? { kind: 'server', status: raw.status }

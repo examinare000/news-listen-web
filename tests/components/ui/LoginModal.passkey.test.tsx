@@ -40,7 +40,7 @@ describe('LoginModal — Passkey ボタン', () => {
   })
 
   test('ボタンをクリックすると loginWithPasskey が呼ばれる', async () => {
-    mockLoginWithPasskey.mockResolvedValue(undefined)
+    mockLoginWithPasskey.mockResolvedValue({ ok: true, value: undefined })
     render(<LoginModal />)
 
     await userEvent.click(screen.getByRole('button', { name: /passkey でログイン/i }))
@@ -77,8 +77,7 @@ describe('LoginModal — Passkey ボタン', () => {
   })
 
   test('API エラー時は汎用失敗メッセージを表示する', async () => {
-    const { ApiError } = await import('@/lib/api')
-    mockLoginWithPasskey.mockRejectedValue(new ApiError(401, 'Authentication failed'))
+    mockLoginWithPasskey.mockResolvedValue({ ok: false, failure: { kind: 'unauthorized' } })
     render(<LoginModal />)
 
     await userEvent.click(screen.getByRole('button', { name: /passkey でログイン/i }))
@@ -89,7 +88,7 @@ describe('LoginModal — Passkey ボタン', () => {
   })
 
   test('既存のパスワードログインは引き続き機能する', async () => {
-    mockLogin.mockResolvedValue(undefined)
+    mockLogin.mockResolvedValue({ ok: true, value: undefined })
     render(<LoginModal />)
 
     await userEvent.type(screen.getByLabelText('ユーザーID'), 'alice')

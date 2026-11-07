@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthProvider'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { ApiError } from '@/lib/api'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { validatePassword } from '@/lib/account/domain/password'
 
 // WHY: backend の shared/username_policy 相当（招待コード新規登録）。normalize（trim+lowercase）
@@ -33,24 +33,20 @@ function passwordErrorMessage(password: string): string | null {
   }
 }
 
-function mapRegisterError(err: unknown): string {
-  if (err instanceof ApiError) {
-    switch (err.status) {
-      case 400:
-        return '招待コードが無効または期限切れです'
-      case 409:
-        return 'このユーザーIDは使用できません'
-      case 403:
-        return '現在、新規登録は受け付けていません'
-      case 429:
-        return '試行回数が上限に達しました。しばらくしてからお試しください'
-      case 422:
-        return err.detail || '入力内容をご確認ください'
-      default:
-        return '登録に失敗しました'
-    }
+function mapRegisterError(failure: ApiFailure): string {
+  switch (failure.kind) {
+    case 'validation':
+      if (failure.reason === 'rule') return '招待コードが無効または期限切れです'
+      return failure.detail || '入力内容をご確認ください'
+    case 'conflict':
+      return 'このユーザーIDは使用できません'
+    case 'forbidden':
+      return '現在、新規登録は受け付けていません'
+    case 'rate_limited':
+      return '試行回数が上限に達しました。しばらくしてからお試しください'
+    default:
+      return '登録に失敗しました'
   }
-  return '登録に失敗しました'
 }
 
 function SignupForm() {
@@ -111,16 +107,22 @@ function SignupForm() {
     setSubmitting(true)
     try {
       justRegisteredRef.current = true
-      await register({
+      const result = await register({
         invite_code: inviteCode.trim() || undefined,
         username: normalizedUsername,
         password,
         display_name: displayName.trim() || undefined,
       })
+      if (!result.ok) {
+        justRegisteredRef.current = false
+        setSubmitError(mapRegisterError(result.failure))
+        setSubmitting(false)
+        return
+      }
       router.replace('/')
-    } catch (err) {
+    } catch {
       justRegisteredRef.current = false
-      setSubmitError(mapRegisterError(err))
+      setSubmitError('登録に失敗しました')
       setSubmitting(false)
     }
   }

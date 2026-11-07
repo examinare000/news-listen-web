@@ -2,7 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import {
+  createFeaturedSite,
+  deleteFeaturedSite,
+  listFeaturedSites,
+  updateFeaturedSite,
+} from '@/lib/admin/infrastructure/api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AdminGate } from '@/components/AdminGate'
 import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, normalizeFeaturedCategory } from '@/lib/featuredCategories'
@@ -20,7 +26,7 @@ export default function AdminFeaturedSitesPage() {
 }
 
 function AdminFeaturedSitesPanel() {
-  const client = createApiClient()
+  const gateway = useApiClient()
 
   const [sites, setSites] = useState<FeaturedSource[]>([])
   const [loadError, setLoadError] = useState('')
@@ -58,15 +64,19 @@ function AdminFeaturedSitesPanel() {
   const reload = useCallback(async () => {
     setListLoading(true)
     try {
-      const res = await client.listFeaturedSites()
-      setSites(res.sites)
+      const result = await listFeaturedSites(gateway)
+      if (!result.ok) {
+        setLoadError('一覧の取得に失敗しました')
+        return
+      }
+      setSites(result.value.sites)
       setLoadError('')
     } catch {
       setLoadError('一覧の取得に失敗しました')
     } finally {
       setListLoading(false)
     }
-  }, [])
+  }, [gateway])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -83,7 +93,7 @@ function AdminFeaturedSitesPanel() {
     }
     try {
       const nextOrder = sites.length === 0 ? 0 : Math.max(...sites.map((s) => s.order)) + 1
-      await client.createFeaturedSite({
+      const result = await createFeaturedSite(gateway, {
         name: newName,
         url: newUrl,
         thumbnail_url: newThumbnail || undefined,
@@ -91,6 +101,10 @@ function AdminFeaturedSitesPanel() {
         category: newCategory,
         order: nextOrder,
       })
+      if (!result.ok) {
+        setFormError('サイト作成に失敗しました')
+        return
+      }
       setNewName('')
       setNewUrl('')
       setNewThumbnail('')
@@ -133,7 +147,7 @@ function AdminFeaturedSitesPanel() {
       // PUT は全置換のため、表示順（order）を送らないと既定値 0 で上書きされてしまう。
       // 編集フォームは order を扱わないので、既存の値をそのまま引き継いで送る。
       const currentOrder = sites.find((s) => s.id === id)?.order ?? 0
-      await client.updateFeaturedSite(id, {
+      const result = await updateFeaturedSite(gateway, id, {
         name: editName,
         url: editUrl,
         thumbnail_url: editThumbnail || undefined,
@@ -141,6 +155,10 @@ function AdminFeaturedSitesPanel() {
         category: editCategory,
         order: currentOrder,
       })
+      if (!result.ok) {
+        setEditError('サイト更新に失敗しました')
+        return
+      }
       handleEditCancel()
       await reload()
     } catch {
@@ -167,7 +185,7 @@ function AdminFeaturedSitesPanel() {
       for (let i = 0; i < reordered.length; i++) {
         const site = reordered[i]
         if (site.order !== i) {
-          await client.updateFeaturedSite(site.id, {
+          const result = await updateFeaturedSite(gateway, site.id, {
             name: site.name,
             url: site.url,
             thumbnail_url: site.thumbnail_url || undefined,
@@ -175,6 +193,10 @@ function AdminFeaturedSitesPanel() {
             category: normalizeFeaturedCategory(site.category),
             order: i,
           })
+          if (!result.ok) {
+            failed = true
+            break
+          }
         }
       }
     } catch {
@@ -201,7 +223,11 @@ function AdminFeaturedSitesPanel() {
   async function handleDeleteConfirm(id: string) {
     if (controlsDisabled) return
     try {
-      await client.deleteFeaturedSite(id)
+      const result = await deleteFeaturedSite(gateway, id)
+      if (!result.ok) {
+        setLoadError('サイトの削除に失敗しました')
+        return
+      }
       handleDeleteCancel()
       await reload()
     } catch {

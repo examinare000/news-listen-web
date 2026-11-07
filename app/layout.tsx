@@ -3,7 +3,6 @@ import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import { AuthProvider } from '@/contexts/AuthProvider'
-import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { PlaybackProvider } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 import { PlaybackErrorToaster } from '@/components/PlaybackToasts'
@@ -85,16 +84,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <PreferencesProvider>
           <AuthProvider>
             <ToastProvider>
-              <ApiClientProvider>
-                <PlaybackProvider>
-                  {/* 可視シェル（サイドバー＋プレイヤーバー）は app/(app)/layout.tsx へ移譲。
-                      shell-less なランディングページ（/ 配下）を後で追加できるようにするため */}
-                  {children}
-                  <PlaybackErrorToaster />
-                  <PushRegistrar />
-                  <ClientErrorReporter />
-                </PlaybackProvider>
-              </ApiClientProvider>
+              <PlaybackProvider>
+                {/* 可視シェル（サイドバー＋プレイヤーバー）は app/(app)/layout.tsx へ移譲。
+                    shell-less なランディングページ（/ 配下）を後で追加できるようにするため */}
+                {children}
+                <PlaybackErrorToaster />
+                <PushRegistrar />
+                <ClientErrorReporter />
+              </PlaybackProvider>
             </ToastProvider>
           </AuthProvider>
         </PreferencesProvider>

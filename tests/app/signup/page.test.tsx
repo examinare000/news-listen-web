@@ -3,7 +3,6 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import SignupPage from '@/app/signup/page'
-import { ApiError } from '@/lib/api'
 
 const mockReplace = vi.fn()
 const register = vi.fn()
@@ -118,7 +117,7 @@ describe('SignupPage — client-side validation', () => {
     ['12 characters', 'Abcd12345678'],
     ['20 characters', 'Abcdefghij1234567890'],
   ])('registers when the password is %s with 3 classes (boundary)', async (_label, password) => {
-    register.mockResolvedValue(undefined)
+    register.mockResolvedValue({ ok: true, value: undefined })
     const user = userEvent.setup()
     render(<SignupPage />)
 
@@ -154,7 +153,7 @@ describe('SignupPage — client-side validation', () => {
 
 describe('SignupPage — submit success', () => {
   test('calls register with the form values and replaces to "/"', async () => {
-    register.mockResolvedValue(undefined)
+    register.mockResolvedValue({ ok: true, value: undefined })
     const user = userEvent.setup()
     const { useSearchParams } = await import('next/navigation')
     vi.mocked(useSearchParams).mockReturnValue(new URLSearchParams('invite=E2ECODE') as unknown as ReturnType<typeof useSearchParams>)
@@ -181,7 +180,7 @@ describe('SignupPage — submit success', () => {
   // 済みなら /feed へ」効果とレースし、root gate（オンボーディング判定）を素通りして直接
   // /feed へ飛んでしまうバグが実ブラウザ（Playwright）で発現した。
   test('does NOT also replace to "/feed" (would bypass the root onboarding gate)', async () => {
-    register.mockResolvedValue(undefined)
+    register.mockResolvedValue({ ok: true, value: undefined })
     const user = userEvent.setup()
 
     render(<SignupPage />)
@@ -195,12 +194,16 @@ describe('SignupPage — submit success', () => {
 
 describe('SignupPage — server error mapping', () => {
   test.each([
-    [400, '招待コードが無効または期限切れです'],
-    [409, 'このユーザーIDは使用できません'],
-    [403, '現在、新規登録は受け付けていません'],
-    [429, '試行回数が上限に達しました。しばらくしてからお試しください'],
-  ])('maps %i to the expected message', async (status, expected) => {
-    register.mockRejectedValue(new ApiError(status, 'server detail'))
+    [400, { kind: 'validation', detail: 'server detail', reason: 'rule' }, '招待コードが無効または期限切れです'],
+    [409, { kind: 'conflict' }, 'このユーザーIDは使用できません'],
+    [403, { kind: 'forbidden' }, '現在、新規登録は受け付けていません'],
+    [
+      429,
+      { kind: 'rate_limited', retryAfterSeconds: undefined, scope: 'unknown', detail: 'server detail' },
+      '試行回数が上限に達しました。しばらくしてからお試しください',
+    ],
+  ])('maps %i to the expected message', async (_status, failure, expected) => {
+    register.mockResolvedValue({ ok: false, failure })
     const user = userEvent.setup()
     render(<SignupPage />)
     await fillValidForm(user)
@@ -210,7 +213,10 @@ describe('SignupPage — server error mapping', () => {
   })
 
   test('422 shows the server-provided validation detail', async () => {
-    register.mockRejectedValue(new ApiError(422, 'password must not contain the username'))
+    register.mockResolvedValue({
+      ok: false,
+      failure: { kind: 'validation', detail: 'password must not contain the username', reason: 'schema' },
+    })
     const user = userEvent.setup()
     render(<SignupPage />)
     await fillValidForm(user)

@@ -3,22 +3,22 @@ import type {
   Podcast,
   QuizAnswerResponse,
 } from '@/types/index'
-import { request } from '@/lib/api/legacyRequest'
+import type { ApiGateway } from '@/lib/api/gateway'
 
-export function getPodcasts() {
-  return request<PodcastsResponse>('/api/backend/podcasts', { method: 'GET' })
+export function getPodcasts(gateway: ApiGateway) {
+  return gateway.request<PodcastsResponse>('/api/backend/podcasts', { method: 'GET' })
 }
 
-export function getPodcast(id: string) {
-  return request<Podcast>(`/api/backend/podcasts/${id}`, { method: 'GET' })
+export function getPodcast(gateway: ApiGateway, id: string) {
+  return gateway.request<Podcast>(`/api/backend/podcasts/${id}`, { method: 'GET' })
 }
 
-export function updatePosition(id: string, positionSeconds: number) {
-  return request<Podcast>(
+export function updatePosition(gateway: ApiGateway, id: string, positionSeconds: number) {
+  return gateway.request<Podcast>(
     `/api/backend/podcasts/${id}/position`,
     {
       method: 'PATCH',
-      body: JSON.stringify({ position_seconds: positionSeconds }),
+      body: { position_seconds: positionSeconds },
     },
   )
 }
@@ -28,8 +28,8 @@ export function updatePosition(id: string, positionSeconds: number) {
  * サーバ側で first-write-wins のため、呼び出し側は fire-and-forget（失敗握りつぶし）でよい。
  * updatePosition の鏡像だが、責務が別（同期 vs イベント）のため専用エンドポイントに分離する。
  */
-export function markCompleted(id: string) {
-  return request<Podcast>(
+export function markCompleted(gateway: ApiGateway, id: string) {
+  return gateway.request<Podcast>(
     `/api/backend/podcasts/${id}/completed`,
     { method: 'POST' },
   )
@@ -40,12 +40,12 @@ export function markCompleted(id: string) {
  * answers は各設問で選んだ option の添字（設問順）。正解キーはクライアントに一切渡らず、
  * このレスポンスの results[].correct_index で採点後にのみ開示される。
  */
-export function submitQuizAnswers(podcastId: string, answers: number[]) {
-  return request<QuizAnswerResponse>(
+export function submitQuizAnswers(gateway: ApiGateway, podcastId: string, answers: number[]) {
+  return gateway.request<QuizAnswerResponse>(
     `/api/backend/podcasts/${podcastId}/quiz-answers`,
     {
       method: 'POST',
-      body: JSON.stringify({ answers }),
+      body: { answers },
     },
   )
 }

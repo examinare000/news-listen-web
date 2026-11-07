@@ -1,16 +1,17 @@
 import type { PushBrowserPort } from '@/lib/pushBrowserPort'
 import { urlBase64ToUint8Array } from '@/lib/webpush'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
+import type { Result } from '@/lib/shared/result'
 import type { PushSubscriptionJSON } from '@/types/index'
 
 /**
- * pushRegistration が依存する API クライアントの最小形。
- * createApiClient() の戻り値はこれより広いので、呼び出し側で渡すときは
- * 必要な 3 メソッドだけを満たせばよい。
+ * pushRegistration が依存する API クライアントの最小形。各メソッドは throw せず Result を返す。
+ * 呼び出し側は必要な 3 メソッドだけを gateway に束縛して渡す。
  */
 export interface PushRegistrationApiClient {
-  getVapidPublicKey(): Promise<{ readonly public_key: string }>
-  subscribePush(subscription: PushSubscriptionJSON): Promise<unknown>
-  unsubscribePush(endpoint: string): Promise<unknown>
+  getVapidPublicKey(): Promise<Result<{ readonly public_key: string }, ApiFailure>>
+  subscribePush(subscription: PushSubscriptionJSON): Promise<Result<unknown, ApiFailure>>
+  unsubscribePush(endpoint: string): Promise<Result<unknown, ApiFailure>>
 }
 
 export type PushResolveResult = 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | 'error'
@@ -27,7 +28,7 @@ export interface PushRegistration {
   /** 既存購読があるときだけサーバへ再送する。無ければ何もしない */
   reregister(): Promise<void>
   /** サーバ行だけ削除する。端末側の購読は残す（主体離脱用） */
-  detachFromSubject(): Promise<void>
+  detachFromSubject(): Promise<Result<void, ApiFailure>>
 }
 
 interface CreatePushRegistrationDeps {
@@ -59,11 +60,13 @@ export function createPushRegistration({ port, client }: CreatePushRegistrationD
 
       await port.registerServiceWorker('/sw.js')
 
-      const { public_key } = await client.getVapidPublicKey()
-      const applicationServerKey = urlBase64ToUint8Array(public_key)
+      const vapid = await client.getVapidPublicKey()
+      if (!vapid.ok) return 'error'
+      const applicationServerKey = urlBase64ToUint8Array(vapid.value.public_key)
 
       const subscription = await port.subscribe({ applicationServerKey })
-      await client.subscribePush(subscription)
+      const subscribed = await client.subscribePush(subscription)
+      if (!subscribed.ok) return 'error'
 
       return 'subscribed'
     } catch {
@@ -77,7 +80,8 @@ export function createPushRegistration({ port, client }: CreatePushRegistrationD
       if (!existing) return 'unsubscribed'
 
       await port.unsubscribe(existing.endpoint)
-      await client.unsubscribePush(existing.endpoint)
+      const removed = await client.unsubscribePush(existing.endpoint)
+      if (!removed.ok) return 'error'
 
       return 'unsubscribed'
     } catch {
@@ -97,11 +101,12 @@ export function createPushRegistration({ port, client }: CreatePushRegistrationD
     }
   }
 
-  async function detachFromSubject(): Promise<void> {
-    if (!port.isSupported()) return
+  async function detachFromSubject(): Promise<Result<void, ApiFailure>> {
+    if (!port.isSupported()) return { ok: true, value: undefined }
     const existing = await port.getExistingSubscription()
-    if (!existing) return
-    await client.unsubscribePush(existing.endpoint)
+    if (!existing) return { ok: true, value: undefined }
+    const removed = await client.unsubscribePush(existing.endpoint)
+    return removed.ok ? { ok: true, value: undefined } : removed
   }
 
   return { resolve, subscribe, unsubscribe, reregister, detachFromSubject }

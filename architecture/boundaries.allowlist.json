@@ -212,35 +212,35 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/admin/featured-sites/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/admin/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/admin/invites/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/admin/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/admin/metrics/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/admin/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/admin/users/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/admin/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/dashboard/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/learning/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
   },
@@ -254,7 +254,7 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/feed/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-03"
   },
@@ -268,7 +268,7 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-02"
   },
@@ -282,6 +282,13 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/podcast/[id]/page.tsx",
+    "specifier": "@/lib/learning/infrastructure/api",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-01"
+  },
+  {
+    "rule": "web-dep-05",
+    "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/lib/sfx",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
@@ -289,7 +296,7 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/podcast/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-02"
   },
@@ -303,21 +310,35 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-prefs-01"
+  },
+  {
+    "rule": "web-dep-05",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/lib/learning/infrastructure/api",
+    "introducedBy": "web-slice-skeleton-01",
+    "removeBy": "web-slice-learning-03"
+  },
+  {
+    "rule": "web-dep-05",
+    "file": "app/(app)/settings/page.tsx",
+    "specifier": "@/lib/preferences/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-prefs-01"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/subscriptions/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-04"
   },
   {
     "rule": "web-dep-05",
     "file": "app/(app)/vocabulary-test/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/learning/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-02"
   },
@@ -338,16 +359,9 @@
   {
     "rule": "web-dep-05",
     "file": "app/page.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-04"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/signup/page.tsx",
-    "specifier": "@/lib/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-account-01"
   },
   {
     "rule": "web-dep-05",
@@ -373,7 +387,7 @@
   {
     "rule": "web-dep-05",
     "file": "components/ui/AccountSection.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/account/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
   },
@@ -387,13 +401,6 @@
   {
     "rule": "web-dep-05",
     "file": "components/ui/LoginModal.tsx",
-    "specifier": "@/lib/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-account-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "components/ui/LoginModal.tsx",
     "specifier": "@/lib/webauthnBrowserPort",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
@@ -401,14 +408,14 @@
   {
     "rule": "web-dep-05",
     "file": "components/ui/OnboardingSourcesModal.tsx",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/catalog/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-catalog-04"
   },
   {
     "rule": "web-dep-05",
     "file": "hooks/useWebPushSubscription.ts",
-    "specifier": "@/lib/api",
+    "specifier": "@/lib/notifications/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-notify-01"
   },
@@ -425,69 +432,6 @@
     "specifier": "@/lib/cookie",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-notify-01"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "app/(app)/admin/metrics/page.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "app/(app)/feed/page.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "app/(app)/podcast/[id]/page.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "app/(app)/subscriptions/page.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "components/ui/AccountSection.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "components/ui/LoginModal.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "components/ui/OnboardingSourcesModal.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
-  },
-  {
-    "rule": "web-dep-08",
-    "file": "contexts/AuthProvider.tsx",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-06"
   },
   {
     "rule": "web-dep-08",
