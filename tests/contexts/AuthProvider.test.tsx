@@ -76,9 +76,8 @@ function Consumer() {
       <button onClick={() => doLogout()}>logout</button>
       <button
         onClick={() => {
-          // register は失敗時に ApiError を throw する契約（呼び出し側で文言表示）。
-          // ここではその契約どおり呼び出し側（Consumer）で捕捉し、テストの
-          // unhandled rejection を防ぐ。
+          // register は API の失敗を ok: false の Result で返す（呼び出し側で文言表示）。
+          // それ以外の想定外の reject でテストが unhandled rejection にならないよう、ここで捕捉する。
           doRegister({ username: 'newbie', password: 'Sup3r-Secret!!' }).catch(() => {})
         }}
       >
@@ -235,10 +234,10 @@ describe('register', () => {
 // web-dec-67・68 / shared-leave-03: getMe の失敗は 401 だけが未認証。それ以外は unavailable で、cleanup もしない。
 describe('起動時の getMe 失敗の分類 (verifies: web-contract-18, shared-leave-03)', () => {
   test.each<[string, Result<unknown, ApiFailure> | (() => Promise<Result<unknown, ApiFailure>>), string]>([
-    ['ApiError(0)（network・timeout）', { ok: false, failure: { kind: 'network' } }, 'network'],
-    ['ApiError(503)（server）', { ok: false, failure: { kind: 'server', status: 503 } }, 'server'],
-    ['TypeError（ApiError 以外）', () => Promise.reject(new TypeError('boom')), 'unknown'],
-    ['ApiError(404)（401 以外の 4xx）', { ok: false, failure: { kind: 'not_found' } }, 'unknown'],
+    ['status 0（network・timeout）', { ok: false, failure: { kind: 'network' } }, 'network'],
+    ['status 503（server）', { ok: false, failure: { kind: 'server', status: 503 } }, 'server'],
+    ['TypeError（想定外の例外）', () => Promise.reject(new TypeError('boom')), 'unknown'],
+    ['status 404（401 以外の 4xx）', { ok: false, failure: { kind: 'not_found' } }, 'unknown'],
   ])('shared-leave-03: %s は unavailable（reason=%s）で、anonymous にも cleanup にもしない', async (_label, outcome, reason) => {
     gw.respondWith('GET', ME_PATH, typeof outcome === 'function' ? outcome : () => Promise.resolve(outcome))
     renderAuth()

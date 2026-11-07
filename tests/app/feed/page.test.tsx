@@ -270,7 +270,7 @@ describe('FeedPage — Star', () => {
     })
   })
 
-  test('Given star throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+  test('Given star throws an unexpected exception (e.g. TypeError), shows generic error toast (#85)', async () => {
     gw.respond('GET', FEED_PATH, { ok: true, value: { articles: SAMPLE_ARTICLES, date: '2026-06-10' } })
     gw.respondWith('POST', starPath('a1'), () => Promise.reject(new TypeError('Cannot read property of undefined')))
 
@@ -328,7 +328,7 @@ describe('FeedPage — Dismiss', () => {
     })
   })
 
-  test('Given dismiss throws a non-ApiError exception (e.g. TypeError), shows generic error toast (#85)', async () => {
+  test('Given dismiss throws an unexpected exception (e.g. TypeError), shows generic error toast (#85)', async () => {
     gw.respond('GET', FEED_PATH, { ok: true, value: { articles: SAMPLE_ARTICLES, date: '2026-06-10' } })
     gw.respondWith('POST', dismissPath('a1'), () => Promise.reject(new TypeError('Cannot read property of undefined')))
 

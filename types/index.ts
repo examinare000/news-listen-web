@@ -18,7 +18,7 @@ export interface Article {
   score: number
   published_at: string
   // Star 状態のサーバ側真実（issue #84）。旧 backend 応答は未送信のため optional
-  // で後方互換を保つ（lib/api.ts の retryAfterSeconds/remaining と同方針）。
+  // で後方互換を保つ（retryAfterSeconds/remaining と同方針）。
   is_starred?: boolean
 }
 
@@ -449,7 +449,7 @@ export interface WeeklyStarMetrics {
 
 /** GET /admin/metrics のレスポンス（metricsDaily/{date} 1 件分・匿名集計のみ・ラッパー無しで
  *  直接返る・ADR-075 §5）。指定日（省略時は当日 Asia/Tokyo）のスナップショット未生成時は
- *  404（呼び出し側で ApiError.status===404 を「集計データ未蓄積」として扱う・ADR-075 §6）。 */
+ *  404（呼び出し側で kind === 'not_found' の失敗を「集計データ未蓄積」として扱う・ADR-075 §6）。 */
 export interface MetricsSnapshot {
   date: string
   d7: RetentionCohortMetric

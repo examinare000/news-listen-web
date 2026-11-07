@@ -1,223 +1,255 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { createApiClient, ApiError } from '@/lib/api'
+import {
+  changePassword,
+  deleteAccount,
+  getMe,
+  login,
+  logout,
+  register,
+  updateProfile,
+} from '@/lib/api/auth'
+import { createUser, deleteUser, listUsers, updateUser } from '@/lib/api/admin'
+import { createGateway } from '@/lib/api/gateway'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
 
-function makeClient() {
-  return createApiClient()
-}
-
-function mockFetchOk(body: unknown, status = 200) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
+function mockFetchResponse(status: number, body?: unknown) {
+  const fetchMock = vi.fn().mockResolvedValue(
+    new Response(body === undefined ? null : JSON.stringify(body), {
       status,
-      json: () => Promise.resolve(body),
-      text: () => Promise.resolve(JSON.stringify(body)),
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     }),
   )
-}
-
-function mockFetchError(status: number, detail: string) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: false,
-      status,
-      json: () => Promise.resolve({ detail }),
-      text: () => Promise.resolve(JSON.stringify({ detail })),
-    }),
-  )
-}
-
-// 204 No Content: バックエンドは body を返さない。json() を呼ぶと実際の fetch では
-// SyntaxError になるため、json() が呼ばれていないことをこの reject で立証する。
-function mockFetchNoContent() {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 204,
-      json: () => Promise.reject(new Error('must not parse JSON body on 204 No Content')),
-      text: () => Promise.resolve(''),
-    }),
-  )
+  vi.stubGlobal('fetch', fetchMock)
+  return fetchMock
 }
 
 beforeEach(() => {
   vi.restoreAllMocks()
 })
 
-function lastCall() {
-  const [path, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-  return { path, init }
-}
-
 describe('login', () => {
+  // credentials は gateway の責務だが、名前が主張するので実 gateway で保つ。
   test('POSTs credentials to /api/backend/auth/login with credentials included', async () => {
-    mockFetchOk({ token: 't', user: { username: 'alice', role: 'user', display_name: 'Alice' } })
-    const res = await makeClient().login('alice', 'pw')
+    const loginResponse = { token: 't', user: { username: 'alice', role: 'user', display_name: 'Alice' } }
+    const fetchMock = mockFetchResponse(200, loginResponse)
 
-    const { path, init } = lastCall()
+    const res = await login(createGateway(), 'alice', 'pw')
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(path).toBe('/api/backend/auth/login')
     expect(init.method).toBe('POST')
     expect(JSON.parse(init.body as string)).toEqual({ username: 'alice', password: 'pw' })
     // セッション Cookie 送受信のため credentials: 'include'
     expect(init.credentials).toBe('include')
-    expect(res.user.username).toBe('alice')
+    expect(res).toEqual({ ok: true, value: loginResponse })
   })
 
-  test('throws ApiError on 401', async () => {
-    mockFetchError(401, 'Invalid username or password')
-    await expect(makeClient().login('x', 'y')).rejects.toBeInstanceOf(ApiError)
+  test('returns a unauthorized failure on 401', async () => {
+    const gw = createGatewayDouble()
+    gw.respond('POST', '/api/backend/auth/login', { ok: false, failure: { kind: 'unauthorized' } })
+
+    const res = await login(gw, 'x', 'y')
+
+    expect(res).toEqual({ ok: false, failure: { kind: 'unauthorized' } })
   })
 })
 
 describe('getMe', () => {
   test('GETs /api/backend/auth/me', async () => {
-    mockFetchOk({ username: 'alice', role: 'admin', display_name: 'Alice' })
-    const me = await makeClient().getMe()
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/auth/me')
-    expect(init.method).toBe('GET')
-    expect(me.role).toBe('admin')
+    const gw = createGatewayDouble()
+    const me = { username: 'alice', role: 'admin', display_name: 'Alice' }
+    gw.respond('GET', '/api/backend/auth/me', { ok: true, value: me })
+
+    const res = await getMe(gw)
+
+    expect(gw.calls).toEqual([{ method: 'GET', path: '/api/backend/auth/me', body: undefined }])
+    expect(res).toEqual({ ok: true, value: me })
   })
 })
 
 describe('logout', () => {
   test('POSTs /api/backend/auth/logout', async () => {
-    mockFetchOk({ status: 'ok' })
-    await makeClient().logout()
-    expect(lastCall().path).toBe('/api/backend/auth/logout')
-    expect(lastCall().init.method).toBe('POST')
+    const gw = createGatewayDouble()
+    gw.respond('POST', '/api/backend/auth/logout', { ok: true, value: { status: 'ok' } })
+
+    const res = await logout(gw)
+
+    expect(gw.calls).toEqual([{ method: 'POST', path: '/api/backend/auth/logout', body: undefined }])
+    expect(res).toEqual({ ok: true, value: { status: 'ok' } })
   })
 })
 
 describe('updateProfile / changePassword', () => {
   test('updateProfile PATCHes display_name', async () => {
-    mockFetchOk({ username: 'alice', role: 'user', display_name: 'New' })
-    await makeClient().updateProfile('New')
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/auth/me')
-    expect(init.method).toBe('PATCH')
-    expect(JSON.parse(init.body as string)).toEqual({ display_name: 'New' })
+    const gw = createGatewayDouble()
+    const updated = { username: 'alice', role: 'user', display_name: 'New' }
+    gw.respond('PATCH', '/api/backend/auth/me', { ok: true, value: updated })
+
+    const res = await updateProfile(gw, 'New')
+
+    expect(gw.calls).toEqual([{ method: 'PATCH', path: '/api/backend/auth/me', body: { display_name: 'New' } }])
+    expect(res).toEqual({ ok: true, value: updated })
   })
 
   test('changePassword POSTs current/new passwords', async () => {
-    mockFetchOk({ status: 'ok' })
-    await makeClient().changePassword('old', 'new-password')
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/auth/password')
-    expect(JSON.parse(init.body as string)).toEqual({
-      current_password: 'old',
-      new_password: 'new-password',
-    })
+    const gw = createGatewayDouble()
+    gw.respond('POST', '/api/backend/auth/password', { ok: true, value: { status: 'ok' } })
+
+    const res = await changePassword(gw, 'old', 'new-password')
+
+    expect(gw.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/api/backend/auth/password',
+        body: { current_password: 'old', new_password: 'new-password' },
+      },
+    ])
+    expect(res).toEqual({ ok: true, value: { status: 'ok' } })
   })
 })
 
 describe('deleteAccount', () => {
   test('DELETEs /api/backend/auth/me with current_password body', async () => {
-    mockFetchNoContent()
-    await makeClient().deleteAccount('current-pw')
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/auth/me')
-    expect(init.method).toBe('DELETE')
-    expect(JSON.parse(init.body as string)).toEqual({ current_password: 'current-pw' })
+    const gw = createGatewayDouble()
+    gw.respond('DELETE', '/api/backend/auth/me', { ok: true, value: undefined })
+
+    const res = await deleteAccount(gw, 'current-pw')
+
+    expect(gw.calls).toEqual([
+      { method: 'DELETE', path: '/api/backend/auth/me', body: { current_password: 'current-pw' } },
+    ])
+    expect(res).toEqual({ ok: true, value: undefined })
   })
 
+  // noContent は double に記録されないので、204 を成功にする経路は実 gateway で保つ。
   test('resolves without parsing a body on 204 No Content', async () => {
-    mockFetchNoContent()
-    await expect(makeClient().deleteAccount('current-pw')).resolves.toBeUndefined()
+    mockFetchResponse(204)
+
+    const res = await deleteAccount(createGateway(), 'current-pw')
+
+    expect(res).toEqual({ ok: true, value: undefined })
   })
 
-  test('throws ApiError on 403 when the password is incorrect', async () => {
-    mockFetchError(403, 'Invalid password')
-    await expect(makeClient().deleteAccount('wrong')).rejects.toMatchObject({ status: 403 })
+  test('returns a forbidden failure on 403 when the password is incorrect', async () => {
+    const gw = createGatewayDouble()
+    gw.respond('DELETE', '/api/backend/auth/me', { ok: false, failure: { kind: 'forbidden' } })
+
+    const res = await deleteAccount(gw, 'wrong')
+
+    expect(res).toEqual({ ok: false, failure: { kind: 'forbidden' } })
   })
 
-  test('throws ApiError on 409 when deleting the last admin', async () => {
-    mockFetchError(409, 'Cannot delete the last admin account')
-    await expect(makeClient().deleteAccount('current-pw')).rejects.toMatchObject({ status: 409 })
+  test('returns a conflict failure on 409 when deleting the last admin', async () => {
+    const gw = createGatewayDouble()
+    gw.respond('DELETE', '/api/backend/auth/me', { ok: false, failure: { kind: 'conflict' } })
+
+    const res = await deleteAccount(gw, 'current-pw')
+
+    expect(res).toEqual({ ok: false, failure: { kind: 'conflict' } })
   })
 })
 
 describe('register', () => {
   test('POSTs invite/username/password/display_name to /api/backend/auth/register with credentials included', async () => {
-    mockFetchOk({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'Newbie' } }, 201)
-    const res = await makeClient().register({
+    const registered = { token: 't', user: { username: 'newbie', role: 'user', display_name: 'Newbie' } }
+    const fetchMock = mockFetchResponse(201, registered)
+    const input = {
       invite_code: 'INV123',
       username: 'newbie',
       password: 'Sup3r-Secret!!',
       display_name: 'Newbie',
-    })
+    }
 
-    const { path, init } = lastCall()
+    const res = await register(createGateway(), input)
+
+    const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit]
     expect(path).toBe('/api/backend/auth/register')
     expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({
-      invite_code: 'INV123',
-      username: 'newbie',
-      password: 'Sup3r-Secret!!',
-      display_name: 'Newbie',
-    })
+    expect(JSON.parse(init.body as string)).toEqual(input)
     // セッション Cookie 送受信のため credentials: 'include'
     expect(init.credentials).toBe('include')
-    expect(res.user.username).toBe('newbie')
+    expect(res).toEqual({ ok: true, value: registered })
   })
 
   test('omits invite_code/display_name from body when not provided', async () => {
-    mockFetchOk({ token: 't', user: { username: 'newbie', role: 'user', display_name: 'newbie' } }, 201)
-    await makeClient().register({ username: 'newbie', password: 'Sup3r-Secret!!' })
-
-    const { init } = lastCall()
-    expect(JSON.parse(init.body as string)).toEqual({
-      username: 'newbie',
-      password: 'Sup3r-Secret!!',
+    const gw = createGatewayDouble()
+    gw.respond('POST', '/api/backend/auth/register', {
+      ok: true,
+      value: { token: 't', user: { username: 'newbie', role: 'user', display_name: 'newbie' } },
     })
+
+    await register(gw, { username: 'newbie', password: 'Sup3r-Secret!!' })
+
+    expect(gw.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/api/backend/auth/register',
+        body: { username: 'newbie', password: 'Sup3r-Secret!!' },
+      },
+    ])
   })
 
-  test('throws ApiError on 409 (username not available)', async () => {
-    mockFetchError(409, 'Username not available')
-    await expect(
-      makeClient().register({ username: 'taken', password: 'Sup3r-Secret!!' }),
-    ).rejects.toMatchObject({ status: 409 })
+  test('returns a conflict failure on 409 (username not available)', async () => {
+    const gw = createGatewayDouble()
+    gw.respond('POST', '/api/backend/auth/register', { ok: false, failure: { kind: 'conflict' } })
+
+    const res = await register(gw, { username: 'taken', password: 'Sup3r-Secret!!' })
+
+    expect(res).toEqual({ ok: false, failure: { kind: 'conflict' } })
   })
 
-  test('throws ApiError on 400 (invalid or expired invite)', async () => {
-    mockFetchError(400, 'Invalid or expired invite')
-    await expect(
-      makeClient().register({ invite_code: 'BAD', username: 'newbie', password: 'Sup3r-Secret!!' }),
-    ).rejects.toMatchObject({ status: 400 })
+  test('returns a validation failure on 400 (invalid or expired invite)', async () => {
+    const gw = createGatewayDouble()
+    const failure = { kind: 'validation', reason: 'rule', detail: 'Invalid or expired invite' } as const
+    gw.respond('POST', '/api/backend/auth/register', { ok: false, failure })
+
+    const res = await register(gw, { invite_code: 'BAD', username: 'newbie', password: 'Sup3r-Secret!!' })
+
+    expect(res).toEqual({ ok: false, failure })
   })
 })
 
 describe('admin user management', () => {
   test('listUsers GETs /api/backend/admin/users', async () => {
-    mockFetchOk({ users: [] })
-    await makeClient().listUsers()
-    expect(lastCall().path).toBe('/api/backend/admin/users')
+    const gw = createGatewayDouble()
+    gw.respond('GET', '/api/backend/admin/users', { ok: true, value: { users: [] } })
+
+    const res = await listUsers(gw)
+
+    expect(gw.calls).toEqual([{ method: 'GET', path: '/api/backend/admin/users', body: undefined }])
+    expect(res).toEqual({ ok: true, value: { users: [] } })
   })
 
   test('createUser POSTs to /api/backend/admin/users', async () => {
-    mockFetchOk({ username: 'carol', role: 'user', display_name: 'carol' })
-    await makeClient().createUser({ username: 'carol', password: 'carol-pass', role: 'user' })
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/users')
-    expect(init.method).toBe('POST')
+    const gw = createGatewayDouble()
+    const input = { username: 'carol', password: 'carol-pass', role: 'user' as const }
+    const created = { username: 'carol', role: 'user', display_name: 'carol' }
+    gw.respond('POST', '/api/backend/admin/users', { ok: true, value: created })
+
+    const res = await createUser(gw, input)
+
+    expect(gw.calls).toEqual([{ method: 'POST', path: '/api/backend/admin/users', body: input }])
+    expect(res).toEqual({ ok: true, value: created })
   })
 
   test('updateUser PATCHes the username-scoped path', async () => {
-    mockFetchOk({ username: 'bob', role: 'admin', display_name: 'Bob' })
-    await makeClient().updateUser('bob', { role: 'admin' })
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/users/bob')
-    expect(init.method).toBe('PATCH')
+    const gw = createGatewayDouble()
+    const updated = { username: 'bob', role: 'admin', display_name: 'Bob' }
+    gw.respond('PATCH', '/api/backend/admin/users/bob', { ok: true, value: updated })
+
+    const res = await updateUser(gw, 'bob', { role: 'admin' })
+
+    expect(gw.calls).toEqual([{ method: 'PATCH', path: '/api/backend/admin/users/bob', body: { role: 'admin' } }])
+    expect(res).toEqual({ ok: true, value: updated })
   })
 
   test('deleteUser DELETEs the username-scoped path', async () => {
-    mockFetchOk({ status: 'deleted', username: 'bob' })
-    await makeClient().deleteUser('bob')
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/users/bob')
-    expect(init.method).toBe('DELETE')
+    const gw = createGatewayDouble()
+    gw.respond('DELETE', '/api/backend/admin/users/bob', { ok: true, value: { status: 'deleted', username: 'bob' } })
+
+    const res = await deleteUser(gw, 'bob')
+
+    expect(gw.calls).toEqual([{ method: 'DELETE', path: '/api/backend/admin/users/bob', body: undefined }])
+    expect(res).toEqual({ ok: true, value: { status: 'deleted', username: 'bob' } })
   })
 })

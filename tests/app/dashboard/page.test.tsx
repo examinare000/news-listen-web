@@ -42,7 +42,7 @@ function respondDashboard(value: unknown) {
   gw.respond('GET', DASHBOARD_PATH, { ok: true, value })
 }
 
-// 呼出順に応答を返す。Error は非 ApiError の reject としてそのまま届ける
+// 呼出順に応答を返す。Error は Result でない reject（想定外の例外）としてそのまま届ける
 function respondDashboardInOrder(...outcomes: Array<Result<unknown, ApiFailure> | Error>) {
   gw.respondWith('GET', DASHBOARD_PATH, () => {
     const outcome = outcomes[callsTo('GET', DASHBOARD_PATH).length - 1]
