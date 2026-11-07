@@ -132,7 +132,13 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
   // この gateway を自身の呼出と ApiClientProvider の両方で使う（AuthProvider の内側の Provider は自分から読めない）。
   const [gateway] = useState(() => createGateway())
   const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
-  const dispatch = useCallback((event: AuthEvent) => setSession((s) => reduce(s, event)), [])
+  // 直前の状態を同期に読むため、state の値を ref にも持つ。dispatch の中で更新するので、再描画を待たずに同時の 2 件目が最新の値を見る。
+  const sessionRef = useRef<AuthSession>(session)
+  const dispatch = useCallback((event: AuthEvent) => {
+    const next = reduce(sessionRef.current, event)
+    sessionRef.current = next
+    setSession(next)
+  }, [])
 
   // 主体は session の外の ref で持つ: unavailable をまたいで A を保つ必要があり、session からは導けない（web-dec-80）。
   const lastSubjectRef = useRef<Subject | null>(
@@ -182,6 +188,28 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
     })()
   }, [currentUserId])
 
+  // 失効（unauthorized）の後始末。refreshMe の 401 と expire が共有する。
+  const cleanupAfterExpiry = useCallback(async (): Promise<RefreshMeResult> => {
+    const previous = lastSubjectRef.current
+    lastSubjectRef.current = null
+    const reclaiming = reclaimOnce()
+    let result: RefreshMeResult
+    if (previous !== null) {
+      // 実行中の 401 では音声を消さない（次回起動の回収が消す。web-dec-83）。
+      result = { cleanup: (await subjectCleanup(previous, { audio: false })).ok ? 'done' : 'incomplete' }
+    } else {
+      try {
+        await clearManagedServiceWorkerCaches()
+        result = { cleanup: 'done' }
+      } catch {
+        // キャッシュ消去の失敗は状態遷移を妨げない（observable な incomplete を返すのみ）。
+        result = { cleanup: 'incomplete' }
+      }
+    }
+    await reclaiming
+    return result
+  }, [reclaimOnce, subjectCleanup])
+
   const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
     const resolved = await resolveMe(gateway)
     if (!resolved.ok) {
@@ -191,31 +219,22 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
       // 通信断や 401 以外では shell-*/api-* を残す
       // （直前の状態は問わない — 初回 mount の自動解決でも同じ判定）。
       if (event.type !== 'unauthorized') return { cleanup: 'skipped' }
-      const previous = lastSubjectRef.current
-      lastSubjectRef.current = null
-      const reclaiming = reclaimOnce()
-      let result: RefreshMeResult
-      if (previous !== null) {
-        // 実行中の 401 では音声を消さない（次回起動の回収が消す。web-dec-83）。
-        result = { cleanup: (await subjectCleanup(previous, { audio: false })).ok ? 'done' : 'incomplete' }
-      } else {
-        try {
-          await clearManagedServiceWorkerCaches()
-          result = { cleanup: 'done' }
-        } catch {
-          // キャッシュ消去の失敗は状態遷移を妨げない（observable な incomplete を返すのみ）。
-          result = { cleanup: 'incomplete' }
-        }
-      }
-      await reclaiming
-      return result
+      return cleanupAfterExpiry()
     }
     const me = resolved.value
     lastSubjectRef.current = subjectOf(me.user_id)
     dispatch({ type: 'resolved', user: toSessionUser(me) })
     await reclaimOnce()
     return { cleanup: 'skipped' }
-  }, [gateway, dispatch, reclaimOnce, subjectCleanup])
+  }, [gateway, dispatch, reclaimOnce, cleanupAfterExpiry])
+
+  // Provider 経由の任意 API の unauthorized（ApiClientProvider）。authenticated のときだけ未認証へ移り、後始末を 1 回走らせる。
+  // それ以外の状態では何も動かさない（ログイン失敗の 401 など。shared-leave-05）。結果は捨てる。
+  const expire = useCallback(() => {
+    if (sessionRef.current.kind !== 'authenticated') return
+    dispatch({ type: 'expired' })
+    void cleanupAfterExpiry()
+  }, [dispatch, cleanupAfterExpiry])
 
   const retry = useCallback(async () => {
     dispatch({ type: 'retry' })
@@ -330,7 +349,7 @@ export function AuthProvider({ children, initialSession }: AuthProviderProps) {
         currentUserId,
       }}
     >
-      <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>
+      <ApiClientProvider gateway={gateway} onUnauthorized={expire}>{children}</ApiClientProvider>
     </AuthSessionContext.Provider>
   )
 }

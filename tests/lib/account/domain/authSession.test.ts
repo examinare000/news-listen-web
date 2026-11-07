@@ -1,7 +1,8 @@
 import { describe, test, expect } from 'vitest'
 import { reduce, type AuthEvent, type AuthSession } from '@/lib/account/domain/authSession'
 
-// 認証状態の遷移（web-contract-18 / web-dec-68）: 4 状態 × 6 事象 = 24 セル。次状態は事象だけで決まり、禁止セルはない。
+// 認証状態の遷移（web-contract-18 / web-dec-68）: expired を除く 6 事象は 4 状態 × 6 事象 = 24 セルで、次状態は事象だけで決まる。
+// 禁止セルはない。直前の状態に依る expired は別の describe で検証する。
 // React なしで検査する純関数。
 // RED 理由（実装前）: `@/lib/account/domain/authSession` が無い（module not found）。
 
@@ -56,6 +57,24 @@ describe('reduce: retry は何度送っても resolving (verifies: web-contract-
     const twice = reduce(once, { type: 'retry' })
     expect(once).toEqual({ kind: 'resolving' })
     expect(twice).toEqual({ kind: 'resolving' })
+  })
+})
+
+describe('reduce: 事象 expired は authenticated だけが anonymous になる (verifies: web-contract-18, shared-leave-05)', () => {
+  test('authenticated + expired → anonymous', () => {
+    expect(reduce({ kind: 'authenticated', user: alice }, { type: 'expired' })).toEqual({ kind: 'anonymous' })
+  })
+
+  test.each(STATES.filter(([name]) => name !== 'authenticated'))(
+    '%s + expired → 同じ値のまま（状態を動かさない）',
+    (_name, state) => {
+      expect(reduce(state, { type: 'expired' })).toBe(state)
+    },
+  )
+
+  test('anonymous になった後にもう一度 expired を送っても変化しない', () => {
+    const once = reduce({ kind: 'authenticated', user: alice }, { type: 'expired' })
+    expect(reduce(once, { type: 'expired' })).toBe(once)
   })
 })
 

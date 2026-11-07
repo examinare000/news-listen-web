@@ -5,6 +5,7 @@ import React, { useState } from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
+import { useApiClient } from '@/contexts/ApiClientProvider'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
@@ -29,7 +30,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 // mount 後の最初の確定事象が 401 のとき（起動時の 401）は回収が audio-v1* を全削除する。
 // C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api/gateway の
-// createGateway だけを gateway double に差し替え、実 ApiError・実 clearManagedServiceWorkerCaches を通す。
+// createGateway だけを gateway double に差し替え、実 clearManagedServiceWorkerCaches を通す。
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
@@ -43,7 +44,7 @@ function callsTo(method: string, path: string) {
 }
 
 // web-contract-18 の失効 cleanup の発火条件は 2026-09-17 の user 裁定で候補 (b) に確定した
-// （`err instanceof ApiError && err.status === 401` のときのみ発火。直前 status は問わない）。
+// （getMe が unauthorized の失敗を返したときのみ発火。直前の状態は問わない）。
 // 候補 (a)/(c) は再提案しない（棄却済み）。T-T15b/T-T15c/T-T15f は (b) の期待値で固定する。
 
 function Consumer() {
@@ -154,7 +155,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15b: shared-leave-03: does not clear any cache and stays unavailable (status unknown) when getMe rejects with a non-401 ApiError (network error) (verifies: web-contract-18-2, web-contract-18-4)', async () => {
+  test('T-T15b: shared-leave-03: does not clear any cache and stays unavailable (status unknown) when getMe rejects with a non-401 failure (network error) (verifies: web-contract-18-2, web-contract-18-4)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -172,7 +173,7 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     await expect(cacheStorage.has('api-v1')).resolves.toBe(true)
   })
 
-  test('T-T15c: clears shell-*/api-* and reclaims all audio-v1* on the initial mount auto-resolve when getMe rejects with ApiError(401) (verifies: web-contract-18-1, web-contract-18-2, shared-leave-08)', async () => {
+  test('T-T15c: clears shell-*/api-* and reclaims all audio-v1* on the initial mount auto-resolve when getMe rejects with an unauthorized (401) failure (verifies: web-contract-18-1, web-contract-18-2, shared-leave-08)', async () => {
     const cacheStorage = setupMockCaches()
     await cacheStorage.open('audio-v1')
     await cacheStorage.open('shell-pages-v1')
@@ -203,6 +204,148 @@ describe('AuthProvider failure cleanup (verifies: web-contract-18)', () => {
     expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
     // 1 回目の 401 が最初の確定事象なので回収が全削除する。2 回目は回収が走らず、何も変わらない
     await expect(cacheStorage.has('audio-v1')).resolves.toBe(false)
+  })
+})
+
+// Provider 経由の任意 API の unauthorized（ApiClientProvider の onUnauthorized → expire）。
+// 後始末の回数は clearManagedServiceWorkerCaches が 1 回につき 1 回呼ぶ caches.keys() の spy で数える。
+// 起動時の回収（reclaimOnce）が済んでから spy を仕掛ける。initialSession だと最初の expire() が回収を起動し
+// audio-v1-u-alice が消えるので、getMe 成功で起動する。
+describe('AuthProvider expire via ApiClientProvider (verifies: web-contract-18, shared-leave-05)', () => {
+  const ALICE_ME = { user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice' }
+  const OTHER_PATH = '/api/backend/podcasts'
+  const OTHER_PATH_2 = '/api/backend/feed'
+  const LOGIN_PATH = '/api/backend/auth/login'
+
+  function Prober() {
+    const { status, login } = useAuth()
+    const client = useApiClient()
+    const [loginFailure, setLoginFailure] = useState('')
+    return (
+      <div>
+        <span data-testid="status">{status}</span>
+        <span data-testid="login-result">{loginFailure}</span>
+        <button onClick={() => void client.request(OTHER_PATH)}>call-one</button>
+        <button
+          onClick={() => {
+            void client.request(OTHER_PATH)
+            void client.request(OTHER_PATH_2)
+          }}
+        >
+          call-two
+        </button>
+        <button
+          onClick={() => {
+            void login('alice', 'wrong').then((r) => setLoginFailure(r.ok ? 'ok' : r.failure.kind))
+          }}
+        >
+          login
+        </button>
+      </div>
+    )
+  }
+
+  function renderProber() {
+    return render(
+      <PreferencesProvider store={memoryStore()}>
+        <AuthProvider>
+          <Prober />
+        </AuthProvider>
+      </PreferencesProvider>,
+    )
+  }
+
+  async function startAuthenticated() {
+    const cacheStorage = setupMockCaches()
+    await cacheStorage.open('audio-v1')
+    await cacheStorage.open('audio-v1-u-alice')
+    await cacheStorage.open('shell-pages-v1')
+    await cacheStorage.open('api-v1')
+    gw.respond('GET', ME_PATH, { ok: true, value: ALICE_ME })
+    renderProber()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    // 起動時の回収（旧名 audio-v1 を消す）が終わってから始める
+    await waitFor(() => expect(cacheStorage.has('audio-v1')).resolves.toBe(false))
+    return cacheStorage
+  }
+
+  test('T-T15g: an unauthorized from any API through the Provider moves authenticated to unauthenticated and clears shell-*/api-* but keeps audio-v1-{userId} (verifies: web-contract-18, shared-leave-02, shared-leave-05)', async () => {
+    const cacheStorage = await startAuthenticated()
+    gw.respond('GET', OTHER_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+
+    await userEvent.click(screen.getByText('call-one'))
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    await waitFor(() => expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(false))
+    await expect(cacheStorage.has('api-v1')).resolves.toBe(false)
+    await expect(cacheStorage.has('audio-v1-u-alice')).resolves.toBe(true)
+  })
+
+  test('T-T15h: two simultaneous unauthorized responses run the cleanup exactly once (verifies: web-contract-18, shared-leave-05)', async () => {
+    const cacheStorage = await startAuthenticated()
+    const keys = vi.spyOn(cacheStorage, 'keys')
+    gw.respond('GET', OTHER_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('GET', OTHER_PATH_2, { ok: false, failure: { kind: 'unauthorized' } })
+
+    await userEvent.click(screen.getByText('call-two'))
+
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    await waitFor(() => expect(keys).toHaveBeenCalled())
+    // 後続の後始末が走る猶予を与えてから回数を確かめる
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(keys).toHaveBeenCalledTimes(1)
+  })
+
+  test('T-T15i: a login 401 while unauthenticated changes neither the state nor the cleanup (verifies: web-contract-18, shared-leave-05)', async () => {
+    const cacheStorage = setupMockCaches()
+    await cacheStorage.open('shell-pages-v1')
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    renderProber()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    // 起動時の 401 の後始末が済んでから spy を仕掛ける
+    await waitFor(() => expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(false))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    const keys = vi.spyOn(cacheStorage, 'keys')
+    gw.respond('POST', LOGIN_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(screen.getByTestId('login-result')).toHaveTextContent('unauthorized'))
+    expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated')
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(keys).not.toHaveBeenCalled()
+  })
+
+  test('T-T15j: an unauthorized while resolving or unavailable changes neither the state nor the cleanup (verifies: web-contract-18, shared-leave-05)', async () => {
+    const cacheStorage = setupMockCaches()
+    await cacheStorage.open('shell-pages-v1')
+    const keys = vi.spyOn(cacheStorage, 'keys')
+    let settleMe: (() => void) | undefined
+    gw.respondWith('GET', ME_PATH, () =>
+      new Promise((resolve) => {
+        settleMe = () => resolve({ ok: false, failure: { kind: 'network' } })
+      }),
+    )
+    gw.respond('GET', OTHER_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    renderProber()
+    await waitFor(() => expect(callsTo('GET', ME_PATH)).toHaveLength(1))
+
+    // resolving（getMe が未解決）
+    await userEvent.click(screen.getByText('call-one'))
+    await waitFor(() => expect(callsTo('GET', OTHER_PATH)).toHaveLength(1))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.getByTestId('status')).toHaveTextContent('unknown')
+    expect(keys).not.toHaveBeenCalled()
+
+    // unavailable（getMe が network で確定）
+    settleMe?.()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    await userEvent.click(screen.getByText('call-one'))
+    await waitFor(() => expect(callsTo('GET', OTHER_PATH)).toHaveLength(2))
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(screen.getByTestId('status')).toHaveTextContent('unknown')
+    expect(keys).not.toHaveBeenCalled()
+    await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(true)
   })
 })
 
