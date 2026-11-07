@@ -480,7 +480,21 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     allowed: only('lib/catalog/domain/generationWatch.ts'),
     patterns: [
       { label: 'POLL_TIMEOUT_MS', find: (ctx) => regexStarts(ctx.body, /\bPOLL_TIMEOUT_MS\b/) },
+      { label: 'GENERATION_WATCH_TIMEOUT_MS', find: (ctx) => regexStarts(ctx.body, /\bGENERATION_WATCH_TIMEOUT_MS\b/) },
       { label: "!== 'completed' && … === 'completed'", find: (ctx) => regexStarts(ctx.body, CT6_TRANSITION) },
+    ],
+  },
+  {
+    rule: 'web-rule-catalog-10',
+    allowed: only('lib/catalog/domain/episode.ts'),
+    patterns: [
+      {
+        label: "source_kind と 'featured' の比較",
+        find: (ctx) => [
+          ...regexStarts(ctx.body, /\bsource_kind\s*[!=]==\s*(['"])featured\1/),
+          ...regexStarts(ctx.body, /(['"])featured\1\s*[!=]==\s*[\w.?]*\bsource_kind\b/),
+        ],
+      },
     ],
   },
   {

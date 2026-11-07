@@ -1,5 +1,6 @@
 // @vitest-environment node
 // Catalog の生成関数と decodeEpisode の不変性（web-check-06 の観点 1・2）。入力を全深さで複製し、戻り値を深く凍結する。
+// リードモデル（listEpisodes・getEpisodeDetail の値）と生成の監視の戻り値も同じ観点で検査する（本ファイル末尾）。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-06、§5.0（値の生成）。
 // key `audioHandle` の値だけは、解放の操作を持つ不透明な値なので凍結せず、入力と同じ参照を保つ。
 //
@@ -14,6 +15,9 @@ import {
   sourceCredit,
 } from '@/lib/catalog/domain/episode'
 import { classifyGenerationLimit } from '@/lib/catalog/domain/generationLimit'
+import { detectCompleted, shouldStopWatching } from '@/lib/catalog/domain/generationWatch'
+import { createCatalogQueries } from '@/lib/catalog/application/queries'
+import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { Podcast } from '@/types'
 
@@ -327,5 +331,175 @@ describe('web-check-06 classifyGenerationLimit: 戻り値は深く凍結され�
       period: 'monthly',
       retryAfterSeconds: 90000,
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// リードモデル: query の値は gateway の返した record と参照を共有せず、深く凍結される（web-check-06 観点 1〜3）
+// ---------------------------------------------------------------------------
+function mutableRecord(): DeepMutable<EpisodeRecord> {
+  return {
+    episode: {
+      kind: 'playable',
+      id: 'p1',
+      title: 'T',
+      label: { title: 'T', intro: 'イントロ' },
+      audioUrl: 'https://example.com/p1.mp3',
+      durationSeconds: 600,
+      difficulty: 'toeic_600',
+      createdAt: '2026-05-31T06:00:00Z',
+      serverPositionSeconds: 7,
+    },
+    generation: 'completed',
+    isDigest: false,
+    intro: 'イントロ',
+    label: { title: 'T', intro: 'イントロ' },
+    difficulty: 'toeic_600',
+    durationSeconds: 600,
+    createdAt: '2026-05-31T06:00:00Z',
+    transcript: [{ speaker: 'A', text: 'hello' }],
+    glossary: [{ term: 'term', meaningJa: '語', example: 'ex' }],
+    quiz: [{ question: 'q?', options: ['a', 'b'] }],
+    sources: [{ articleId: 'art-1', title: 'Title A', url: 'https://example.com/a', siteName: 'Site A', showsShareAlikeNotice: true }],
+  }
+}
+
+function queriesOver(records: DeepMutable<EpisodeRecord>[]) {
+  const gateway: CatalogGateway = {
+    listEpisodes: () => Promise.resolve({ ok: true, value: records }),
+    getEpisode: () => Promise.resolve({ ok: true, value: records[0] }),
+  }
+  return createCatalogQueries({ gateway })
+}
+
+describe('web-check-06 リードモデル: listEpisodes・getEpisodeDetail の値', () => {
+  test('verifies: CI-Q1 CI-Q2 CI-RM1 CI-RM2 — 値は全深さで凍結される（配列・view・label・transcript・quiz の options・sources の要素）', async () => {
+    const queries = queriesOver([mutableRecord()])
+
+    const listed = await queries.listEpisodes()
+    const detail = await queries.getEpisodeDetail('p1')
+
+    expect(listed.ok && detail.ok).toBe(true)
+    if (!listed.ok || !detail.ok) return
+    expectDeeplyFrozen('listEpisodes', listed.value)
+    expectDeeplyFrozen('getEpisodeDetail', detail.value)
+  })
+
+  test('verifies: CI-Q1 CI-Q2 — strict mode の書込みは throw し、throw した後も値は元のまま', async () => {
+    const queries = queriesOver([mutableRecord()])
+    const listed = await queries.listEpisodes()
+    const detail = await queries.getEpisodeDetail('p1')
+    if (!listed.ok || !detail.ok) throw new Error('成功を期待した')
+    const list = listed.value as DeepMutable<typeof listed.value>
+    const view = detail.value as DeepMutable<typeof detail.value>
+
+    expect(() => list.push(list[0])).toThrow(TypeError)
+    expect(() => {
+      list[0].label.title = 'changed'
+    }).toThrow(TypeError)
+    expect(() => view.transcript.push({ speaker: 'X', text: 'added' })).toThrow(TypeError)
+    expect(() => {
+      view.quiz[0].options[0] = 'changed'
+    }).toThrow(TypeError)
+    expect(() => {
+      view.sources[0].showsShareAlikeNotice = false
+    }).toThrow(TypeError)
+
+    expect(list).toHaveLength(1)
+    expect(list[0].label.title).toBe('T')
+    expect(view.quiz[0].options).toEqual(['a', 'b'])
+    expect(view.sources[0].showsShareAlikeNotice).toBe(true)
+  })
+
+  test('verifies: CI-Q1 CI-Q2 CI-RM1 CI-RM2 — 呼ぶたびに別の object で、内容は等しい', async () => {
+    const queries = queriesOver([mutableRecord()])
+
+    const first = await queries.listEpisodes()
+    const second = await queries.listEpisodes()
+    const detailA = await queries.getEpisodeDetail('p1')
+    const detailB = await queries.getEpisodeDetail('p1')
+
+    if (!first.ok || !second.ok || !detailA.ok || !detailB.ok) throw new Error('成功を期待した')
+    expect(second.value).not.toBe(first.value)
+    expect(second.value[0]).not.toBe(first.value[0])
+    expect(second.value[0].label).not.toBe(first.value[0].label)
+    expect(second.value).toEqual(first.value)
+    expect(detailB.value).not.toBe(detailA.value)
+    expect(detailB.value.quiz[0].options).not.toBe(detailA.value.quiz[0].options)
+    expect(detailB.value).toEqual(detailA.value)
+  })
+
+  test('verifies: CI-RM1 CI-RM2 — gateway の返した record と入れ子を共有せず、record を後で書き換えても値は変わらない', async () => {
+    const record = mutableRecord()
+    const queries = queriesOver([record])
+    const listed = await queries.listEpisodes()
+    const detail = await queries.getEpisodeDetail('p1')
+    if (!listed.ok || !detail.ok) throw new Error('成功を期待した')
+    const listedBefore = structuredClone(listed.value)
+    const detailBefore = structuredClone(detail.value)
+
+    // 参照を共有しない
+    expect(listed.value[0].label).not.toBe(record.label)
+    expect(detail.value.label).not.toBe(record.label)
+    expect(detail.value.transcript).not.toBe(record.transcript)
+    expect(detail.value.transcript[0]).not.toBe(record.transcript[0])
+    expect(detail.value.glossary[0]).not.toBe(record.glossary[0])
+    expect(detail.value.quiz).not.toBe(record.quiz)
+    expect(detail.value.quiz[0].options).not.toBe(record.quiz[0].options)
+    expect(detail.value.sources).not.toBe(record.sources)
+    expect(detail.value.sources[0]).not.toBe(record.sources[0])
+
+    // 後で書き換えても変わらない
+    record.label.title = 'changed'
+    record.intro = 'changed'
+    record.transcript[0].text = 'changed'
+    record.transcript.push({ speaker: 'X', text: 'added' })
+    record.glossary[0].term = 'changed'
+    record.quiz[0].options.push('added')
+    record.sources[0].url = 'https://changed.example.com'
+    record.sources[0].showsShareAlikeNotice = false
+    record.sources.push({ articleId: 'art-9', title: 'C', url: 'https://example.com/c', siteName: 'S', showsShareAlikeNotice: true })
+
+    expect(listed.value).toEqual(listedBefore)
+    expect(detail.value).toEqual(detailBefore)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 生成の監視: watchGeneration・detectCompleted・shouldStopWatching の戻り値は凍結される
+// ---------------------------------------------------------------------------
+describe('web-check-06 生成の監視の戻り値は凍結される', () => {
+  test('verifies: CI-Q3 CI-G1 CI-G2 — watchGeneration（completedIds を含む）・detectCompleted・shouldStopWatching は全深さで凍結された値を返す', () => {
+    const queries = queriesOver([mutableRecord()])
+    const watched = queries.watchGeneration(
+      [{ id: 'a', generation: 'processing' }],
+      [{ id: 'a', generation: 'completed' }],
+    )
+
+    expect(watched.completedIds).toEqual(['a'])
+    expectDeeplyFrozen('watchGeneration', watched)
+    expectDeeplyFrozen('detectCompleted', detectCompleted([{ id: 'a', generation: 'processing' }], [{ id: 'a', generation: 'completed' }]))
+    expectDeeplyFrozen('detectCompleted(empty)', detectCompleted([], []))
+    expectDeeplyFrozen('shouldStopWatching(stop)', shouldStopWatching({ baselineCount: 1, currentCount: 2, elapsedMs: 0 }))
+    expectDeeplyFrozen('shouldStopWatching(continue)', shouldStopWatching({ baselineCount: 1, currentCount: 1, elapsedMs: 0 }))
+  })
+
+  test('verifies: CI-Q3 CI-G1 CI-G2 — 書込みは throw し、再呼出は書込みの影響を受けない。watchGeneration は呼ぶたびに別 object', () => {
+    const queries = queriesOver([mutableRecord()])
+    const previous = [{ id: 'a', generation: 'processing' as const }]
+    const next = [{ id: 'a', generation: 'completed' as const }]
+    const watched = queries.watchGeneration(previous, next) as DeepMutable<ReturnType<typeof queries.watchGeneration>>
+    const stop = shouldStopWatching({ baselineCount: 1, currentCount: 2, elapsedMs: 0 }) as DeepMutable<
+      ReturnType<typeof shouldStopWatching>
+    >
+
+    expect(() => watched.completedIds.push('x')).toThrow(TypeError)
+    expect(() => {
+      stop.stop = false
+    }).toThrow(TypeError)
+
+    expect(queries.watchGeneration(previous, next)).toEqual({ completedIds: ['a'] })
+    expect(queries.watchGeneration(previous, next)).not.toBe(queries.watchGeneration(previous, next))
+    expect(shouldStopWatching({ baselineCount: 1, currentCount: 2, elapsedMs: 0 })).toEqual({ stop: true, reason: 'new-podcast' })
   })
 })

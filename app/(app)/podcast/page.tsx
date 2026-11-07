@@ -6,12 +6,9 @@ import { PodcastCard } from '@/components/PodcastCard'
 import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getPodcasts } from '@/lib/catalog/infrastructure/api'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import type { EpisodeCardView } from '@/lib/catalog/application/readModels'
 import type { QueueEntryInput } from '@/lib/playback/application/ports'
-import type { PlayableEpisode } from '@/lib/catalog/domain/episode'
-import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
-import type { Podcast } from '@/types/index'
 
 function RefreshIcon() {
   return (
@@ -44,31 +41,31 @@ function SkeletonCard() {
   )
 }
 
-// 一覧の DTO から、キューに積む入力への写し（暫定。カードの表示モデルができたら置き換える）。
-const toQueueEntry = (podcast: Podcast): QueueEntryInput => ({
-  id: podcast.id,
-  title: podcast.title ?? null,
-  intro: podcast.japanese_intro_text,
+// 一覧のカードの view から、キューに積む入力への写し。
+const toQueueEntry = (view: EpisodeCardView): QueueEntryInput => ({
+  id: view.id,
+  title: view.label.title,
+  intro: view.label.intro,
 })
 
 export default function PodcastPage() {
   const { showToast } = useToast()
-  const gateway = useApiClient()
+  const queries = useCatalogQueries()
   const playback = usePlayback()
   const { offline } = playback
   const actions = usePlaybackActions()
   const playingId = playback.nowPlaying()?.episodeId
 
-  const [podcasts, setPodcasts] = useState<Podcast[]>([])
+  const [podcasts, setPodcasts] = useState<ReadonlyArray<EpisodeCardView>>([])
   const [loading, setLoading] = useState(true)
   const [pollingEnabled, setPollingEnabled] = useState(true)
 
-  const previousPodcastStatusRef = useRef<Map<string, string>>(new Map())
+  const previousPodcastsRef = useRef<ReadonlyArray<EpisodeCardView>>([])
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set())
 
   const fetchPodcasts = useCallback(async () => {
     try {
-      const result = await getPodcasts(gateway)
+      const result = await queries.listEpisodes()
       if (!result.ok) {
         const failure = result.failure
         if (failure.kind === 'server' || failure.kind === 'unknown') {
@@ -78,49 +75,37 @@ export default function PodcastPage() {
         }
         return { podcasts: [] }
       }
-      setPodcasts(result.value.podcasts)
-      return result.value
+      setPodcasts(result.value)
+      return { podcasts: result.value }
     } catch {
       return { podcasts: [] }
     } finally {
       setLoading(false)
     }
-  }, [gateway]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [queries]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPodcasts()
   }, [fetchPodcasts])
 
   // #12 生成完了の視覚演出（修正 4）: status が generating → completed に変わったカードを検知
-  // WHY: 初回ロードでは何もしない（previousPodcastStatusRef が空）。ポーリング/再取得での更新のみ
+  // WHY: 初回ロードでは何もしない（previousPodcastsRef が空）。ポーリング/再取得での更新のみ
   useEffect(() => {
     if (podcasts.length === 0) return
-    const isFirstLoad = previousPodcastStatusRef.current.size === 0
-    const newStatusMap = new Map(podcasts.map((p) => [p.id, p.status]))
-    
-    if (!isFirstLoad) {
-      // 生成中→completed へ遷移した id を検知
-      const justCompleted = new Set<string>()
-      podcasts.forEach((p) => {
-        const prevStatus = previousPodcastStatusRef.current.get(p.id)
-        if (prevStatus !== 'completed' && p.status === 'completed') {
-          justCompleted.add(p.id)
-        }
-      })
-      
-      if (justCompleted.size > 0) {
-        setJustCompletedIds(justCompleted)
-        // 1.5 秒後にクリア（animation 0.8s の後始末）
-        const timeoutId = setTimeout(() => {
-          setJustCompletedIds(new Set())
-        }, 1500)
-        return () => clearTimeout(timeoutId)
-      }
+    const { completedIds } = queries.watchGeneration(previousPodcastsRef.current, podcasts)
+
+    if (completedIds.length > 0) {
+      setJustCompletedIds(new Set(completedIds))
+      // 1.5 秒後にクリア（animation 0.8s の後始末）
+      const timeoutId = setTimeout(() => {
+        setJustCompletedIds(new Set())
+      }, 1500)
+      return () => clearTimeout(timeoutId)
     }
-    
-    // 次回のために今回の status map を保存
-    previousPodcastStatusRef.current = newStatusMap
-  }, [podcasts])
+
+    // 次回のために今回の一覧を保存
+    previousPodcastsRef.current = podcasts
+  }, [podcasts, queries])
 
   // オフライン保存（issue #167）。一覧取得のたびに各エピソードのキャッシュ有無を確認する。
   const [cachedIds, setCachedIds] = useState<Set<string>>(() => new Set())
@@ -153,14 +138,14 @@ export default function PodcastPage() {
     }
   }, [podcastIds]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function handleDownload(podcast: Podcast) {
+  async function handleDownload(view: EpisodeCardView) {
     try {
-      const saved = await offline.save(podcast.id)
+      const saved = await offline.save(view.id)
       if (!saved.ok) {
         showToast('オフライン保存に失敗しました', 'error')
         return
       }
-      setCachedIds((prev) => new Set(prev).add(podcast.id))
+      setCachedIds((prev) => new Set(prev).add(view.id))
     } catch {
       showToast('オフライン保存に失敗しました', 'error')
     }
@@ -177,8 +162,8 @@ export default function PodcastPage() {
     enabled: pollingEnabled,
   })
 
-  function handlePlay(episode: PlayableEpisode) {
-    void actions.startEpisode(episode.id)
+  function handlePlay(view: EpisodeCardView) {
+    void actions.startEpisode(view.id)
   }
 
   function renderContent() {
@@ -204,23 +189,22 @@ export default function PodcastPage() {
 
     return (
       <div className="podcast-grid">
-        {podcasts.map((podcast) => {
-          const position = playback.savedPosition(podcast.id)
+        {podcasts.map((view) => {
+          const position = playback.savedPosition(view.id)
           return (
             <PodcastCard
-              key={podcast.id}
-              podcast={podcast}
-              episode={decodeEpisode(podcast)}
+              key={view.id}
+              episode={view}
               onPlay={handlePlay}
-              onPlayNext={(p) => { void actions.playNext(toQueueEntry(p)) }}
-              onAddToQueue={(p) => { void actions.addToQueue(toQueueEntry(p)) }}
+              onPlayNext={(v) => { void actions.playNext(toQueueEntry(v)) }}
+              onAddToQueue={(v) => { void actions.addToQueue(toQueueEntry(v)) }}
               savedPosition={position !== null && position > 0 ? position : undefined}
               // 再生中強調（D24）: 判定はページ責務（PodcastCard を Context 非依存に保つ）
-              playing={playingId === podcast.id}
+              playing={playingId === view.id}
               // オフライン保存（issue #167）: 状態・ハンドラもページ責務として注入する
-              cached={cachedIds.has(podcast.id)}
-              onDownload={(p) => void handleDownload(p)}
-              justCompleted={justCompletedIds.has(podcast.id)}
+              cached={cachedIds.has(view.id)}
+              onDownload={(v) => void handleDownload(v)}
+              justCompleted={justCompletedIds.has(view.id)}
             />
           )
         })}

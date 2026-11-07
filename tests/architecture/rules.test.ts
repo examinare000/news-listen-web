@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（13 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（14 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -14,6 +14,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-02',
   'web-rule-catalog-03',
   'web-rule-catalog-06',
+  'web-rule-catalog-10',
   'web-rule-catalog-11',
   'web-rule-account-03',
   'web-rule-account-06',
@@ -32,7 +33,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 13 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 14 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -93,6 +94,34 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "if (user.role === 'admin') {}")).toEqual([`web-rule-account-06 | ${F} | role === 'admin'`])
     expect(rows(F, 'const g = 5 * 60 * 1000')).toEqual([`web-rule-learning-01 | ${F} | 5 * 60 * 1000`])
     expect(rows(F, 'if (score >= 0.5) {}')).toEqual([`web-rule-learning-02 | ${F} | >= 0.5`])
+  })
+
+  test('web-rule-catalog-10: source_kind と \'featured\' の比較（=== ・!==、左右どちらも）は 1 行に拾い、camelCase の別名・別の値との比較・出てよい episode.ts は拾わない', () => {
+    const prefix = `web-rule-catalog-10 | ${F} | `
+    for (const code of [
+      "const on = p.source_kind === 'featured'",
+      "const on = 'featured' === p.source_kind",
+      "const off = p.source_kind !== 'featured'",
+      "const off = 'featured' !== p.source_kind",
+    ]) {
+      const found = rows(F, code)
+      expect(found, code).toHaveLength(1)
+      expect(found[0].startsWith(prefix), code).toBe(true)
+    }
+    // 同じファイルに複数あっても (rule, file, label) の行にまとまる
+    expect(rows(F, "a.source_kind === 'featured'\nb.source_kind === 'featured'")).toHaveLength(1)
+    // 負例
+    expect(rows(F, "const on = sourceKind === 'featured'")).toEqual([])
+    expect(rows(F, "const on = p.source_kind === 'user'")).toEqual([])
+    expect(rows(F, "// p.source_kind === 'featured' は書かない\nconst a = 1")).toEqual([])
+    expect(rows('lib/catalog/domain/episode.ts', "const on = p.source_kind === 'featured'")).toEqual([])
+  })
+
+  test('web-rule-catalog-06: GENERATION_WATCH_TIMEOUT_MS を出てよいファイル以外で拾う', () => {
+    const found = rows(F, 'const t = GENERATION_WATCH_TIMEOUT_MS')
+    expect(found).toHaveLength(1)
+    expect(found[0]).toMatch(/^web-rule-catalog-06 \| components\/X\.tsx \| /)
+    expect(rows('lib/catalog/domain/generationWatch.ts', 'const t = GENERATION_WATCH_TIMEOUT_MS')).toEqual([])
   })
 
   test('web-rule-catalog-11: 失敗の理由の識別子のリテラルは、引用符（\'・"・`）の種類を問わず出てよいファイル以外で拾う。2 つの label はそれぞれ拾う', () => {

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useCallback } from 'react'
-import { shouldStopPolling, POLL_INTERVAL_MS, POLL_TIMEOUT_MS } from '@/lib/podcastPolling'
+import { GENERATION_WATCH_INTERVAL_MS, shouldStopWatching } from '@/lib/catalog/domain/generationWatch'
 
 interface UsePodcastListPollingOptions {
-  fetchPodcasts: () => Promise<{ podcasts: Array<{ id: string }> }>
+  fetchPodcasts: () => Promise<{ podcasts: ReadonlyArray<{ id: string }> }>
   onUpdate: () => void
   enabled: boolean
 }
@@ -14,11 +14,11 @@ interface UsePodcastListPollingOptions {
  * - Separates timer/interval logic (React concern) from polling decision logic (pure)
  * - fetchPodcasts is async, so it must live in a hook (can't be pure function)
  * - Timer management (setInterval/clearInterval) is React effect concern
- * - Polling logic (shouldStopPolling) is pure and testable separately
+ * - Polling logic (shouldStopWatching) is pure and testable separately
  *
  * Flow:
  * 1. User stars an article → fetchPodcasts is called
- * 2. If new podcast detected via shouldStopPolling, call onUpdate
+ * 2. If new podcast detected via shouldStopWatching, call onUpdate
  * 3. onUpdate callback is responsible for stopping the hook (e.g., by passing enabled=false)
  * 4. Hook clears interval on unmount or when enabled=false
  *
@@ -34,7 +34,7 @@ export function usePodcastListPolling({ fetchPodcasts, onUpdate, enabled }: UseP
   // legitimate thing for a component to do — this hook should not require callers to memoize
   // their callbacks. Previously `poll` was a useCallback depending on [fetchPodcasts, onUpdate],
   // so any caller re-render changed `poll`'s identity, which made the setup effect below
-  // (keyed on `poll`) tear down and immediately re-invoke `poll()` — bypassing POLL_INTERVAL_MS
+  // (keyed on `poll`) tear down and immediately re-invoke `poll()` — bypassing GENERATION_WATCH_INTERVAL_MS
   // entirely. Combined with `poll()` itself eventually calling setState (via fetchPodcasts），
   // that immediate re-poll caused another re-render, forming an unbounded fetch/render feedback
   // loop (observed in production as e2e/main-flow.e2e.ts never stabilizing: thousands of
@@ -60,11 +60,10 @@ export function usePodcastListPolling({ fetchPodcasts, onUpdate, enabled }: UseP
       }
 
       const elapsedMs = Date.now() - (startTimeRef.current || 0)
-      const { stop } = shouldStopPolling({
+      const { stop } = shouldStopWatching({
         baselineCount: baselineCountRef.current,
         currentCount,
         elapsedMs,
-        timeoutMs: POLL_TIMEOUT_MS,
       })
 
       if (stop) {
@@ -100,7 +99,7 @@ export function usePodcastListPolling({ fetchPodcasts, onUpdate, enabled }: UseP
 
     intervalIdRef.current = setInterval(() => {
       poll()
-    }, POLL_INTERVAL_MS)
+    }, GENERATION_WATCH_INTERVAL_MS)
 
     // Cleanup on unmount or when enabled changes
     return () => {

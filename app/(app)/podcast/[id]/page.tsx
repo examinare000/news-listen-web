@@ -6,15 +6,15 @@ import { useToast } from '@/components/ui/Toast'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
 import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getPodcast } from '@/lib/catalog/infrastructure/api'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import type { EpisodeDetailView } from '@/lib/catalog/application/readModels'
 import { getVocabulary, saveVocabulary, submitQuizAnswers } from '@/lib/learning/infrastructure/api'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
-import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 import { highlightTerms } from '@/lib/highlightTerms'
 import { playSfx, prepareSfx } from '@/lib/sfx'
-import type { Podcast, QuizAnswerResponse } from '@/types/index'
+import type { QuizAnswerResponse } from '@/types/index'
 
 interface PodcastDetailPageProps {
   params: Promise<{ id: string }>
@@ -42,10 +42,11 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const { showToast } = useToast()
   const gateway = useApiClient()
+  const queries = useCatalogQueries()
   const { offline } = usePlayback()
   const { startEpisode } = usePlaybackActions()
 
-  const [podcast, setPodcast] = useState<Podcast | null>(null)
+  const [podcast, setPodcast] = useState<EpisodeDetailView | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loading, setLoading] = useState(true)
   const [podcastId, setPodcastId] = useState<string | null>(null)
@@ -59,7 +60,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
     async function fetch() {
       try {
-        const result = await getPodcast(gateway, podcastId!)
+        const result = await queries.getEpisodeDetail(podcastId!)
         if (!result.ok) {
           if (result.failure.kind === 'not_found') {
             setNotFound(true)
@@ -77,7 +78,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     }
 
     fetch()
-  }, [podcastId, gateway]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [podcastId, queries]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePlay() {
     if (!podcast) return
@@ -215,12 +216,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     )
   }
 
-  // decodeEpisode は純関数なので hook にせず、描画の分岐の直前で求める
-  const episode = decodeEpisode(podcast)
-
   // トランスクリプト中の語彙用語ハイライト用（issue: 語彙グロッサリ表示）。vocabulary が
   // null/欠落なら空配列 → highlightTerms は原文をそのまま返す。
-  const vocabularyTerms = podcast.vocabulary?.map((entry) => entry.term) ?? []
+  const vocabularyTerms = podcast.glossary.map((entry) => entry.term)
 
   return (
     <>
@@ -228,19 +226,19 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
       <div className="content-area content-narrow">
         <div className="podcast-badges" style={{ marginBottom: 14 }}>
           <DifficultyBadge difficulty={podcast.difficulty} />
-          {podcast.type === 'digest' && <span className="badge">DIGEST</span>}
+          {podcast.isDigest && <span className="badge">DIGEST</span>}
         </div>
 
         {/* イントロは全文表示（.podcast-intro は一覧用の 2 行クランプを持つため使わない） */}
         <p style={{ fontSize: 14, lineHeight: 1.8, marginBottom: 16 }}>
-          {podcast.japanese_intro_text}
+          {podcast.intro}
         </p>
 
         {/* 英語本編トランスクリプト（issue #162）。旧エピソード/劣化生成では segments が
             null/欠落するため、その場合は控えめなフォールバック文言に留めレイアウトを維持する。 */}
-        {podcast.segments && podcast.segments.length > 0 ? (
+        {podcast.transcript.length > 0 ? (
           <div style={{ marginBottom: 16 }}>
-            {podcast.segments.map((segment, index) => (
+            {podcast.transcript.map((segment, index) => (
               <div
                 key={index}
                 style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginBottom: 8 }}
@@ -262,17 +260,17 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
         {/* 語彙グロッサリ。旧エピソードや劣化生成では vocabulary が null/欠落/空になるため、
             その場合はフォールバック文言も出さずセクションごと非表示にする。 */}
-        {podcast.vocabulary && podcast.vocabulary.length > 0 && (
+        {podcast.glossary.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
               語彙
             </h2>
-            {podcast.vocabulary.map((entry, index) => (
+            {podcast.glossary.map((entry, index) => (
               <div key={`${entry.term}-${index}`} className="vocabulary-glossary-item">
                 <div className="vocabulary-glossary-copy">
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {entry.meaning_ja}
+                    {entry.meaningJa}
                   </div>
                 </div>
                 {registeredTerms.has(entry.term) ? (
@@ -308,7 +306,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
         {/* 理解度チェッククイズ（ADR-070・F2）。旧エピソードや劣化生成では quiz が null/欠落/空になる
             ため、その場合はセクションごと非表示にする（語彙グロッサリと同じ graceful-hide 方針）。
             正解（correct_index）は quizResult が届く＝採点後にのみ表示する。採点前は一切保持しない。 */}
-        {podcast.quiz && podcast.quiz.length > 0 && (
+        {podcast.quiz.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
               理解度チェック
@@ -408,16 +406,14 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            {formatDuration(podcast.duration_seconds)}
+            {formatDuration(podcast.durationSeconds)}
           </span>
-          <span>{formatDate(podcast.created_at)}</span>
+          <span>{formatDate(podcast.createdAt)}</span>
         </div>
 
-        {/* 出典とライセンス表記（ADR-095）。出典表示は source_kind に関わらず維持する一方、
-            CC BY-SA 4.0 の表示は運営者提示ソース（source_kind === 'featured'）由来に限定する。
-            利用者追加RSS由来（'user'）・判定不能（'unknown'）・旧データ（null/欠落）は
-            fail-closed でライセンス表示しない。出典を持たない旧エピソードでは出典ブロック自体を表示しない。 */}
-        {podcast.source_articles && podcast.source_articles.length > 0 && (
+        {/* 出典とライセンス表記（ADR-095）。CC BY-SA 4.0 の表示可否は view の showsShareAlikeNotice が持つ。
+            出典を持たない旧エピソードでは出典ブロック自体を表示しない。 */}
+        {podcast.sources.length > 0 && (
           <div
             style={{
               marginBottom: 20,
@@ -427,9 +423,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
           >
             <strong>出典</strong>
             <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
-              {podcast.source_articles.map((s) => (
-                <li key={s.article_id} style={{ marginBottom: 4 }}>
-                  <span className="article-source">{s.source}</span>
+              {podcast.sources.map((s) => (
+                <li key={s.articleId} style={{ marginBottom: 4 }}>
+                  <span className="article-source">{s.siteName}</span>
                   <span className="article-dot">·</span>
                   <a href={s.url} target="_blank" rel="noopener noreferrer">
                     {s.title}
@@ -437,7 +433,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                 </li>
               ))}
             </ul>
-            {podcast.source_kind === 'featured' && (
+            {podcast.showsShareAlikeNotice && (
               <p style={{ margin: '8px 0 0' }}>
                 この音声コンテンツは{' '}
                 <a
@@ -454,10 +450,10 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
         )}
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          {episode.kind === 'failed' && (
-            <p data-testid="podcast-failure-message">{failureMessage(episode.reason)}</p>
+          {podcast.failureReason !== null && (
+            <p data-testid="podcast-failure-message">{failureMessage(podcast.failureReason)}</p>
           )}
-          {episode.kind === 'playable' && (
+          {podcast.kind === 'playable' && (
             <>
               <button type="button" className="btn btn-primary" onClick={handlePlay} aria-label="再生">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">

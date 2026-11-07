@@ -1,34 +1,30 @@
 import React from 'react'
 import Link from 'next/link'
-import type { Podcast } from '@/types/index'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { formatDuration, formatDate } from '@/lib/format'
-import type { Episode, PlayableEpisode } from '@/lib/catalog/domain/episode'
+import type { EpisodeCardView } from '@/lib/catalog/application/readModels'
 import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 
 interface PodcastCardProps {
-  // 表示 field は DTO から読み、種別（再生可否・失敗の理由）は episode から読む。
-  // episode は呼出元が decodeEpisode(podcast) で作る（component は mapper を import しない）。
-  podcast: Podcast
-  episode: Episode
-  onPlay: (episode: PlayableEpisode) => void
+  // 表示 field も種別（再生可否・失敗の理由）も、呼出元が作ったリードモデルから読む。
+  episode: EpisodeCardView
+  onPlay: (episode: EpisodeCardView) => void
   savedPosition?: number
-  // 再生中判定は親ページの責務（nowPlaying()?.episodeId === podcast.id）。
+  // 再生中判定は親ページの責務（nowPlaying()?.episodeId === episode.id）。
   // WHY: Context 非依存の純粋コンポーネントに保ちテストを軽くする（ArticleCard と同方針）
   playing?: boolean
   // 連続再生の導線（issue #81）。親ページがキュー操作を注入する（未指定なら非表示）。
-  onPlayNext?: (podcast: Podcast) => void
-  onAddToQueue?: (podcast: Podcast) => void
+  onPlayNext?: (episode: EpisodeCardView) => void
+  onAddToQueue?: (episode: EpisodeCardView) => void
   // オフライン保存（issue #167）。ダウンロード状態・ハンドラは親ページが注入する
   // （未指定なら非表示。Context 非依存の純粋コンポーネント方針は他の連続再生ボタンと同じ）。
   cached?: boolean
-  onDownload?: (podcast: Podcast) => void
+  onDownload?: (episode: EpisodeCardView) => void
   justCompleted?: boolean
 }
 
 export function PodcastCard({
-  podcast,
   episode,
   onPlay,
   savedPosition,
@@ -39,22 +35,22 @@ export function PodcastCard({
   justCompleted = false,
   onDownload,
 }: PodcastCardProps) {
-  const playable = episode.kind === 'playable' ? episode : null
+  const playable = episode.kind === 'playable'
   const hasSavedPosition = typeof savedPosition === 'number' && savedPosition > 0
 
   return (
     <div
       className={`podcast-card ${playing ? 'playing' : ''} ${justCompleted ? 'just-completed' : ''}`.trim()}
-      data-testid={`podcast-card-${podcast.id}`}
+      data-testid={`podcast-card-${episode.id}`}
     >
       <div className="podcast-card-top">
         <div className="podcast-badges">
-          <DifficultyBadge difficulty={podcast.difficulty} />
+          <DifficultyBadge difficulty={episode.difficulty} />
           <StatusBadge status={episode.kind} />
-          {podcast.type === 'digest' && <span className="badge">DIGEST</span>}
+          {episode.isDigest && <span className="badge">DIGEST</span>}
         </div>
-        {episode.kind === 'failed' && (
-          <p data-testid={`podcast-failure-message-${podcast.id}`}>{failureMessage(episode.reason)}</p>
+        {episode.failureReason !== null && (
+          <p data-testid={`podcast-failure-message-${episode.id}`}>{failureMessage(episode.failureReason)}</p>
         )}
         {/* 再生ボタンはリンク外に配置し、カード内クリックの伝播も止める
             （詳細ページ遷移と再生操作を干渉させないため）。再生できるエピソードにだけ出す */}
@@ -65,7 +61,7 @@ export function PodcastCard({
             aria-label="再生"
             onClick={(event) => {
               event.stopPropagation()
-              onPlay(playable)
+              onPlay(episode)
             }}
           >
             <svg
@@ -90,7 +86,7 @@ export function PodcastCard({
                 title="次に再生"
                 onClick={(event) => {
                   event.stopPropagation()
-                  onPlayNext(podcast)
+                  onPlayNext(episode)
                 }}
               >
                 次に再生
@@ -104,7 +100,7 @@ export function PodcastCard({
                 title="キューに追加"
                 onClick={(event) => {
                   event.stopPropagation()
-                  onAddToQueue(podcast)
+                  onAddToQueue(episode)
                 }}
               >
                 ＋キュー
@@ -123,7 +119,7 @@ export function PodcastCard({
                   title="オフライン保存"
                   onClick={(event) => {
                     event.stopPropagation()
-                    onDownload(podcast)
+                    onDownload(episode)
                   }}
                 >
                   オフライン保存
@@ -133,9 +129,9 @@ export function PodcastCard({
         )}
       </div>
 
-      <Link href={`/podcast/${podcast.id}`}>
+      <Link href={`/podcast/${episode.id}`}>
         {/* 80 文字 slice は撤去（CSS の 2 行クランプが代替） */}
-        <p className="podcast-intro">{podcast.japanese_intro_text}</p>
+        <p className="podcast-intro">{episode.intro}</p>
       </Link>
 
       <div className="podcast-footer">
@@ -153,9 +149,9 @@ export function PodcastCard({
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            {formatDuration(podcast.duration_seconds)}
+            {formatDuration(episode.durationSeconds)}
           </span>
-          <span>{formatDate(podcast.created_at)}</span>
+          <span>{formatDate(episode.createdAt)}</span>
           {hasSavedPosition && <span>続きから {formatDuration(savedPosition)}</span>}
         </div>
 
