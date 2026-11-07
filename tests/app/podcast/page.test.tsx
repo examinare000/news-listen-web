@@ -1,11 +1,14 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render as rtlRender, screen, waitFor, within } from '@testing-library/react'
+import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
+import { act, fireEvent, render as rtlRender, renderHook, screen, waitFor, within } from '@testing-library/react'
 import type { RenderOptions } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import PodcastPage from '@/app/(app)/podcast/page'
+import PodcastDetailPage from '@/app/(app)/podcast/[id]/page'
+import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
+import { formatDate } from '@/lib/format'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
@@ -485,5 +488,455 @@ describe('PodcastPage — Episode kinds (web-contract-14)', () => {
     expect(screen.queryByText('一部失敗')).not.toBeInTheDocument()
     expect(card('gen-1').getByText('生成中')).toBeInTheDocument()
     expect(card('ok-1').getByText('完成')).toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// 以下は web-slice-catalog-02 で追加した特性テスト（挙動の pin）。
+// 一覧・詳細 page の取得失敗の toast、完了の検知（web-usecase-19）、ポーリングの停止の配線を、
+// 一覧・詳細を DTO で持つ現行の実装でも、リードモデルを読む実装でも同じ結果で固定する。
+// 応答は毎回「内容が同じでも参照が新しい配列」で登録する（gw.respond は同じ配列参照を返し続けるため、
+// 同じ参照だと setPodcasts が bail out して再取得の影響が見えない）。
+// ==========================================================
+const DETAIL_PATH = '/api/backend/podcasts/p1'
+
+afterEach(() => {
+  vi.useRealTimers()
+})
+
+type SamplePodcast = Record<string, unknown>
+
+function respondFresh(podcasts: ReadonlyArray<SamplePodcast>) {
+  gw.respond('GET', PODCASTS_PATH, { ok: true, value: { podcasts: podcasts.map((p) => ({ ...p })) } })
+}
+
+const refreshButton = () => screen.getByRole('button', { name: 'リフレッシュ' })
+
+/** 実時間: 保留中の promise を流す。 */
+const settle = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+
+/** fake timer: ms だけ進め、その間に解決する promise と描画を流す。 */
+const advance = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms)
+  })
+
+const processing = (overrides: SamplePodcast = {}) => ({
+  ...SAMPLE_PODCASTS[0],
+  status: 'processing' as const,
+  audio_url: '',
+  ...overrides,
+})
+const completed = (overrides: SamplePodcast = {}) => ({ ...SAMPLE_PODCASTS[0], status: 'completed' as const, ...overrides })
+const card = (id = 'p1') => screen.getByTestId(`podcast-card-${id}`)
+
+// ==========================================================
+// 一覧 — 取得の失敗
+// ==========================================================
+describe('PodcastPage — fetch failures (verifies: CI-P1)', () => {
+  test('一覧が server 503 のとき toast「エラーが発生しました (503)」を出し、skeleton は消えて空の表示になる', async () => {
+    gw.respond('GET', PODCASTS_PATH, { ok: false, failure: { kind: 'server', status: 503 } })
+
+    renderPodcastPage()
+
+    expect((await screen.findAllByText('エラーが発生しました (503)')).length).toBeGreaterThan(0)
+    await waitFor(() => expect(screen.getByText(/Podcast がまだありません/)).toBeInTheDocument())
+    expect(screen.queryByTestId('skeleton-card')).not.toBeInTheDocument()
+  })
+
+  test('一覧が network のとき toast「エラーが発生しました」を出す（status を付けない）', async () => {
+    gw.respond('GET', PODCASTS_PATH, { ok: false, failure: { kind: 'network' } })
+
+    renderPodcastPage()
+
+    expect((await screen.findAllByText('エラーが発生しました')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/エラーが発生しました \(/)).not.toBeInTheDocument()
+  })
+
+  test('一覧が unknown 418 のとき toast「エラーが発生しました (418)」を出す', async () => {
+    gw.respond('GET', PODCASTS_PATH, { ok: false, failure: { kind: 'unknown', status: 418 } })
+
+    renderPodcastPage()
+
+    expect((await screen.findAllByText('エラーが発生しました (418)')).length).toBeGreaterThan(0)
+  })
+
+  test('一覧の取得が reject したとき toast は出さず、空の表示になる', async () => {
+    gw.respondWith('GET', PODCASTS_PATH, () => Promise.reject(new Error('boom')))
+
+    renderPodcastPage()
+
+    await waitFor(() => expect(screen.getByText(/Podcast がまだありません/)).toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  test('描画後の再取得が server 500 で失敗しても、toast を出して表示中のカードを残す', async () => {
+    respondFresh([SAMPLE_PODCASTS[0]])
+    renderPodcastPage()
+    await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
+    await waitFor(() => expect(podcastListCalls().length).toBeGreaterThanOrEqual(2))
+    await settle()
+
+    gw.respond('GET', PODCASTS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    fireEvent.click(refreshButton())
+
+    expect((await screen.findAllByText('エラーが発生しました (500)')).length).toBeGreaterThan(0)
+    expect(card('p1')).toBeInTheDocument()
+    expect(screen.queryByText(/Podcast がまだありません/)).not.toBeInTheDocument()
+  })
+
+  test('描画後の再取得が reject しても、表示中のカードを残し、toast は出さない', async () => {
+    respondFresh([SAMPLE_PODCASTS[0]])
+    renderPodcastPage()
+    await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
+    await waitFor(() => expect(podcastListCalls().length).toBeGreaterThanOrEqual(2))
+    await settle()
+    const before = podcastListCalls().length
+
+    gw.respondWith('GET', PODCASTS_PATH, () => Promise.reject(new Error('boom')))
+    fireEvent.click(refreshButton())
+    await waitFor(() => expect(podcastListCalls().length).toBeGreaterThan(before))
+    await settle()
+
+    expect(card('p1')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// 一覧 — キャッシュ確認は id の集合が変わるときだけ（render storm の回帰防止）
+// ==========================================================
+describe('PodcastPage — cache check follows the set of ids (verifies: CI-P1)', () => {
+  test('内容が同じで参照が新しい応答では offline.has を呼び直さず、id が増えると呼び直す', async () => {
+    respondFresh([SAMPLE_PODCASTS[0]])
+    renderPodcastPage()
+    await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
+    await waitFor(() => expect(podcastListCalls().length).toBeGreaterThanOrEqual(2))
+    await settle()
+    const baseline = has.mock.calls.length
+    expect(baseline).toBeGreaterThan(0)
+
+    for (let i = 0; i < 2; i++) {
+      respondFresh([SAMPLE_PODCASTS[0]])
+      const before = podcastListCalls().length
+      fireEvent.click(refreshButton())
+      await waitFor(() => expect(podcastListCalls().length).toBeGreaterThan(before))
+      await settle()
+    }
+    expect(has).toHaveBeenCalledTimes(baseline)
+
+    // 正方向対照: id が増えると確認し直す
+    respondFresh(TWO_PODCASTS)
+    fireEvent.click(refreshButton())
+    await waitFor(() => expect(has.mock.calls.length).toBeGreaterThan(baseline))
+  })
+})
+
+describe('PodcastPage — card title (verifies: CI-P1, CI-P5)', () => {
+  test('title を持つ DTO でも、その題はカードに描かない（導入文は描く）', async () => {
+    respondFresh([{ ...SAMPLE_PODCASTS[0], title: '特別な題' }])
+
+    renderPodcastPage()
+
+    await waitFor(() => screen.getByText(/これはテスト用のポッドキャストイントロ/))
+    await settle()
+    expect(screen.queryByText(/特別な題/)).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// 一覧 — 生成の完了の検知（web-usecase-19）
+// 1 回目の応答で描画 → 応答を差し替えて「リフレッシュ」→ just-completed の有無を見る。
+// ==========================================================
+describe('PodcastPage — generation completion detection (web-usecase-19)', () => {
+  async function renderWith(initial: ReadonlyArray<SamplePodcast>) {
+    respondFresh(initial)
+    renderPodcastPage()
+    await waitFor(() => screen.getByTestId(`podcast-card-${String(initial[0].id)}`))
+    await waitFor(() => expect(podcastListCalls().length).toBeGreaterThanOrEqual(2))
+    await settle()
+  }
+
+  test('web-usecase-19: processing → completed になったカードに just-completed が付く', async () => {
+    await renderWith([processing()])
+    expect(card('p1')).not.toHaveClass('just-completed')
+
+    respondFresh([completed()])
+    fireEvent.click(refreshButton())
+
+    await waitFor(() => expect(card('p1')).toHaveClass('just-completed'))
+  })
+
+  test('web-usecase-19: failed → completed になったカードに just-completed が付く', async () => {
+    await renderWith([{ ...SAMPLE_PODCASTS[0], status: 'failed', error_message: 'generation_failed' }])
+    expect(card('p1')).not.toHaveClass('just-completed')
+
+    respondFresh([completed()])
+    fireEvent.click(refreshButton())
+
+    await waitFor(() => expect(card('p1')).toHaveClass('just-completed'))
+  })
+
+  test('web-usecase-19: 新しく現れた completed の id のカードにだけ just-completed が付き、既存のカードには付かない', async () => {
+    await renderWith([TWO_PODCASTS[0]])
+
+    respondFresh(TWO_PODCASTS)
+    fireEvent.click(refreshButton())
+
+    await waitFor(() => expect(card('p2')).toHaveClass('just-completed'))
+    expect(card('p1')).not.toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: 対照 — completed → completed は本文が更新されても just-completed を付けない', async () => {
+    await renderWith([completed()])
+
+    respondFresh([completed({ japanese_intro_text: '更新された本文です。' })])
+    fireEvent.click(refreshButton())
+
+    await waitFor(() => expect(screen.getByText(/更新された本文です/)).toBeInTheDocument())
+    await settle()
+    expect(card('p1')).not.toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: processing → completed で audio_url が空なら、just-completed が付き、失敗の文言が出る', async () => {
+    await renderWith([processing()])
+    expect(screen.queryByTestId('podcast-failure-message-p1')).not.toBeInTheDocument()
+
+    respondFresh([completed({ audio_url: '' })])
+    fireEvent.click(refreshButton())
+
+    await waitFor(() => expect(card('p1')).toHaveClass('just-completed'))
+    expect(screen.getByTestId('podcast-failure-message-p1')).toHaveTextContent('生成に失敗しました')
+  })
+})
+
+describe('PodcastPage — completion detection timing (web-usecase-19)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  async function renderWith(initial: ReadonlyArray<SamplePodcast>) {
+    respondFresh(initial)
+    renderPodcastPage()
+    await advance(0)
+  }
+
+  async function refreshWith(podcasts: ReadonlyArray<SamplePodcast>) {
+    respondFresh(podcasts)
+    fireEvent.click(refreshButton())
+    await advance(0)
+  }
+
+  test('web-usecase-19: 検知時に前回の状態を更新しない — 1500ms で消えた後、新しい応答で「リフレッシュ」すると同じ id を再び検知する（現行の挙動）', async () => {
+    await renderWith([processing()])
+    await refreshWith([completed()])
+    expect(card('p1')).toHaveClass('just-completed')
+
+    await advance(1500)
+    expect(card('p1')).not.toHaveClass('just-completed')
+
+    await refreshWith([completed()])
+    expect(card('p1')).toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: 演出の timer は再検知のたびに作り直される — 古い timer が新しい演出を途中で消さない', async () => {
+    await renderWith([processing()])
+    await refreshWith([completed()]) // t=0 で検知
+    await advance(1000)
+    await refreshWith([completed()]) // t=1000 で再検知。古い timer（1500）は止まり、新しい timer は 2500
+    await advance(1000) // t=2000: 古い timer が残っていれば 1500 で消えている
+    expect(card('p1')).toHaveClass('just-completed')
+
+    await advance(600) // t=2600: 新しい timer（2500）で消える
+    expect(card('p1')).not.toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: 演出は検知の直後から 1499ms まで付き、1ms 後（1500ms）に消える', async () => {
+    await renderWith([processing()])
+    await refreshWith([completed()])
+    expect(card('p1')).toHaveClass('just-completed')
+
+    await advance(1499)
+    expect(card('p1')).toHaveClass('just-completed')
+
+    await advance(1)
+    expect(card('p1')).not.toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: 空の一覧を挟んでも前回の状態を保つ — processing → [] → completed で検知する', async () => {
+    await renderWith([processing()])
+
+    await refreshWith([])
+    expect(screen.getByText(/Podcast がまだありません/)).toBeInTheDocument()
+
+    await refreshWith([completed()])
+    expect(card('p1')).toHaveClass('just-completed')
+  })
+
+  test('web-usecase-19: 検知しない取得でも前回の状態を更新する — completed → processing → completed は 2 回目で付かず、3 回目で付く', async () => {
+    await renderWith([completed()])
+
+    await refreshWith([processing()])
+    expect(card('p1')).not.toHaveClass('just-completed')
+
+    await refreshWith([completed()])
+    expect(card('p1')).toHaveClass('just-completed')
+  })
+})
+
+// ==========================================================
+// 詳細 page — 取得の失敗・種別・日付
+// ==========================================================
+describe('PodcastDetailPage — fetch failures and fields (verifies: CI-P4)', () => {
+  function renderDetailPage() {
+    return render(
+      <PreferencesProvider store={memoryStore()}>
+        <ToastProvider>
+          <PodcastDetailPage params={Promise.resolve({ id: 'p1' })} />
+        </ToastProvider>
+      </PreferencesProvider>
+    )
+  }
+
+  test('詳細が server 503 のとき toast「読み込みに失敗しました」を出す', async () => {
+    gw.respond('GET', DETAIL_PATH, { ok: false, failure: { kind: 'server', status: 503 } })
+
+    renderDetailPage()
+
+    expect((await screen.findAllByText('読み込みに失敗しました')).length).toBeGreaterThan(0)
+  })
+
+  test('詳細の取得が reject したとき、同じ toast「読み込みに失敗しました」を出す', async () => {
+    gw.respondWith('GET', DETAIL_PATH, () => Promise.reject(new Error('boom')))
+
+    renderDetailPage()
+
+    expect((await screen.findAllByText('読み込みに失敗しました')).length).toBeGreaterThan(0)
+  })
+
+  test('type が digest の詳細では DIGEST のタグと作成日を描く（正方向対照: digest でなければ DIGEST を描かない）', async () => {
+    const created = '2026-06-10T12:00:00Z'
+    gw.respond('GET', DETAIL_PATH, { ok: true, value: { ...SAMPLE_PODCASTS[0], type: 'digest', created_at: created } })
+
+    const { unmount } = renderDetailPage()
+
+    await waitFor(() => expect(screen.getByText('DIGEST')).toBeInTheDocument())
+    expect(screen.getByText(formatDate(created))).toBeInTheDocument()
+    unmount()
+
+    gw.respond('GET', DETAIL_PATH, { ok: true, value: { ...SAMPLE_PODCASTS[0], type: 'single', created_at: created } })
+    renderDetailPage()
+    await waitFor(() => expect(screen.getByText(formatDate(created))).toBeInTheDocument())
+    expect(screen.queryByText('DIGEST')).not.toBeInTheDocument()
+  })
+
+  test('詳細が not_found のとき「エピソードが見つかりません」を出し、toast は出さない', async () => {
+    gw.respond('GET', DETAIL_PATH, { ok: false, failure: { kind: 'not_found', subject: 'podcast' } })
+
+    renderDetailPage()
+
+    await waitFor(() => expect(screen.getByText('エピソードが見つかりません')).toBeInTheDocument())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// ポーリングの停止の配線。fake timer で 5 秒間隔・件数の増加・120 秒の停止を pin する。
+// ==========================================================
+describe('PodcastPage — polling stop wiring (verifies: CI-P1, CI-P6)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  test('件数が増えると次の 5 秒の取得で 2 枚目が描かれ、その後は取得が増えない', async () => {
+    respondFresh([TWO_PODCASTS[0]])
+    renderPodcastPage()
+    await advance(0)
+    expect(screen.queryByTestId('podcast-card-p2')).not.toBeInTheDocument()
+
+    respondFresh(TWO_PODCASTS)
+    await advance(5000)
+    expect(screen.getByTestId('podcast-card-p2')).toBeInTheDocument()
+
+    const calls = podcastListCalls().length
+    await advance(20000)
+    expect(podcastListCalls().length).toBe(calls)
+  })
+
+  test('件数が一定なら 120 秒の取得で停止し、その後は取得が増えない（115 秒までは継続、次の 5 秒で 1 回増える）', async () => {
+    respondFresh([SAMPLE_PODCASTS[0]])
+    renderPodcastPage()
+    await advance(0)
+
+    await advance(115000)
+    const beforeTimeout = podcastListCalls().length
+
+    await advance(5000)
+    expect(podcastListCalls().length).toBe(beforeTimeout + 1)
+
+    await advance(20000)
+    expect(podcastListCalls().length).toBe(beforeTimeout + 1)
+  })
+
+  test('起動時の取得が失敗（server 500）でも、基準は 0 件になり、次に 1 件取れたら停止する', async () => {
+    gw.respond('GET', PODCASTS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    renderPodcastPage()
+    await advance(0)
+
+    respondFresh([SAMPLE_PODCASTS[0]])
+    await advance(5000)
+    expect(screen.getByTestId('podcast-card-p1')).toBeInTheDocument()
+
+    const calls = podcastListCalls().length
+    await advance(20000)
+    expect(podcastListCalls().length).toBe(calls)
+  })
+
+  test('起動時の取得が reject でも、基準は 0 件になり、次に 1 件取れたら停止する', async () => {
+    let rejecting = true
+    gw.respondWith('GET', PODCASTS_PATH, () =>
+      rejecting
+        ? Promise.reject(new Error('boom'))
+        : Promise.resolve({ ok: true as const, value: { podcasts: [{ ...SAMPLE_PODCASTS[0] }] } }),
+    )
+    renderPodcastPage()
+    await advance(0)
+
+    rejecting = false
+    await advance(5000)
+    expect(screen.getByTestId('podcast-card-p1')).toBeInTheDocument()
+
+    const calls = podcastListCalls().length
+    await advance(20000)
+    expect(podcastListCalls().length).toBe(calls)
+  })
+})
+
+describe('usePodcastListPolling — stops itself and notifies (verifies: CI-P6)', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  test('enabled を変えない呼出元でも、停止の判定が真になれば onUpdate を 1 回呼び、自分で interval を止める', async () => {
+    let count = 1
+    const fetchPodcasts = vi.fn(() => Promise.resolve({ podcasts: Array.from({ length: count }, (_, i) => ({ id: `p${i}` })) }))
+    const onUpdate = vi.fn()
+    renderHook(() => usePodcastListPolling({ fetchPodcasts, onUpdate, enabled: true }))
+    await advance(0)
+
+    await advance(5000)
+    expect(onUpdate).not.toHaveBeenCalled()
+
+    count = 2
+    await advance(5000)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
+
+    const calls = fetchPodcasts.mock.calls.length
+    await advance(20000)
+    expect(fetchPodcasts).toHaveBeenCalledTimes(calls)
+    expect(onUpdate).toHaveBeenCalledTimes(1)
   })
 })

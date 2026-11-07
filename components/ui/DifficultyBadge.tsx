@@ -1,5 +1,5 @@
 import React from 'react'
-import type { DifficultyLevel } from '@/types/index'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
 // Shared labels for difficulty level (used in badge display and form options)
 // WHY exported: Settings page select needs same label text to avoid DOM nesting issues

@@ -9,7 +9,7 @@ import {
 import type { Podcast } from '@/types'
 
 /** shared-session-09・web-deriv-31: `partial_failed` は再生不可で、domain の値域の外なので `failed` に写す。 */
-function readStatus(status: Podcast['status']): EpisodeReadout['status'] {
+export function readStatus(status: Podcast['status']): EpisodeReadout['status'] {
   return status === 'partial_failed' ? 'failed' : status
 }
 
@@ -20,7 +20,7 @@ function readFailure(errorMessage: Podcast['error_message']): FailureReason | nu
 }
 
 /** 表示可否の判定は domain の `sourceCredit` が持つ。ここは語を写すだけ（ADR-095: 不明は unknown）。 */
-function readSourceOrigin(sourceKind: Podcast['source_kind']): SourceOrigin {
+export function readSourceOrigin(sourceKind: Podcast['source_kind']): SourceOrigin {
   if (sourceKind === 'featured') return 'operator'
   return sourceKind === 'user' ? 'user' : 'unknown'
 }
