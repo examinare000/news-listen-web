@@ -131,6 +131,24 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "if (res.status === 'ok') {}")).toEqual([])
   })
 
+  test('web-dep-08: switch (X.status) の本体に数値 case があれば label 1 行（1 行・複数行・先頭が文字列の case・case の本体に波括弧）', () => {
+    const label = `web-dep-08 | ${F} | switch (.status) の数値 case`
+    expect(rows(F, 'switch (err.status) { case 400: return 1 }')).toEqual([label])
+    expect(rows(F, ['switch (err.status) {', '  case 400:', '    return 1', '}'].join('\n'))).toEqual([label])
+    expect(rows(F, "switch (err.status) { case 'ok': return 0; case 404: return 1 }")).toEqual([label])
+    expect(rows(F, ['switch (res.status) {', '  case 500: {', '    if (x) { y() }', '    break', '  }', '}'].join('\n'))).toEqual([label])
+    // 複数の switch があっても、同じファイルでは (rule, file, label) の 1 行にまとまる
+    expect(rows(F, 'switch (a.status) { case 1: break }\nswitch (b.status) { case 2: break }')).toEqual([label])
+    // 出てよいファイルは数えない
+    expect(rows('lib/api/gateway.ts', 'switch (err.status) { case 400: return 1 }')).toEqual([])
+  })
+
+  test('web-dep-08: switch の数値 case でないものは拾わない（文字列 case・status でない switch・文字列だけの switch の後の数値）', () => {
+    expect(rows(F, "switch (podcast.status) { case 'completed': return 1 }")).toEqual([])
+    expect(rows(F, 'switch (kind) { case 400: return 1 }')).toEqual([])
+    expect(rows(F, "switch (p.status) { case 'a': return 1 }\nconst n = 400\nswitch (kind) { case 404: break }")).toEqual([])
+  })
+
   test('コメントの中の出現は数えない。文字列・正規表現の中は数える', () => {
     expect(rows(F, '// password.length と POLL_TIMEOUT_MS は書かない\n/** 5 * 60 * 1000 */\nconst a = 1')).toEqual([])
     expect(rows(F, "const url = 'https://example.com//x'; const n = POLL_TIMEOUT_MS")).toEqual([`web-rule-catalog-06 | ${F} | POLL_TIMEOUT_MS`])

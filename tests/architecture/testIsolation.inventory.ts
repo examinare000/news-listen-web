@@ -65,8 +65,6 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/api.sessions.test.ts',
       'tests/lib/api.starred.test.ts',
       'tests/lib/api.test.ts',
-      'tests/lib/api.webTemp01.fake.test.tsx',
-      'tests/lib/api.webTemp01.test.ts',
       'tests/lib/api/gateway.test.ts',
       'tests/lib/contextApi.test.ts',
     ],

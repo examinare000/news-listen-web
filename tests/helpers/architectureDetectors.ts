@@ -374,6 +374,23 @@ function regexStarts(body: string, pattern: RegExp): number[] {
   return [...body.matchAll(new RegExp(pattern.source, flags))].map((m) => m.index)
 }
 
+/** `switch (X.status) {` の波括弧の対応で本体を切り出し、その中に `case <数値>` がある switch の開始位置を返す。 */
+function numericStatusSwitchStarts(ctx: MatchContext): number[] {
+  const body = ctx.body
+  const starts: number[] = []
+  for (const head of body.matchAll(/\bswitch\s*\(\s*[\w.?]*\.status\s*\)\s*\{/g)) {
+    let depth = 1
+    let i = head.index + head[0].length
+    const bodyStart = i
+    for (; i < body.length && depth > 0; i++) {
+      if (body[i] === '{') depth++
+      else if (body[i] === '}') depth--
+    }
+    if (/\bcase\s+\d/.test(body.slice(bodyStart, i))) starts.push(head.index)
+  }
+  return starts
+}
+
 const lineOf = (body: string, index: number): number => body.slice(0, index).split('\n').length
 
 function arrayLiteralStarts(
@@ -555,6 +572,7 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
           ...regexStarts(ctx.body, /\d\s*(===|!==|==|!=|<=|>=|<|>)\s*[\w.?]*\.status\b/),
         ],
       },
+      { label: 'switch (.status) の数値 case', find: numericStatusSwitchStarts },
     ],
   },
 ]

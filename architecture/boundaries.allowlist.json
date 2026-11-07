@@ -434,13 +434,6 @@
     "removeBy": "web-slice-notify-01"
   },
   {
-    "rule": "web-dep-08",
-    "file": "lib/api/legacyRequest.ts",
-    "specifier": ".status と数値の比較",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-context-07"
-  },
-  {
     "rule": "web-rule-account-06",
     "file": "app/(app)/admin/users/page.tsx",
     "specifier": "role === 'admin'",

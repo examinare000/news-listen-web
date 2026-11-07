@@ -40,8 +40,9 @@ type RawExchange =
 
 const SAFE_METHODS: ReadonlySet<string> = new Set(['GET', 'HEAD', 'OPTIONS'])
 
-// owner: user・導入: web-slice-gateway-01（2026-09-24）。読み手は互換 adapter（web-temp-01）だけ。
-// web-temp-01 削除（web-slice-context-07）でこのキーの読み手がいなくなるので、そのとき一緒に消してよい（公開契約は変わらない）。
+// owner: user・導入: web-slice-gateway-01（2026-09-24）。読み手だった互換 adapter（web-temp-01）は
+// web-slice-context-07 で削除済みで、production の読み手はいない（tests/lib/api/gateway.test.ts が非列挙・非公開を固定している）。
+// 消してよいが、公開契約（失敗値の形）は変わらないため別 slice の判断とする。
 const RAW_KEY = Symbol.for('news-listen.web.gateway.raw')
 
 type JsonReadOutcome =

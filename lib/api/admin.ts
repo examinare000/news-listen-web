@@ -13,7 +13,7 @@ import type { ApiGateway } from '@/lib/api/gateway'
 /**
  * リテンション計測ダッシュボード用スナップショット（ADR-075 決定 E1・require_admin・
  * backend api/schemas.py 確定契約）。指定日（省略時は当日 Asia/Tokyo）のスナップショットが
- * 未生成の場合は 404（呼び出し側で ApiError.status===404 を「集計データ未蓄積」として扱う）。
+ * 未生成の場合は 404（呼び出し側で kind === 'not_found' の失敗を「集計データ未蓄積」として扱う）。
  */
 export function getMetrics(gateway: ApiGateway) {
   return gateway.request<MetricsSnapshot>('/api/backend/admin/metrics', { method: 'GET' })

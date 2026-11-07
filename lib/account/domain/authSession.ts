@@ -1,7 +1,7 @@
 import type { UserRole } from './role'
 
 // 認証状態の判別共用体と遷移（web-contract-18 / web-dec-66〜71）。
-// どの状態からも全事象を受け、次状態は事象だけで決まる（禁止遷移なし）。
+// どの状態からも全事象を受ける（禁止遷移なし）。次状態は事象だけで決まる。ただし expired だけは直前の状態にも依る。
 // react・@/types・HTTP status を持たない純関数。
 
 export interface AuthSessionUser {
@@ -29,6 +29,7 @@ export type AuthEvent =
   | { readonly type: 'signedIn'; readonly user: AuthSessionUser }
   | { readonly type: 'retry' }
   | { readonly type: 'loggedOut' }
+  | { readonly type: 'expired' }
 
 export const RESOLVING_SESSION: AuthSession = Object.freeze({ kind: 'resolving' })
 
@@ -48,7 +49,7 @@ function unavailable(failure: AuthFailure): AuthSession {
   return Object.freeze({ kind: 'unavailable', failure: Object.freeze({ reason: failure.reason }) })
 }
 
-export function reduce(_session: AuthSession, event: AuthEvent): AuthSession {
+export function reduce(session: AuthSession, event: AuthEvent): AuthSession {
   switch (event.type) {
     case 'resolved':
     case 'signedIn':
@@ -60,5 +61,7 @@ export function reduce(_session: AuthSession, event: AuthEvent): AuthSession {
       return unavailable(event.failure)
     case 'retry':
       return RESOLVING_SESSION
+    case 'expired':
+      return session.kind === 'authenticated' ? ANONYMOUS_SESSION : session
   }
 }

@@ -1,92 +1,48 @@
-import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { createApiClient, ApiError } from '@/lib/api'
-
-function makeClient() {
-  return createApiClient()
-}
-
-function mockFetchOk(body: unknown, status = 200) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status,
-      json: () => Promise.resolve(body),
-      text: () => Promise.resolve(JSON.stringify(body)),
-    }),
-  )
-}
-
-function mockFetchNoContent() {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      status: 204,
-      json: () => Promise.reject(new Error('must not parse JSON body on 204 No Content')),
-      text: () => Promise.resolve(''),
-    }),
-  )
-}
-
-function mockFetchError(status: number, detail: string) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: false,
-      status,
-      json: () => Promise.resolve({ detail }),
-      text: () => Promise.resolve(JSON.stringify({ detail })),
-    }),
-  )
-}
-
-beforeEach(() => {
-  vi.restoreAllMocks()
-})
-
-function lastCall() {
-  const [path, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit]
-  return { path, init }
-}
+import { describe, test, expect } from 'vitest'
+import { createInvite, listInvites, revokeInvite } from '@/lib/api/admin'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
 
 describe('createInvite', () => {
   test('POSTs note/max_uses/expires_in_days to /api/backend/admin/invites', async () => {
-    mockFetchOk(
-      {
-        id: 'inv1',
-        code: 'ABC123',
-        invite_url: 'https://example.com/signup?invite=ABC123',
-        note: 'for alice',
-        max_uses: 1,
-        expires_at: '2026-08-01T00:00:00Z',
-        created_at: '2026-07-01T00:00:00Z',
-      },
-      201,
-    )
-    const res = await makeClient().createInvite({ note: 'for alice', max_uses: 1, expires_in_days: 31 })
+    const gw = createGatewayDouble()
+    const created = {
+      id: 'inv1',
+      code: 'ABC123',
+      invite_url: 'https://example.com/signup?invite=ABC123',
+      note: 'for alice',
+      max_uses: 1,
+      expires_at: '2026-08-01T00:00:00Z',
+      created_at: '2026-07-01T00:00:00Z',
+    }
+    gw.respond('POST', '/api/backend/admin/invites', { ok: true, value: created })
 
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/invites')
-    expect(init.method).toBe('POST')
-    expect(JSON.parse(init.body as string)).toEqual({ note: 'for alice', max_uses: 1, expires_in_days: 31 })
-    expect(res.code).toBe('ABC123')
-    expect(res.invite_url).toBe('https://example.com/signup?invite=ABC123')
+    const res = await createInvite(gw, { note: 'for alice', max_uses: 1, expires_in_days: 31 })
+
+    expect(gw.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/api/backend/admin/invites',
+        body: { note: 'for alice', max_uses: 1, expires_in_days: 31 },
+      },
+    ])
+    expect(res).toEqual({ ok: true, value: created })
   })
 })
 
 describe('listInvites', () => {
   test('GETs /api/backend/admin/invites', async () => {
-    mockFetchOk({ invites: [] })
-    const res = await makeClient().listInvites()
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/invites')
-    expect(init.method).toBe('GET')
-    expect(res.invites).toEqual([])
+    const gw = createGatewayDouble()
+    gw.respond('GET', '/api/backend/admin/invites', { ok: true, value: { invites: [] } })
+
+    const res = await listInvites(gw)
+
+    expect(gw.calls).toEqual([{ method: 'GET', path: '/api/backend/admin/invites', body: undefined }])
+    expect(res).toEqual({ ok: true, value: { invites: [] } })
   })
 
   test('returns invites with the documented fields (interface contract)', async () => {
-    mockFetchOk({
+    const gw = createGatewayDouble()
+    const body = {
       invites: [
         {
           id: 'inv1',
@@ -101,9 +57,14 @@ describe('listInvites', () => {
           status: 'active',
         },
       ],
-    })
-    const res = await makeClient().listInvites()
-    const invite = res.invites[0]
+    }
+    gw.respond('GET', '/api/backend/admin/invites', { ok: true, value: body })
+
+    const res = await listInvites(gw)
+
+    expect(res.ok).toBe(true)
+    if (!res.ok) return
+    const invite = res.value.invites[0]
     for (const field of ['id', 'note', 'created_by', 'max_uses', 'use_count', 'used_by', 'expires_at', 'revoked_at', 'created_at', 'status']) {
       expect(invite).toHaveProperty(field)
     }
@@ -112,27 +73,30 @@ describe('listInvites', () => {
 
 describe('revokeInvite', () => {
   test('DELETEs the id-scoped path', async () => {
-    mockFetchNoContent()
-    await makeClient().revokeInvite('inv1')
-    const { path, init } = lastCall()
-    expect(path).toBe('/api/backend/admin/invites/inv1')
-    expect(init.method).toBe('DELETE')
+    const gw = createGatewayDouble()
+    gw.respond('DELETE', '/api/backend/admin/invites/inv1', { ok: true, value: { status: 'revoked', id: 'inv1' } })
+
+    const res = await revokeInvite(gw, 'inv1')
+
+    expect(gw.calls).toEqual([{ method: 'DELETE', path: '/api/backend/admin/invites/inv1', body: undefined }])
+    expect(res.ok).toBe(true)
   })
 
   test('encodeURIComponent-escapes the id', async () => {
-    mockFetchNoContent()
-    await makeClient().revokeInvite('inv/weird id')
-    expect(lastCall().path).toBe('/api/backend/admin/invites/inv%2Fweird%20id')
+    const gw = createGatewayDouble()
+
+    await revokeInvite(gw, 'inv/weird id')
+
+    expect(gw.calls[0].path).toBe('/api/backend/admin/invites/inv%2Fweird%20id')
   })
 
-  test('throws ApiError on 404 when the invite does not exist', async () => {
-    mockFetchError(404, 'Invite not found')
-    try {
-      await makeClient().revokeInvite('missing')
-      throw new Error('should have thrown')
-    } catch (e) {
-      expect(e).toBeInstanceOf(ApiError)
-      expect((e as ApiError).status).toBe(404)
-    }
+  test('returns a not_found failure on 404 when the invite does not exist', async () => {
+    const gw = createGatewayDouble()
+    const failure = { kind: 'not_found' } as const
+    gw.respond('DELETE', '/api/backend/admin/invites/missing', { ok: false, failure })
+
+    const res = await revokeInvite(gw, 'missing')
+
+    expect(res).toEqual({ ok: false, failure })
   })
 })
