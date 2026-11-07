@@ -1,5 +1,6 @@
 import React from 'react'
 import { act, renderHook, waitFor } from '@testing-library/react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { StreakProvider, useStreak } from '@/contexts/StreakContext'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
@@ -24,7 +25,11 @@ function callsTo(method: string, path: string) {
 }
 
 function wrapper({ children }: { children: React.ReactNode }) {
-  return <StreakProvider>{children}</StreakProvider>
+  return (
+    <ApiClientProvider>
+      <StreakProvider>{children}</StreakProvider>
+    </ApiClientProvider>
+  )
 }
 
 describe('StreakProvider shared listening streak', () => {

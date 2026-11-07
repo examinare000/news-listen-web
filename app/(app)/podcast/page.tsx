@@ -6,7 +6,8 @@ import { PodcastCard } from '@/components/PodcastCard'
 import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getPodcasts } from '@/lib/catalog/infrastructure/api'
 import type { QueueEntryInput } from '@/lib/playback/application/ports'
 import type { PlayableEpisode } from '@/lib/catalog/domain/episode'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
@@ -52,6 +53,7 @@ const toQueueEntry = (podcast: Podcast): QueueEntryInput => ({
 
 export default function PodcastPage() {
   const { showToast } = useToast()
+  const gateway = useApiClient()
   const playback = usePlayback()
   const { offline } = playback
   const actions = usePlaybackActions()
@@ -66,18 +68,24 @@ export default function PodcastPage() {
 
   const fetchPodcasts = useCallback(async () => {
     try {
-      const data = await createApiClient().getPodcasts()
-      setPodcasts(data.podcasts)
-      return data
-    } catch (err) {
-      if (err instanceof ApiError) {
-        showToast(`エラーが発生しました (${err.status})`, 'error')
+      const result = await getPodcasts(gateway)
+      if (!result.ok) {
+        const failure = result.failure
+        if (failure.kind === 'server' || failure.kind === 'unknown') {
+          showToast(`エラーが発生しました (${failure.status})`, 'error')
+        } else {
+          showToast('エラーが発生しました', 'error')
+        }
+        return { podcasts: [] }
       }
+      setPodcasts(result.value.podcasts)
+      return result.value
+    } catch {
       return { podcasts: [] }
     } finally {
       setLoading(false)
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gateway]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchPodcasts()

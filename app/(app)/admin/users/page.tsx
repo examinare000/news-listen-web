@@ -4,7 +4,8 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthProvider'
 import { validatePassword } from '@/lib/account/domain/password'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { createUser, deleteUser, listUsers, updateUser } from '@/lib/admin/infrastructure/api'
 import { AdminGate } from '@/components/AdminGate'
 import type { UserSummary, UserRole } from '@/types/index'
 
@@ -21,7 +22,7 @@ export default function AdminUsersPage() {
 
 function AdminUsersPanel() {
   const { user } = useAuth()
-  const client = createApiClient()
+  const gateway = useApiClient()
 
   const [users, setUsers] = useState<UserSummary[]>([])
   const [loadError, setLoadError] = useState('')
@@ -36,12 +37,16 @@ function AdminUsersPanel() {
   const reload = useCallback(async () => {
     setLoadError('')
     try {
-      const res = await client.listUsers()
-      setUsers(res.users)
+      const result = await listUsers(gateway)
+      if (!result.ok) {
+        setLoadError('ユーザー一覧の取得に失敗しました')
+        return
+      }
+      setUsers(result.value.users)
     } catch {
       setLoadError('ユーザー一覧の取得に失敗しました')
     }
-  }, [])
+  }, [gateway])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -56,12 +61,16 @@ function AdminUsersPanel() {
       return
     }
     try {
-      await client.createUser({
+      const result = await createUser(gateway, {
         username: newUsername,
         password: newPassword,
         display_name: newDisplayName || undefined,
         role: newRole,
       })
+      if (!result.ok) {
+        setFormError('ユーザー作成に失敗しました（既に存在する可能性があります）')
+        return
+      }
       setNewUsername('')
       setNewPassword('')
       setNewDisplayName('')
@@ -74,7 +83,11 @@ function AdminUsersPanel() {
 
   async function handleDelete(username: string) {
     try {
-      await client.deleteUser(username)
+      const result = await deleteUser(gateway, username)
+      if (!result.ok) {
+        setLoadError(`${username} の削除に失敗しました`)
+        return
+      }
       await reload()
     } catch {
       setLoadError(`${username} の削除に失敗しました`)
@@ -84,7 +97,11 @@ function AdminUsersPanel() {
   async function handleToggleRole(target: UserSummary) {
     const nextRole: UserRole = target.role === 'admin' ? 'user' : 'admin'
     try {
-      await client.updateUser(target.username, { role: nextRole })
+      const result = await updateUser(gateway, target.username, { role: nextRole })
+      if (!result.ok) {
+        setLoadError(`${target.username} のロール変更に失敗しました`)
+        return
+      }
       await reload()
     } catch {
       setLoadError(`${target.username} のロール変更に失敗しました`)

@@ -1,5 +1,8 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
 import AdminFeaturedSitesPage from '@/app/(app)/admin/featured-sites/page'
@@ -8,6 +11,9 @@ import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {

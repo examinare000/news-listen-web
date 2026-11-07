@@ -1,7 +1,8 @@
 'use client'
 
 import React, { createContext, use, useCallback, useEffect, useRef, useState } from 'react'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getListeningStreak } from '@/lib/learning/infrastructure/api'
 import { playSfx } from '@/lib/sfx'
 import type { ListeningStreak } from '@/types/index'
 
@@ -16,6 +17,7 @@ interface StreakContextValue {
 const StreakContext = createContext<StreakContextValue | null>(null)
 
 export function StreakProvider({ children }: { children: React.ReactNode }) {
+  const gateway = useApiClient()
   const [streak, setStreak] = useState<ListeningStreak | null>(null)
   const [isPulsing, setIsPulsing] = useState(false)
   const streakRef = useRef<ListeningStreak | null>(null)
@@ -27,15 +29,17 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
     if (Date.now() - lastFetchedAtRef.current < STALE_AFTER_MS) return
     if (requestRef.current) return requestRef.current
 
-    let response: ReturnType<ReturnType<typeof createApiClient>['getListeningStreak']>
+    let response: ReturnType<typeof getListeningStreak>
     try {
-      response = createApiClient().getListeningStreak()
+      response = getListeningStreak(gateway)
     } catch {
       return
     }
 
     const request = response
-      .then((nextStreak) => {
+      .then((result) => {
+        if (!result.ok) return
+        const nextStreak = result.value
         const previousStreak = streakRef.current
         streakRef.current = nextStreak
         lastFetchedAtRef.current = Date.now()
@@ -62,7 +66,7 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
 
     requestRef.current = request
     return request
-  }, [])
+  }, [gateway])
 
   useEffect(() => {
     void refresh()

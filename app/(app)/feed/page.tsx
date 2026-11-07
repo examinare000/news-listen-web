@@ -4,7 +4,15 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ArticleCard } from '@/components/ArticleCard'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import {
+  getFeed,
+  getStarredArticles,
+  starArticle,
+  dismissArticle,
+  unstarArticle,
+} from '@/lib/catalog/infrastructure/api'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { formatRetryAfter } from '@/lib/format'
 import { classifyGenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import { playSfx, prepareSfx } from '@/lib/sfx'
@@ -12,10 +20,10 @@ import type { Article, DifficultyLevel } from '@/types/index'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
 // 月次・日次の判定は classifyGenerationLimit（ADR-073 のフォールバック戦略）に集約している。
-function generationLimitMessage(err: ApiError): string {
-  const when = formatRetryAfter(err.retryAfterSeconds)
+function generationLimitMessage(failure: Extract<ApiFailure, { kind: 'rate_limited' }>): string {
+  const when = formatRetryAfter(failure.retryAfterSeconds)
   const label =
-    classifyGenerationLimit(err.detail, err.retryAfterSeconds).period === 'monthly' ? '今月の生成上限' : '本日の生成上限'
+    classifyGenerationLimit(failure.detail, failure.retryAfterSeconds).period === 'monthly' ? '今月の生成上限' : '本日の生成上限'
   return when ? `${label}に達しました（${when}に可能）` : `${label}に達しました`
 }
 
@@ -74,6 +82,7 @@ const tabCountStyle: React.CSSProperties = {
 
 export default function FeedPage() {
   const { showToast } = useToast()
+  const gateway = useApiClient()
 
   const [articles, setArticles] = useState<Article[]>([])
   const [feedDate, setFeedDate] = useState<string | null>(null)
@@ -121,22 +130,26 @@ export default function FeedPage() {
     setLoading(true)
     setErrorMessage(null)
     setStarredErrorMessage(null)
-    const api = createApiClient()
     // Star タブの一覧はサーバ側一覧（issue #84 → backend feed 除外移行）。フィード取得と
     // 並行で取りに行く。失敗してもフィード表示自体は壊さず、楽観 star のみで機能させる
     // （backend 側の一時的な不調でフィード全体が見られなくなるのを避けるため）。
     // WHY: catch はここで即座に（同期的に）アタッチし、成功/失敗を判別可能な結果オブジェクトへ
     // 正規化する。await を後段まで遅延させつつ catch だけ先に付けないと、getFeed 側の await 中に
     // このPromiseが reject した場合に unhandled rejection になり得るため。
-    const starredPromise = api
-      .getStarredArticles()
-      .then((result) => ({
-        ok: true as const,
-        // WHY: 移行期・プロキシ経由で 200 かつ想定外の body（例: 未スタブ経路の catch-all が
-        // 返す {}）が来ても articles が配列であることを確定させ、画面全体を壊さない
-        // （is_starred が undefined の場合を「未対応 backend」として許容する既存の防御姿勢と同型）。
-        articles: Array.isArray(result.articles) ? result.articles : [],
-      }))
+    const starredPromise = getStarredArticles(gateway)
+      .then((result) => {
+        if (!result.ok) {
+          console.error('[feed] starred一覧の取得に失敗', result.failure)
+          return { ok: false as const }
+        }
+        return {
+          ok: true as const,
+          // WHY: 移行期・プロキシ経由で 200 かつ想定外の body（例: 未スタブ経路の catch-all が
+          // 返す {}）が来ても articles が配列であることを確定させ、画面全体を壊さない
+          // （is_starred が undefined の場合を「未対応 backend」として許容する既存の防御姿勢と同型）。
+          articles: Array.isArray(result.value.articles) ? result.value.articles : [],
+        }
+      })
       .catch((e) => {
         // WHY: getFeed 単独失敗時はフィード全体を壊さず楽観 starのみで継続するが、原因調査の
         // ため運用ログには残す（getFeed 側の失敗はユーザー向け errorMessage で可視化される
@@ -148,32 +161,36 @@ export default function FeedPage() {
         return { ok: false as const }
       })
     try {
-      const data = await api.getFeed()
+      const result = await getFeed(gateway)
       if (requestId !== fetchRequestIdRef.current) return // stale: 後発リクエストが既に走っている
-      setArticles(data.articles)
-      // サーバ値は追加方向にのみ反映する（issue #84）。undefined = 未対応 backend の可能性があり、
-      // 明示 false と区別できないため解除はしない。セッション内の楽観 Star を手動更新で失わないため。
-      setStarredIds((prev) => {
-        const next = new Set(prev)
-        for (const a of data.articles) {
-          if (a.is_starred) next.add(a.id)
-        }
-        return next
-      })
-      setFeedDate(data.date ?? null)
-    } catch (err) {
-      if (requestId !== fetchRequestIdRef.current) return // stale
-      if (err instanceof ApiError) {
-        if (err.status === 0) {
-          setErrorMessage('サーバーに接続できません')
-        } else if (err.status === 401) {
-          setErrorMessage('API キーが正しくありません')
-        } else {
-          setErrorMessage(`エラーが発生しました (${err.status})`)
-        }
+      if (result.ok) {
+        const data = result.value
+        setArticles(data.articles)
+        // サーバ値は追加方向にのみ反映する（issue #84）。undefined = 未対応 backend の可能性があり、
+        // 明示 false と区別できないため解除はしない。セッション内の楽観 Star を手動更新で失わないため。
+        setStarredIds((prev) => {
+          const next = new Set(prev)
+          for (const a of data.articles) {
+            if (a.is_starred) next.add(a.id)
+          }
+          return next
+        })
+        setFeedDate(data.date ?? null)
       } else {
-        setErrorMessage('予期しないエラーが発生しました')
+        const failure = result.failure
+        if (failure.kind === 'network' || failure.kind === 'timeout') {
+          setErrorMessage('サーバーに接続できません')
+        } else if (failure.kind === 'unauthorized') {
+          setErrorMessage('API キーが正しくありません')
+        } else if (failure.kind === 'server' || failure.kind === 'unknown') {
+          setErrorMessage(`エラーが発生しました (${failure.status})`)
+        } else {
+          setErrorMessage('エラーが発生しました')
+        }
       }
+    } catch {
+      if (requestId !== fetchRequestIdRef.current) return // stale
+      setErrorMessage('予期しないエラーが発生しました')
     } finally {
       if (requestId === fetchRequestIdRef.current) {
         setLoading(false)
@@ -189,7 +206,7 @@ export default function FeedPage() {
         setStarredErrorMessage('スター済み記事の取得に失敗しました')
       }
     }
-  }, [])
+  }, [gateway])
 
   useEffect(() => {
     fetchFeed()
@@ -224,29 +241,33 @@ export default function FeedPage() {
     try {
       // difficulty 未指定時は明示的な undefined を渡さず、従来どおり id のみで呼ぶ
       // （後方互換・starArticle 側の「省略時はボディなし」契約と合わせる）
-      const api = createApiClient()
-      const res = difficulty ? await api.starArticle(id, difficulty) : await api.starArticle(id)
-      setStarredIds((prev) => new Set(prev).add(id))
-      addOptimisticStarred(id)
-      showToast(starSuccessMessage(res.remaining), 'success')
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 404) {
+      const result = difficulty
+        ? await starArticle(gateway, id, difficulty)
+        : await starArticle(gateway, id)
+      if (result.ok) {
+        setStarredIds((prev) => new Set(prev).add(id))
+        addOptimisticStarred(id)
+        showToast(starSuccessMessage(result.value.remaining), 'success')
+      } else {
+        const failure = result.failure
+        if (failure.kind === 'not_found') {
           showToast('記事が見つかりません', 'error')
           setArticles((prev) => prev.filter((a) => a.id !== id))
           removeFromStarredCollections(id)
-        } else if (err.status === 401) {
+        } else if (failure.kind === 'unauthorized') {
           showToast('API キーが正しくありません', 'error')
-        } else if (err.status === 429) {
-          showToast(generationLimitMessage(err), 'error')
+        } else if (failure.kind === 'rate_limited') {
+          showToast(generationLimitMessage(failure), 'error')
+        } else if (failure.kind === 'server' || failure.kind === 'unknown') {
+          showToast(`エラーが発生しました (${failure.status})`, 'error')
         } else {
-          showToast(`エラーが発生しました (${err.status})`, 'error')
+          showToast('エラーが発生しました', 'error')
         }
-      } else {
-        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
-        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
-        showToast('予期しないエラーが発生しました', 'error')
       }
+    } catch {
+      // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+      // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+      showToast('予期しないエラーが発生しました', 'error')
     } finally {
       setBusyIds((prev) => {
         const next = new Set(prev)
@@ -259,17 +280,22 @@ export default function FeedPage() {
   async function handleDismiss(id: string) {
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      await createApiClient().dismissArticle(id)
-      setArticles((prev) => prev.filter((a) => a.id !== id))
-      removeFromStarredCollections(id)
-    } catch (err) {
-      if (err instanceof ApiError) {
-        showToast(`エラーが発生しました (${err.status})`, 'error')
+      const result = await dismissArticle(gateway, id)
+      if (result.ok) {
+        setArticles((prev) => prev.filter((a) => a.id !== id))
+        removeFromStarredCollections(id)
       } else {
-        // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
-        // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
-        showToast('予期しないエラーが発生しました', 'error')
+        const failure = result.failure
+        if (failure.kind === 'server' || failure.kind === 'unknown') {
+          showToast(`エラーが発生しました (${failure.status})`, 'error')
+        } else {
+          showToast('エラーが発生しました', 'error')
+        }
       }
+    } catch {
+      // WHY: 予期しない例外（TypeErrorなど）をキャッチして、ユーザーに通知する。
+      // APIエラー以外の場合も適切にトースト表示して、操作失敗を明示する。
+      showToast('予期しないエラーが発生しました', 'error')
     } finally {
       setBusyIds((prev) => {
         const next = new Set(prev)
@@ -301,21 +327,22 @@ export default function FeedPage() {
     setConfirmUnstarId(null)
     setBusyIds((prev) => new Set(prev).add(id))
     try {
-      await createApiClient().unstarArticle(id)
-      // WHY: setStarredIds からの削除は、fetchFeed 内の「サーバ値は追加方向にのみ反映する」
-      // （issue #84）というルールの例外である。あのルールは undefined = 未対応backendの曖昧さに対する防御だが、
-      // ここはユーザーの明示的なun-star操作の成功応答であり曖昧さが無いため、削除して良い
-      // （all タブへ戻した際に star ボタンが「未star」に正しく戻るために必要）。
-      setStarredIds((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      removeFromStarredCollections(id)
-      showToast('スターを解除しました', 'success')
-    } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.status === 404) {
+      const result = await unstarArticle(gateway, id)
+      if (result.ok) {
+        // WHY: setStarredIds からの削除は、fetchFeed 内の「サーバ値は追加方向にのみ反映する」
+        // （issue #84）というルールの例外である。あのルールは undefined = 未対応backendの曖昧さに対する防御だが、
+        // ここはユーザーの明示的なun-star操作の成功応答であり曖昧さが無いため、削除して良い
+        // （all タブへ戻した際に star ボタンが「未star」に正しく戻るために必要）。
+        setStarredIds((prev) => {
+          const next = new Set(prev)
+          next.delete(id)
+          return next
+        })
+        removeFromStarredCollections(id)
+        showToast('スターを解除しました', 'success')
+      } else {
+        const failure = result.failure
+        if (failure.kind === 'not_found') {
           // WHY: 記事doc自体が既に無い（handleStarの404分岐 と同型）。ローカルの
           // 全コレクションから除去し、以後の操作対象から外す。
           showToast('記事が見つかりません', 'error')
@@ -326,14 +353,16 @@ export default function FeedPage() {
             return next
           })
           removeFromStarredCollections(id)
-        } else if (err.status === 401) {
+        } else if (failure.kind === 'unauthorized') {
           showToast('API キーが正しくありません', 'error')
+        } else if (failure.kind === 'server' || failure.kind === 'unknown') {
+          showToast(`エラーが発生しました (${failure.status})`, 'error')
         } else {
-          showToast(`エラーが発生しました (${err.status})`, 'error')
+          showToast('エラーが発生しました', 'error')
         }
-      } else {
-        showToast('予期しないエラーが発生しました', 'error')
       }
+    } catch {
+      showToast('予期しないエラーが発生しました', 'error')
     } finally {
       unstarInFlightRef.current.delete(id)
       setBusyIds((prev) => {
@@ -360,16 +389,21 @@ export default function FeedPage() {
     if (selectedIds.size === 0) return
 
     const idArray = Array.from(selectedIds)
-    const api = createApiClient()
 
     // WHY: 一括スター中は対象記事を busy にして個別 Star/Dismiss との二重操作を防ぐ
     setBusyIds((prev) => new Set([...prev, ...idArray]))
     try {
       // WHY: Promise.allSettled で一部失敗しても他の成功を処理
-      const results = await Promise.allSettled(idArray.map((id) => api.starArticle(id)))
+      const results = await Promise.allSettled(idArray.map((id) => starArticle(gateway, id)))
 
-      const successful = idArray.filter((id, idx) => results[idx].status === 'fulfilled')
-      const failed = idArray.filter((id, idx) => results[idx].status === 'rejected')
+      const successful = idArray.filter((id, idx) => {
+        const r = results[idx]
+        return r.status === 'fulfilled' && r.value.ok
+      })
+      const failed = idArray.filter((id, idx) => {
+        const r = results[idx]
+        return !(r.status === 'fulfilled' && r.value.ok)
+      })
 
       // 成功した分を starredIds に追加
       if (successful.length > 0) {
@@ -380,12 +414,15 @@ export default function FeedPage() {
 
       // 失敗分を通知。生成上限（429）が含まれていれば上限メッセージを優先する（issue #82）。
       if (failed.length > 0) {
-        const limit = results.find(
-          (r): r is PromiseRejectedResult =>
-            r.status === 'rejected' && r.reason instanceof ApiError && r.reason.status === 429,
-        )
-        if (limit) {
-          showToast(generationLimitMessage(limit.reason as ApiError), 'error')
+        let limitFailure: Extract<ApiFailure, { kind: 'rate_limited' }> | undefined
+        for (const r of results) {
+          if (r.status === 'fulfilled' && !r.value.ok && r.value.failure.kind === 'rate_limited') {
+            limitFailure = r.value.failure
+            break
+          }
+        }
+        if (limitFailure) {
+          showToast(generationLimitMessage(limitFailure), 'error')
         } else {
           showToast(`${failed.length}件のスターに失敗しました`, 'error')
         }

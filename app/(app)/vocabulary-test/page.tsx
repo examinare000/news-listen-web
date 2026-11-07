@@ -3,7 +3,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
-import { createApiClient } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getVocabularyTestSession, submitVocabularyTestResult } from '@/lib/learning/infrastructure/api'
 import { playSfx, prepareSfx } from '@/lib/sfx'
 import type { VocabularyTestItem, VocabularyTestResultItem } from '@/types/index'
 
@@ -30,6 +31,7 @@ function buildChoices(item: VocabularyTestItem): string[] {
 
 export default function VocabularyTestPage() {
   const { showToast } = useToast()
+  const gateway = useApiClient()
   const [phase, setPhase] = useState<Phase>('loading')
   const [items, setItems] = useState<VocabularyTestItem[]>([])
   const [assessmentIndex, setAssessmentIndex] = useState(0)
@@ -52,10 +54,16 @@ export default function VocabularyTestPage() {
 
   useEffect(() => {
     let active = true
-    createApiClient()
-      .getVocabularyTestSession()
-      .then((session) => {
+    getVocabularyTestSession(gateway)
+      .then((result) => {
         if (!active) return
+        if (!result.ok) {
+          setSummary({ reviewed: 0, retestCount: 0, correct: 0 })
+          setPhase('error')
+          showToast('単語テストの読み込みに失敗しました', 'error')
+          return
+        }
+        const session = result.value
         const boundedItems = session.items.slice(0, 10)
         setItems(boundedItems)
         setPhase(boundedItems.length === 0 ? 'empty' : 'self-assessment')
@@ -70,7 +78,7 @@ export default function VocabularyTestPage() {
       active = false
       if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current)
     }
-  }, [showToast])
+  }, [gateway, showToast])
 
   // Focus management for phase transitions
   useEffect(() => {
@@ -99,7 +107,12 @@ export default function VocabularyTestPage() {
       }
     })
     try {
-      await createApiClient().submitVocabularyTestResult(payload)
+      const result = await submitVocabularyTestResult(gateway, payload)
+      if (!result.ok) {
+        setPhase('error')
+        showToast('単語テストの結果送信に失敗しました', 'error')
+        return
+      }
       const retestCount = payload.filter((item) => item.retest_correct !== null).length
       const correctCount = payload.filter((item) => item.retest_correct === true).length
       setSummary({
@@ -404,9 +417,14 @@ export default function VocabularyTestPage() {
                   setRetestIndex(0)
                   setRetestResults({})
                   setSummary(null)
-                  createApiClient()
-                    .getVocabularyTestSession()
-                    .then((session) => {
+                  getVocabularyTestSession(gateway)
+                    .then((result) => {
+                      if (!result.ok) {
+                        setPhase('error')
+                        showToast('単語テストの読み込みに失敗しました', 'error')
+                        return
+                      }
+                      const session = result.value
                       const boundedItems = session.items.slice(0, 10)
                       setItems(boundedItems)
                       setPhase(boundedItems.length === 0 ? 'empty' : 'self-assessment')
@@ -437,9 +455,13 @@ export default function VocabularyTestPage() {
                   className="btn btn-primary"
                   onClick={() => {
                     setPhase('loading')
-                    createApiClient()
-                      .getVocabularyTestSession()
-                      .then((session) => {
+                    getVocabularyTestSession(gateway)
+                      .then((result) => {
+                        if (!result.ok) {
+                          showToast('単語テストの読み込みに失敗しました', 'error')
+                          return
+                        }
+                        const session = result.value
                         const boundedItems = session.items.slice(0, 10)
                         setItems(boundedItems)
                         setAssessments({})

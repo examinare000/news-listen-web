@@ -1,10 +1,16 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import type { RenderOptions } from '@testing-library/react'
+import type { ReactElement } from 'react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import React from 'react'
 import AdminMetricsPage from '@/app/(app)/admin/metrics/page'
 import type { MetricsSnapshot } from '@/types/index'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../../helpers/gatewayDouble'
+
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, { wrapper: ApiClientProvider, ...options })
 
 // ADR-075 決定E1: 管理者向け read-only リテンション計測ダッシュボード。
 // AdminUsersPage と同じ認証ゲート様式（useAuth・isAdmin・useEffect ロード）に倣う。

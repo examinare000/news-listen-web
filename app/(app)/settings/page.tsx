@@ -6,7 +6,10 @@ import { useStreak } from '@/contexts/StreakContext'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import { useToast } from '@/components/ui/Toast'
-import { createApiClient, ApiError } from '@/lib/api'
+import { useApiClient } from '@/contexts/ApiClientProvider'
+import { getPreferences, updatePreferences } from '@/lib/preferences/infrastructure/api'
+import { getGenerationQuota } from '@/lib/catalog/infrastructure/api'
+import { getDifficultySuggestion } from '@/lib/learning/infrastructure/api'
 import { DIFFICULTY_LEVELS } from '@/lib/shared/difficulty'
 import {
   WEEKLY_GOALS,
@@ -27,6 +30,7 @@ export default function SettingsPage() {
   const { get, set } = usePreferences()
   const { streak } = useStreak()
   const { showToast } = useToast()
+  const gateway = useApiClient()
 
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
   const [weeklyGoal, setWeeklyGoal] = useState<WeeklyGoal>(3)
@@ -37,7 +41,15 @@ export default function SettingsPage() {
   // Load preferences on mount (C群#13)
   const loadPreferences = useCallback(async () => {
     try {
-      const prefs = await createApiClient().getPreferences()
+      const result = await getPreferences(gateway)
+      if (!result.ok) {
+        // Fallback to DEFAULT_DIFFICULTY if fetch fails
+        setDefaultDifficulty(DEFAULT_DIFFICULTY)
+        setPreferencesLoadError(true)
+        showToast('設定の読み込みに失敗しました', 'error')
+        return
+      }
+      const prefs = result.value
       setDefaultDifficulty(prefs.default_difficulty)
       setWeeklyGoal(prefs.weekly_goal_episodes ?? 3)
       setPreferencesLoadError(false)
@@ -47,7 +59,7 @@ export default function SettingsPage() {
       setPreferencesLoadError(true)
       showToast('設定の読み込みに失敗しました', 'error')
     }
-  }, [showToast])
+  }, [gateway, showToast])
 
   useEffect(() => {
     void loadPreferences()
@@ -59,20 +71,24 @@ export default function SettingsPage() {
 
   const loadQuota = useCallback(async () => {
     try {
-      const q = await createApiClient().getGenerationQuota()
-      setQuota(q)
-      setQuotaLoadError(false)
-    } catch (err) {
-      // WHY: 404（エンドポイント未実装）時は graceful degradation — quota セクション全体を非表示。
-      // 404 以外（500・ネットワーク等）はエラーバナーを表示して再試行導線を出す。
-      if (err instanceof ApiError && err.status === 404) {
-        setQuota(null)
-        setQuotaLoadError(false)
-      } else {
-        setQuotaLoadError(true)
+      const result = await getGenerationQuota(gateway)
+      if (!result.ok) {
+        // WHY: 404（エンドポイント未実装）時は graceful degradation — quota セクション全体を非表示。
+        // 404 以外（500・ネットワーク等）はエラーバナーを表示して再試行導線を出す。
+        if (result.failure.kind === 'not_found') {
+          setQuota(null)
+          setQuotaLoadError(false)
+        } else {
+          setQuotaLoadError(true)
+        }
+        return
       }
+      setQuota(result.value)
+      setQuotaLoadError(false)
+    } catch {
+      setQuotaLoadError(true)
     }
-  }, [])
+  }, [gateway])
 
   useEffect(() => {
     void loadQuota()
@@ -85,12 +101,17 @@ export default function SettingsPage() {
 
   const loadSuggestion = useCallback(async () => {
     try {
-      const s = await createApiClient().getDifficultySuggestion()
+      const result = await getDifficultySuggestion(gateway)
+      if (!result.ok) {
+        setSuggestion(null)
+        return
+      }
+      const s = result.value
       setSuggestion(s.has_suggestion ? s : null)
     } catch {
       setSuggestion(null)
     }
-  }, [])
+  }, [gateway])
 
   useEffect(() => {
     void loadSuggestion()
@@ -148,7 +169,16 @@ export default function SettingsPage() {
     const requestId = ++difficultyRequestIdRef.current
 
     try {
-      await createApiClient().updatePreferences({ default_difficulty: newDifficulty })
+      const result = await updatePreferences(gateway, { default_difficulty: newDifficulty })
+      if (!result.ok) {
+        // 最新リクエストの場合のみロールバック（stale な失敗は無視）
+        if (requestId === difficultyRequestIdRef.current) {
+          // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
+          setDefaultDifficulty(previousDifficulty)
+          showToast('難易度設定の保存に失敗しました', 'error')
+        }
+        return
+      }
       // 最新リクエストの場合のみ UI に反映（stale な成功は無視）
       if (requestId === difficultyRequestIdRef.current) {
         // 成功時は UI をそのまま保持（既に newDifficulty に更新済み）
@@ -170,7 +200,13 @@ export default function SettingsPage() {
     if (weeklyGoalTimeoutRef.current) clearTimeout(weeklyGoalTimeoutRef.current)
 
     weeklyGoalTimeoutRef.current = setTimeout(() => {
-      createApiClient().updatePreferences({ weekly_goal_episodes: goal })
+      updatePreferences(gateway, { weekly_goal_episodes: goal })
+        .then((result) => {
+          if (!result.ok) {
+            setWeeklyGoal(previousGoal)
+            showToast('学習目標の保存に失敗しました', 'error')
+          }
+        })
         .catch(() => {
           setWeeklyGoal(previousGoal)
           showToast('学習目標の保存に失敗しました', 'error')
