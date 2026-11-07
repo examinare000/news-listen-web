@@ -660,3 +660,64 @@ describe('web-check-01 eslint の禁止項目の効き目（反例を実際に l
     120_000,
   )
 })
+
+// ---------------------------------------------------------------------------
+// web-dep-08: HTTP status の数値による分岐の禁止。web-dep-03 と同じ規則名 no-restricted-syntax を共有するので、
+// 層ごとに「web-dep-08 が効く」と「web-dep-03 が効いたまま」を組 [web-dep-08, web-dep-03] で比べる（web-dec-94）。
+// ---------------------------------------------------------------------------
+describe('web-dep-08 eslint: HTTP status の数値分岐は error、web-dep-03 は効いたまま', () => {
+  const NUMERIC_COMPARE = 'if (res.status === 401) {}'
+  const NUMERIC_CASE = 'switch (err.status) { case 400: break }'
+  const JSON_PARSE = "JSON.parse('{}')"
+
+  async function flags(relative: string, source: string): Promise<[boolean, boolean]> {
+    const results = await eslint.lintText(source, { filePath: lintPath(relative) })
+    const messages = (results[0]?.messages ?? []).filter((m) => m.ruleId === 'no-restricted-syntax')
+    return [messages.some((m) => m.message.includes('web-dep-08')), messages.some((m) => m.message.includes('web-dep-03'))]
+  }
+
+  const FEED = 'app/(app)/feed/page.tsx'
+  const EPISODE = 'lib/catalog/domain/episode.ts'
+  const REPORTER = 'lib/playback/application/positionReporter.ts'
+  const PASSKEY = 'lib/passkey.ts'
+  const ALLOWED_THREE = ['lib/api/gateway.ts', 'lib/platform/cacheStore.ts', 'app/api/backend/[...path]/route.ts']
+
+  test('前提: 例のファイルが実在する', () => {
+    const files = [FEED, 'contexts/AuthProvider.tsx', EPISODE, REPORTER, PASSKEY, ...ALLOWED_THREE, 'tests/lib/api/gateway.test.ts']
+    expect(files.filter((f) => !scanFiles.includes(f) && !f.startsWith('tests/'))).toEqual([])
+  })
+
+  test.each([
+    ['PRES 数値との比較', FEED, NUMERIC_COMPARE, [true, false]],
+    ['PRES 数値が左辺の比較', FEED, 'if (404 === res.status) {}', [true, false]],
+    ['PRES 不等号の比較', FEED, 'if (res.status >= 500) {}', [true, false]],
+    ['PRES 文字列との比較（正例）', FEED, "if (podcast.status === 'completed') {}", [false, false]],
+    ['PRES 文字列が左辺の比較（正例）', FEED, "if ('completed' === podcast.status) {}", [false, false]],
+    ['PRES switch の数値 case', FEED, NUMERIC_CASE, [true, false]],
+    ['PRES switch の文字列 case（正例）', FEED, "switch (podcast.status) { case 'completed': break }", [false, false]],
+    ['contexts 数値との比較', 'contexts/AuthProvider.tsx', NUMERIC_COMPARE, [true, false]],
+  ] as const)('%s', async (_name, file, source, expected) => {
+    expect(await flags(file, source)).toEqual(expected)
+  })
+
+  test.each([
+    ['DOMAIN 数値との比較', EPISODE, NUMERIC_COMPARE, [true, false]],
+    ['DOMAIN JSON.parse（web-dep-03 が効いたまま）', EPISODE, JSON_PARSE, [false, true]],
+    ['DOMAIN 両方', EPISODE, `${NUMERIC_COMPARE}\n${JSON_PARSE}`, [true, true]],
+    ['APP 数値との比較', REPORTER, NUMERIC_COMPARE, [true, false]],
+    ['APP JSON.parse（web-dep-03 が効いたまま）', REPORTER, JSON_PARSE, [false, true]],
+    ['旧ファイル APP 数値との比較と JSON.parse（許可リストの exempt は外れたまま）', PASSKEY, `${NUMERIC_COMPARE}\n${JSON_PARSE}`, [true, false]],
+    ['旧ファイル APP JSON.stringify（exempt でない呼出は web-dep-03）', PASSKEY, 'JSON.stringify({})', [false, true]],
+  ] as const)('%s', async (_name, file, source, expected) => {
+    expect(await flags(file, source)).toEqual(expected)
+  })
+
+  test.each(ALLOWED_THREE)('書いてよい %s は数値の比較も数値 case も指摘しない', async (file) => {
+    expect(await flags(file, NUMERIC_COMPARE)).toEqual([false, false])
+    expect(await flags(file, NUMERIC_CASE)).toEqual([false, false])
+  })
+
+  test('対象外 tests/ は数値の比較を指摘しない', async () => {
+    expect(await flags('tests/lib/api/gateway.test.ts', NUMERIC_COMPARE)).toEqual([false, false])
+  })
+})

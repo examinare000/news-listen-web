@@ -35,6 +35,18 @@ const SYNTAX = [
   { id: 'URL.createObjectURL', selector: "MemberExpression[object.name='URL'][property.name='createObjectURL']" },
 ]
 
+// web-dep-08: HTTP status の数値による分岐の禁止。no-restricted-syntax は web-dep-03 と同じ規則名なので、
+// 後ろに一致した block の options が前のものを置き換える。そのため externalWorld の block では web-dep-03 の
+// selector の後ろにこの定数を連結し、それ以外の file 向けの単独 block は層の block より前に置く（web-dec-94）。
+const HTTP_STATUS_MESSAGE = 'HTTP status の数値で分岐しない。ApiFailure.kind で分岐する（web-dep-08・Spec §4）'
+const STATUS_OPERATOR = '[operator=/^(===|!==|==|!=|<|<=|>|>=)$/]'
+const NUMERIC_LITERAL = (side) => `[${side}.type='Literal'][${side}.raw=/^[0-9]+$/]`
+const HTTP_STATUS_SELECTORS = [
+  `BinaryExpression${STATUS_OPERATOR}[left.type='MemberExpression'][left.property.name='status']${NUMERIC_LITERAL('right')}`,
+  `BinaryExpression${STATUS_OPERATOR}[right.type='MemberExpression'][right.property.name='status']${NUMERIC_LITERAL('left')}`,
+  "SwitchStatement[discriminant.type='MemberExpression'][discriminant.property.name='status'] > SwitchCase[test.type='Literal'][test.raw=/^[0-9]+$/]",
+].map((selector) => ({ selector, message: HTTP_STATUS_MESSAGE }))
+
 const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')
 const escapeGlob = (text) => text.replace(/[[\]()!{}*?]/g, '\\$&')
 
@@ -194,6 +206,7 @@ function buildRules(spec, importExempt, globalExempt) {
         selector: s.selector,
         message: `DOMAIN・APP は ${s.id} を呼ばない（web-dep-03）`,
       })),
+      ...HTTP_STATUS_SELECTORS,
     ]
   }
   return rules
@@ -220,11 +233,18 @@ export function createBoundaryConfigs() {
     apiSpec,
   ]
 
-  const configs = specs.map((spec) => ({
+  // 新 Spec web-dep-08 の「書いてよい」3 つ以外の production。externalWorld の層は buildRules が連結するので、この block より後ろに置かれて上書きされる。
+  const httpStatusConfig = {
+    files: ['app/**/*.{ts,tsx}', 'components/**/*.{ts,tsx}', 'hooks/**/*.{ts,tsx}', 'contexts/**/*.{ts,tsx}', 'lib/**/*.{ts,tsx}'],
+    ignores: ['lib/api/gateway.ts', 'lib/platform/cacheStore.ts', 'app/api/**'],
+    rules: { 'no-restricted-syntax': ['error', ...HTTP_STATUS_SELECTORS] },
+  }
+
+  const configs = [httpStatusConfig, ...specs.map((spec) => ({
     files: spec.files,
     ...(spec.ignores ? { ignores: spec.ignores } : {}),
     rules: buildRules(spec, [], new Set()),
-  }))
+  }))]
 
   // 許可リストの行を持つファイルごとに、層の block と同じ規則を、その行の specifier だけ外して書き直す。
   const byFile = new Map()
