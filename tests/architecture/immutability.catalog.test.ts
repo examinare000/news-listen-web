@@ -16,6 +16,16 @@ import {
 } from '@/lib/catalog/domain/episode'
 import { classifyGenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import { detectCompleted, shouldStopWatching } from '@/lib/catalog/domain/generationWatch'
+import {
+  emptyStarState,
+  markStarred,
+  mergeServerStars,
+  removeLost,
+  starredArticles,
+  unmarkStarred,
+  visibleArticles,
+} from '@/lib/catalog/domain/article'
+import type { ArticleRef, StarState } from '@/lib/catalog/domain/article'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
@@ -368,6 +378,11 @@ function queriesOver(records: DeepMutable<EpisodeRecord>[]) {
   const gateway: CatalogGateway = {
     listEpisodes: () => Promise.resolve({ ok: true, value: records }),
     getEpisode: () => Promise.resolve({ ok: true, value: records[0] }),
+    getFeed: () => Promise.reject(new Error('getFeed を想定していない')),
+    getStarredArticles: () => Promise.reject(new Error('getStarredArticles を想定していない')),
+    starArticle: () => Promise.reject(new Error('starArticle を想定していない')),
+    dismissArticle: () => Promise.reject(new Error('dismissArticle を想定していない')),
+    unstarArticle: () => Promise.reject(new Error('unstarArticle を想定していない')),
   }
   return createCatalogQueries({ gateway })
 }
@@ -501,5 +516,141 @@ describe('web-check-06 生成の監視の戻り値は凍結される', () => {
     expect(queries.watchGeneration(previous, next)).toEqual({ completedIds: ['a'] })
     expect(queries.watchGeneration(previous, next)).not.toBe(queries.watchGeneration(previous, next))
     expect(shouldStopWatching({ baselineCount: 1, currentCount: 2, elapsedMs: 0 })).toEqual({ stop: true, reason: 'new-podcast' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// article（web-rule-catalog-04）の関数: 入力を書き換えず、入力と参照を共有せず、全深さで凍結した値を返す（web-check-06）
+// ---------------------------------------------------------------------------
+function mutableRef(id: string): DeepMutable<ArticleRef> {
+  return { id, title: `title ${id}`, source: 'Site', url: `https://example.com/${id}`, score: 1, publishedAt: '2026-05-31T06:00:00Z' }
+}
+
+function mutableState(): { starredIds: Set<string>; serverStarred: DeepMutable<ArticleRef>[]; optimistic: DeepMutable<ArticleRef>[] } {
+  return { starredIds: new Set(['a1']), serverStarred: [mutableRef('a1')], optimistic: [mutableRef('a2')] }
+}
+
+describe('web-check-06 article の関数', () => {
+  test('verifies: CI-AR9 — 戻り値の配列・記事は全深さで凍結され、starredIds は入力の Set と別の Set', () => {
+    const articles = [mutableRef('a1'), mutableRef('a2'), mutableRef('a3')]
+    const input = mutableState()
+    const results: Array<[string, StarState]> = [
+      ['emptyStarState', emptyStarState()],
+      ['mergeServerStars', mergeServerStars(input, { feedStarredIds: ['a9'], serverStarred: [mutableRef('s1')] })],
+      ['mergeServerStars(null)', mergeServerStars(input, { feedStarredIds: [], serverStarred: null })],
+      ['markStarred', markStarred(input, 'a3', articles)],
+      ['removeLost', removeLost(input, 'a1')],
+      ['unmarkStarred', unmarkStarred(input, 'a1')],
+    ]
+
+    for (const [label, state] of results) {
+      expectDeeplyFrozen(label, state)
+      expect(state.starredIds, label).not.toBe(input.starredIds)
+      expect(Object.isFrozen(state.starredIds), label).toBe(true)
+    }
+    expectDeeplyFrozen('starredArticles', starredArticles(input))
+    expectDeeplyFrozen('visibleArticles(all)', visibleArticles('all', articles, emptyStarState()))
+    expectDeeplyFrozen('visibleArticles(starred)', visibleArticles('starred', articles, input))
+  })
+
+  test('verifies: CI-AR9 — 入力（state・articles）を書き換えない', () => {
+    const articles = [mutableRef('a1'), mutableRef('a2')]
+    const input = mutableState()
+    const articlesBefore = structuredClone(articles)
+    const inputBefore = structuredClone({ ...input, starredIds: [...input.starredIds] })
+
+    mergeServerStars(input, { feedStarredIds: ['a9'], serverStarred: [mutableRef('s1')] })
+    markStarred(input, 'a2', articles)
+    removeLost(input, 'a1')
+    unmarkStarred(input, 'a1')
+    starredArticles(input)
+    visibleArticles('starred', articles, input)
+
+    expect(articles).toEqual(articlesBefore)
+    expect({ ...input, starredIds: [...input.starredIds] }).toEqual(inputBefore)
+  })
+
+  test('verifies: CI-AR9 — 入力の記事・Set を後から書き換えても、戻り値は変わらない（複製）', () => {
+    const articles = [mutableRef('a1')]
+    const input = mutableState()
+    const marked = markStarred(input, 'a1', articles)
+    const merged = mergeServerStars(input, { feedStarredIds: ['a1'], serverStarred: input.serverStarred })
+
+    articles[0].title = 'changed'
+    input.serverStarred[0].title = 'changed'
+    input.starredIds.add('zz')
+
+    expect(marked.optimistic.find((a) => a.id === 'a1')?.title).toBe('title a1')
+    expect(merged.serverStarred[0].title).toBe('title a1')
+    expect(marked.starredIds.has('zz')).toBe(false)
+    expect(merged.starredIds.has('zz')).toBe(false)
+  })
+
+  test('verifies: CI-AR9 — 凍結した戻り値への書込みは throw し、値は元のまま', () => {
+    const marked = markStarred(mutableState(), 'a1', [mutableRef('a1')]) as DeepMutable<StarState>
+
+    expect(() => marked.optimistic.push(mutableRef('x'))).toThrow(TypeError)
+    expect(() => {
+      marked.serverStarred[0].title = 'changed'
+    }).toThrow(TypeError)
+    expect(marked.serverStarred[0].title).toBe('title a1')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getFeed()（web-query-catalog-01）の値: gateway の返した値と参照を共有せず、全深さで凍結される
+// ---------------------------------------------------------------------------
+function feedQueriesOver(feed: { articles: DeepMutable<ArticleRef>[]; starredIds: string[]; date: string | null }, starred: DeepMutable<ArticleRef>[]) {
+  const reject = (name: string) => () => Promise.reject(new Error(`${name} を想定していない`))
+  const gateway: CatalogGateway = {
+    listEpisodes: reject('listEpisodes'),
+    getEpisode: reject('getEpisode'),
+    getFeed: () => Promise.resolve({ ok: true, value: feed }),
+    getStarredArticles: () => Promise.resolve({ ok: true, value: starred }),
+    starArticle: reject('starArticle'),
+    dismissArticle: reject('dismissArticle'),
+    unstarArticle: reject('unstarArticle'),
+  }
+  return createCatalogQueries({ gateway })
+}
+
+describe('web-check-06 getFeed() の値', () => {
+  test('verifies: CI-FD3・FD4・FV3 — loaded の feed と starred ok の値は全深さで凍結され、gateway の値と参照を共有せず、後から書き換えても変わらない', async () => {
+    const feed = { articles: [mutableRef('a1')], starredIds: ['a1'], date: '2026-06-01' }
+    const starred = [mutableRef('s1')]
+    const view = await feedQueriesOver(feed, starred).getFeed()
+    if (!('feed' in view)) throw new Error('最新の取得は stale でない')
+    const outcome = await view.starred
+    if (!('articles' in outcome) || !('articles' in view.feed)) throw new Error('成功を期待した')
+    const feedBefore = structuredClone(view.feed)
+    const starredBefore = structuredClone(outcome)
+
+    expectDeeplyFrozen('getFeed.feed', view.feed)
+    expectDeeplyFrozen('getFeed.starred', outcome)
+    expect(view.feed.articles).not.toBe(feed.articles)
+    expect(view.feed.articles[0]).not.toBe(feed.articles[0])
+    expect(view.feed.starredIds).not.toBe(feed.starredIds)
+    expect(outcome.articles).not.toBe(starred)
+    expect(outcome.articles[0]).not.toBe(starred[0])
+
+    feed.articles[0].title = 'changed'
+    feed.articles.push(mutableRef('a9'))
+    feed.starredIds.push('a9')
+    starred[0].title = 'changed'
+
+    expect(view.feed).toEqual(feedBefore)
+    expect(outcome).toEqual(starredBefore)
+  })
+
+  test('verifies: CI-FD3・FV3 — 呼ぶたびに別 object で、内容は等しい', async () => {
+    const queries = feedQueriesOver({ articles: [mutableRef('a1')], starredIds: [], date: null }, [])
+
+    const first = await queries.getFeed()
+    const second = await queries.getFeed()
+
+    if (!('feed' in first) || !('feed' in second)) throw new Error('逐次の取得は stale でない')
+    expect(second.feed).not.toBe(first.feed)
+    expect('articles' in second.feed && 'articles' in first.feed && second.feed.articles).not.toBe('articles' in first.feed && first.feed.articles)
+    expect(second.feed).toEqual(first.feed)
   })
 })

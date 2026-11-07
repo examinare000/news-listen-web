@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import { createCatalogGateway } from '@/lib/catalog/infrastructure/catalogGateway'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
-import type { Podcast } from '@/types'
+import type { Article, Podcast } from '@/types'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 
 const LIST_PATH = '/api/backend/podcasts'
@@ -228,5 +228,189 @@ describe('createCatalogGateway: 写しの不変条件', () => {
     void _k
     const record = await listOne(rest)
     expect(record.sources.map((s) => s.showsShareAlikeNotice)).toEqual([false])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Feed の 5 method（web-query-catalog-01・web-cmd-catalog-01〜04）。DTO `Article` → `ArticleRef`。is_starred はここだけで読む。
+// ---------------------------------------------------------------------------
+const FEED_PATH = '/api/backend/feed'
+const STARRED_PATH = '/api/backend/articles/starred'
+
+function articleDto(id: string, overrides: Partial<Article> = {}): Article {
+  return {
+    id,
+    title: `title ${id}`,
+    url: `https://example.com/${id}`,
+    source: `Site ${id}`,
+    score: 3,
+    published_at: '2026-05-31T06:00:00Z',
+    ...overrides,
+  }
+}
+
+describe('createCatalogGateway.getFeed', () => {
+  test('verifies: CI-CG1 — GET /api/backend/feed を 1 回。DTO を ArticleRef に写し（published_at → publishedAt、is_starred を持ち込まない）、真の id だけを starredIds に DTO の順で返す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEED_PATH, {
+      ok: true,
+      value: {
+        articles: [articleDto('a1', { is_starred: true }), articleDto('a2', { is_starred: false }), articleDto('a3'), articleDto('a4', { is_starred: true })],
+        date: '2026-06-01',
+      },
+    })
+
+    const result = await createCatalogGateway(gateway).getFeed()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: FEED_PATH, body: undefined }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.articles[0]).toEqual({
+      id: 'a1',
+      title: 'title a1',
+      source: 'Site a1',
+      url: 'https://example.com/a1',
+      score: 3,
+      publishedAt: '2026-05-31T06:00:00Z',
+    })
+    expect(result.value.articles.map((a) => a.id)).toEqual(['a1', 'a2', 'a3', 'a4'])
+    for (const article of result.value.articles) expect(article).not.toHaveProperty('is_starred')
+    expect(result.value.starredIds).toEqual(['a1', 'a4'])
+    expect(result.value.date).toBe('2026-06-01')
+  })
+
+  test('verifies: CI-CG1 — date が欠落していれば null', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEED_PATH, { ok: true, value: { articles: [] } })
+
+    const result = await createCatalogGateway(gateway).getFeed()
+
+    expect(result).toEqual({ ok: true, value: { articles: [], starredIds: [], date: null } })
+  })
+
+  test('verifies: CI-CG1 — failure は変えずに返す（同じ参照）', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEED_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).getFeed()
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+
+  test('verifies: CI-CG1 — 200 で articles が配列でなければ防御せず reject する', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEED_PATH, { ok: true, value: {} })
+
+    await expect(createCatalogGateway(gateway).getFeed()).rejects.toThrow()
+  })
+})
+
+describe('createCatalogGateway.getStarredArticles', () => {
+  test('verifies: CI-CG2 — GET /api/backend/articles/starred を 1 回。配列を ArticleRef に写す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', STARRED_PATH, { ok: true, value: { articles: [articleDto('s1', { is_starred: true }), articleDto('s2')] } })
+
+    const result = await createCatalogGateway(gateway).getStarredArticles()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: STARRED_PATH, body: undefined }])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.value.map((a) => a.id)).toEqual(['s1', 's2'])
+    expect(result.value[0]).toMatchObject({ publishedAt: '2026-05-31T06:00:00Z', title: 'title s1' })
+    expect(result.value[0]).not.toHaveProperty('is_starred')
+  })
+
+  test('verifies: CI-CG2 — 200 で articles が配列でなければ空配列', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', STARRED_PATH, { ok: true, value: {} })
+
+    expect(await createCatalogGateway(gateway).getStarredArticles()).toEqual({ ok: true, value: [] })
+  })
+
+  test('verifies: CI-CG2 — failure は変えずに返す（同じ参照）', async () => {
+    const failure: ApiFailure = { kind: 'timeout' }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', STARRED_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).getStarredArticles()
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.starArticle', () => {
+  test('verifies: CI-CG3 — difficulty があれば body { difficulty }、無ければ body なし（POST /api/backend/articles/<id>/star）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', '/api/backend/articles/a1/star', { ok: true, value: { status: 'starred', article_id: 'a1' } })
+    const catalog = createCatalogGateway(gateway)
+
+    await catalog.starArticle('a1', 'toeic_900')
+    await catalog.starArticle('a1')
+
+    expect(gateway.calls).toEqual([
+      { method: 'POST', path: '/api/backend/articles/a1/star', body: { difficulty: 'toeic_900' } },
+      { method: 'POST', path: '/api/backend/articles/a1/star', body: undefined },
+    ])
+  })
+
+  test.each([
+    ['数値', { remaining: 3 }, 3],
+    ['0', { remaining: 0 }, 0],
+    ['null', { remaining: null }, null],
+    ['欠落', {}, null],
+  ])('verifies: CI-CG3 — remaining が %s → %s', async (_label, extra, expected) => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', '/api/backend/articles/a1/star', { ok: true, value: { status: 'starred', article_id: 'a1', ...extra } })
+
+    const result = await createCatalogGateway(gateway).starArticle('a1')
+
+    expect(result).toEqual({ ok: true, value: { remaining: expected } })
+  })
+
+  test('verifies: CI-CG3 — failure は変えずに返す（同じ参照）', async () => {
+    const failure: ApiFailure = { kind: 'rate_limited', retryAfterSeconds: 60, scope: 'daily', detail: 'daily' }
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', '/api/backend/articles/a1/star', { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).starArticle('a1')
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.dismissArticle・unstarArticle', () => {
+  test('verifies: CI-CG4 — dismiss は POST /api/backend/articles/<id>/dismiss・body なしで、ok → value undefined', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', '/api/backend/articles/a1/dismiss', { ok: true, value: { status: 'dismissed', article_id: 'a1' } })
+
+    const result = await createCatalogGateway(gateway).dismissArticle('a1')
+
+    expect(gateway.calls).toEqual([{ method: 'POST', path: '/api/backend/articles/a1/dismiss', body: undefined }])
+    expect(result).toEqual({ ok: true, value: undefined })
+  })
+
+  test('verifies: CI-CG5 — unstar は DELETE /api/backend/articles/<id>/star・body なしで、ok → value undefined', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('DELETE', '/api/backend/articles/a1/star', { ok: true, value: { status: 'unstarred', article_id: 'a1' } })
+
+    const result = await createCatalogGateway(gateway).unstarArticle('a1')
+
+    expect(gateway.calls).toEqual([{ method: 'DELETE', path: '/api/backend/articles/a1/star', body: undefined }])
+    expect(result).toEqual({ ok: true, value: undefined })
+  })
+
+  test('verifies: CI-CG4・CG5 — failure は変えずに返す（同じ参照）', async () => {
+    const failure: ApiFailure = { kind: 'not_found', subject: 'article' }
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', '/api/backend/articles/a1/dismiss', { ok: false, failure })
+    gateway.respond('DELETE', '/api/backend/articles/a1/star', { ok: false, failure })
+    const catalog = createCatalogGateway(gateway)
+
+    const dismissed = await catalog.dismissArticle('a1')
+    const unstarred = await catalog.unstarArticle('a1')
+
+    expect(!dismissed.ok && dismissed.failure).toBe(failure)
+    expect(!unstarred.ok && unstarred.failure).toBe(failure)
   })
 })

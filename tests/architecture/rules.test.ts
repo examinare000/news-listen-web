@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（14 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（15 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -13,6 +13,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-01',
   'web-rule-catalog-02',
   'web-rule-catalog-03',
+  'web-rule-catalog-04',
   'web-rule-catalog-06',
   'web-rule-catalog-10',
   'web-rule-catalog-11',
@@ -33,7 +34,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 14 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 15 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -115,6 +116,18 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "const on = p.source_kind === 'user'")).toEqual([])
     expect(rows(F, "// p.source_kind === 'featured' は書かない\nconst a = 1")).toEqual([])
     expect(rows('lib/catalog/domain/episode.ts', "const on = p.source_kind === 'featured'")).toEqual([])
+  })
+
+  test('web-rule-catalog-04: is_starred は条件式・比較の中でも拾い（1 ファイル 1 行にまとまる）、isStarred・コメントの中・出てよい catalogGateway.ts は拾わない', () => {
+    const label = `web-rule-catalog-04 | ${F} | is_starred`
+    expect(rows(F, 'if (a.is_starred) {}')).toEqual([label])
+    expect(rows(F, 'const s = a.is_starred === true')).toEqual([label])
+    expect(rows(F, 'if (a.is_starred) {}\nconst s = b.is_starred === true')).toEqual([label])
+    expect(rows(F, 'const s = a.isStarred')).toEqual([])
+    expect(rows(F, '// is_starred は書かない\n/** is_starred */\nconst a = 1')).toEqual([])
+    expect(rows('lib/catalog/infrastructure/catalogGateway.ts', 'if (a.is_starred) {}')).toEqual([])
+    // 正方向対照: 同じ入力を出てよいファイルの外に置くと拾う
+    expect(rows('lib/catalog/infrastructure/other.ts', 'if (a.is_starred) {}')).toHaveLength(1)
   })
 
   test('web-rule-catalog-06: GENERATION_WATCH_TIMEOUT_MS を出てよいファイル以外で拾う', () => {

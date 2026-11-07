@@ -1,5 +1,6 @@
 // Catalog application の port。実装は infrastructure（catalogGateway）が持つ（HTTP・DTO はここに現れない）。
 // 型だけの module。
+import type { ArticleRef } from '@/lib/catalog/domain/article'
 import type {
   Episode,
   EpisodeLabel,
@@ -33,4 +34,16 @@ export interface EpisodeRecord {
 export interface CatalogGateway {
   listEpisodes(): Promise<Result<ReadonlyArray<EpisodeRecord>, ApiFailure>>
   getEpisode(id: string): Promise<Result<EpisodeRecord, ApiFailure>>
+  /** `starredIds` は応答の各記事のうち Star 済みと示されたものの id。 */
+  getFeed(): Promise<
+    Result<
+      { readonly articles: ReadonlyArray<ArticleRef>; readonly starredIds: ReadonlyArray<string>; readonly date: string | null },
+      ApiFailure
+    >
+  >
+  getStarredArticles(): Promise<Result<ReadonlyArray<ArticleRef>, ApiFailure>>
+  /** `difficulty` が無ければ指定なしで送る（backend の既定の難易度）。`remaining` は数値のときだけ。 */
+  starArticle(id: string, difficulty?: DifficultyLevel): Promise<Result<{ readonly remaining: number | null }, ApiFailure>>
+  dismissArticle(id: string): Promise<Result<void, ApiFailure>>
+  unstarArticle(id: string): Promise<Result<void, ApiFailure>>
 }
