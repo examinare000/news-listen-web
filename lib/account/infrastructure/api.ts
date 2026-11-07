@@ -1,0 +1,18 @@
+export {
+  login,
+  logout,
+  register,
+  getMe,
+  updateProfile,
+  changePassword,
+  deleteAccount,
+  getPasskeyRegisterOptions,
+  verifyPasskeyRegistration,
+  getPasskeyLoginOptions,
+  verifyPasskeyLogin,
+  getPasskeyCredentials,
+  deletePasskeyCredential,
+  getSessions,
+  revokeSession,
+  revokeOtherSessions,
+} from '@/lib/api/auth'

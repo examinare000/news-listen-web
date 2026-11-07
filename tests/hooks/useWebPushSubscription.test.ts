@@ -1,9 +1,16 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook as rtlRenderHook, act } from '@testing-library/react'
+import type { RenderHookOptions } from '@testing-library/react'
+import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
 import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
+
+const renderHook = <Result, Props>(
+  callback: (props: Props) => Result,
+  options?: Omit<RenderHookOptions<Props>, 'wrapper'>,
+) => rtlRenderHook(callback, { wrapper: ApiClientProvider, ...options })
 
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 

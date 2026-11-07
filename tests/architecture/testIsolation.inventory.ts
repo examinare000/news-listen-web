@@ -68,6 +68,7 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/api.webTemp01.fake.test.tsx',
       'tests/lib/api.webTemp01.test.ts',
       'tests/lib/api/gateway.test.ts',
+      'tests/lib/contextApi.test.ts',
     ],
   },
   {
@@ -300,14 +301,6 @@ export const MIGRATION_ALLOWANCES: readonly MigrationAllowance[] = [
     reason:
       'passkey が port の型と実装を同じ module から受け取る旧構成。この module の移動は account と notify の 2 つの slice で重なり、' +
       '先に移した slice が fake を tests/helpers/ に置いてこの行を削除する',
-    removeBy: 'web-slice-account-01',
-    task: 'web-slice-account-01',
-  },
-  {
-    file: 'tests/lib/passkey.test.ts',
-    specifier: '@/lib/api',
-    owner: 'user',
-    reason: 'ApiError を旧 API module から取っている。application の passkey が Result を返すので、テストは shared の失敗型を使う',
     removeBy: 'web-slice-account-01',
     task: 'web-slice-account-01',
   },

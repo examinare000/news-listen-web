@@ -7,18 +7,23 @@
  *
  * 設計上の境界:
  *   - ブラウザ WebAuthn 操作 → WebAuthnBrowserPort
- *   - ネットワーク通信 → PasskeyClient (api.ts の createApiClient が実装)
+ *   - ネットワーク通信 → PasskeyClient (Result を返す client。呼出側が gateway に束縛して渡す)
  *   - React 状態管理 → 呼び出し側 (AuthProvider 等)
  */
 import type { WebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
+import type { Result } from '@/lib/shared/result'
 import type { LoginResponse, PasskeyOptionsResponse } from '@/types/index'
 
 /** passkey.ts が依存する API クライアントの最小インターフェース */
 export interface PasskeyClient {
-  getPasskeyRegisterOptions(): Promise<PasskeyOptionsResponse>
-  verifyPasskeyRegistration(challenge_id: string, credential: unknown): Promise<{ readonly status: string }>
-  getPasskeyLoginOptions(): Promise<PasskeyOptionsResponse>
-  verifyPasskeyLogin(challenge_id: string, credential: unknown): Promise<LoginResponse>
+  getPasskeyRegisterOptions(): Promise<Result<PasskeyOptionsResponse, ApiFailure>>
+  verifyPasskeyRegistration(
+    challenge_id: string,
+    credential: unknown,
+  ): Promise<Result<{ readonly status: string }, ApiFailure>>
+  getPasskeyLoginOptions(): Promise<Result<PasskeyOptionsResponse, ApiFailure>>
+  verifyPasskeyLogin(challenge_id: string, credential: unknown): Promise<Result<LoginResponse, ApiFailure>>
 }
 
 /**
@@ -28,18 +33,22 @@ export interface PasskeyClient {
  * 2. JSON.parse(options) → startRegistration (browser ceremony)
  * 3. POST /auth/passkey/register/verify { challenge_id, credential }
  *
- * エラーはすべて呼び出し側に伝播する（UI 文言の決定は UI 層の責務）。
+ * API の失敗は最初のものを Result で返し、以降の手順を実行しない。port と JSON.parse の例外は
+ * 呼び出し側に伝播する（UI 文言の決定は UI 層の責務）。
  */
 export async function registerPasskey(
   client: PasskeyClient,
   port: WebAuthnBrowserPort,
-): Promise<void> {
-  const { challenge_id, options } = await client.getPasskeyRegisterOptions()
+): Promise<Result<void, ApiFailure>> {
+  const optionsResult = await client.getPasskeyRegisterOptions()
+  if (!optionsResult.ok) return optionsResult
+  const { challenge_id, options } = optionsResult.value
   // WHY: backend は options を JSON 文字列で返す（options_to_json() の出力）。
   //      startRegistration は parsed オブジェクトを要求するため、ここで parse する。
   const parsedOptions = JSON.parse(options)
   const credential = await port.startRegistration(parsedOptions)
-  await client.verifyPasskeyRegistration(challenge_id, credential)
+  const verified = await client.verifyPasskeyRegistration(challenge_id, credential)
+  return verified.ok ? { ok: true, value: undefined } : verified
 }
 
 /**
@@ -56,8 +65,10 @@ export async function registerPasskey(
 export async function loginWithPasskey(
   client: PasskeyClient,
   port: WebAuthnBrowserPort,
-): Promise<LoginResponse> {
-  const { challenge_id, options } = await client.getPasskeyLoginOptions()
+): Promise<Result<LoginResponse, ApiFailure>> {
+  const optionsResult = await client.getPasskeyLoginOptions()
+  if (!optionsResult.ok) return optionsResult
+  const { challenge_id, options } = optionsResult.value
   const parsedOptions = JSON.parse(options)
   const credential = await port.startAuthentication(parsedOptions)
   return client.verifyPasskeyLogin(challenge_id, credential)

@@ -1,5 +1,4 @@
-import { createGateway } from '@/lib/api/gateway'
-import type { ApiFailure, GatewayJsonRequest } from '@/lib/api/gateway'
+import type { ApiFailure, Result } from '@/lib/api/gateway'
 
 // owner: user・導入: web-slice-gateway-01（2026-09-24）。
 // 削除条件: app/・components/・hooks/ が既存の API クライアント関数の呼出（ApiError の import）を
@@ -44,16 +43,8 @@ function rawOf(failure: ApiFailure): LegacyRaw | undefined {
   return isLegacyRaw(value) ? value : undefined
 }
 
-type LegacyInit = { method?: GatewayJsonRequest['method']; body?: string }
-
-/** Shared fetch wrapper that normalizes errors to ApiError（内部は gateway 経由で fetch する） */
-export async function request<T>(
-  path: string,
-  init: LegacyInit = {},
-): Promise<T> {
-  const method = init.method ?? 'GET'
-  const body = init.body === undefined ? undefined : JSON.parse(init.body)
-  const r = await createGateway().request<T>(path, { method, body })
+/** Result を旧契約（成功は値、失敗は ApiError か元の例外の throw）へ変換する。 */
+export function unwrapLegacy<T>(r: Result<T, ApiFailure>): T {
   if (r.ok) return r.value
 
   const raw = rawOf(r.failure)

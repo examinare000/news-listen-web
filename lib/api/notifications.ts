@@ -2,29 +2,29 @@ import type {
   VapidPublicKeyResponse,
   PushSubscriptionJSON,
 } from '@/types/index'
-import { request } from '@/lib/api/legacyRequest'
+import type { ApiGateway } from '@/lib/api/gateway'
 
 // ── Web Push 通知 ─────────────────────────────────────────────────────
 
-export function getVapidPublicKey() {
-  return request<VapidPublicKeyResponse>(
+export function getVapidPublicKey(gateway: ApiGateway) {
+  return gateway.request<VapidPublicKeyResponse>(
     '/api/backend/notifications/vapid-public-key',
     { method: 'GET' },
   )
 }
 
-export function subscribePush(subscription: PushSubscriptionJSON) {
-  return request<Record<string, unknown>>(
+export function subscribePush(gateway: ApiGateway, subscription: PushSubscriptionJSON) {
+  return gateway.request<Record<string, unknown>>(
     '/api/backend/notifications/subscriptions',
-    { method: 'POST', body: JSON.stringify(subscription) },
+    { method: 'POST', body: subscription },
   )
 }
 
-export function unsubscribePush(endpoint: string) {
+export function unsubscribePush(gateway: ApiGateway, endpoint: string) {
   // WHY: endpoint はクエリパラメータで渡す（backend は ?endpoint= を読む。
   //       既存 deleteSource(url) と同じ DELETE 規約に揃える）。
   const encoded = encodeURIComponent(endpoint)
-  return request<Record<string, unknown>>(
+  return gateway.request<Record<string, unknown>>(
     `/api/backend/notifications/subscriptions?endpoint=${encoded}`,
     { method: 'DELETE' },
   )

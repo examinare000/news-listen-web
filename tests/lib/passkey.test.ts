@@ -1,7 +1,6 @@
 import { describe, test, expect, vi } from 'vitest'
 import { registerPasskey, loginWithPasskey } from '@/lib/passkey'
 import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
-import { ApiError } from '@/lib/api'
 
 // fake 用の options JSON（バックエンドが返す JSON 文字列形式）
 const FAKE_OPTIONS_STR = JSON.stringify({ challenge: 'test-challenge', rp: { name: 'test' } })
@@ -14,15 +13,15 @@ const FAKE_LOGIN_RESPONSE = { token: 'token-xyz', user: FAKE_USER }
 function makeFakeClient(overrides: Record<string, unknown> = {}) {
   return {
     getPasskeyRegisterOptions: vi.fn().mockResolvedValue({
-      challenge_id: FAKE_CHALLENGE_ID,
-      options: FAKE_OPTIONS_STR,
+      ok: true,
+      value: { challenge_id: FAKE_CHALLENGE_ID, options: FAKE_OPTIONS_STR },
     }),
-    verifyPasskeyRegistration: vi.fn().mockResolvedValue({ status: 'ok' }),
+    verifyPasskeyRegistration: vi.fn().mockResolvedValue({ ok: true, value: { status: 'ok' } }),
     getPasskeyLoginOptions: vi.fn().mockResolvedValue({
-      challenge_id: FAKE_CHALLENGE_ID,
-      options: FAKE_OPTIONS_STR,
+      ok: true,
+      value: { challenge_id: FAKE_CHALLENGE_ID, options: FAKE_OPTIONS_STR },
     }),
-    verifyPasskeyLogin: vi.fn().mockResolvedValue(FAKE_LOGIN_RESPONSE),
+    verifyPasskeyLogin: vi.fn().mockResolvedValue({ ok: true, value: FAKE_LOGIN_RESPONSE }),
     ...overrides,
   }
 }
@@ -47,11 +46,11 @@ describe('registerPasskey', () => {
 
   test('options API エラー時は伝播し verify を呼ばない', async () => {
     const client = makeFakeClient({
-      getPasskeyRegisterOptions: vi.fn().mockRejectedValue(new ApiError(503, 'Not configured')),
+      getPasskeyRegisterOptions: vi.fn().mockResolvedValue({ ok: false, failure: { kind: 'server', status: 503 } }),
     })
     const port = createFakeWebAuthnBrowserPort()
 
-    await expect(registerPasskey(client, port)).rejects.toBeInstanceOf(ApiError)
+    await expect(registerPasskey(client, port)).resolves.toEqual({ ok: false, failure: { kind: 'server', status: 503 } })
     expect(client.verifyPasskeyRegistration).not.toHaveBeenCalled()
   })
 
@@ -68,11 +67,13 @@ describe('registerPasskey', () => {
 
   test('verify API エラー時は伝播する', async () => {
     const client = makeFakeClient({
-      verifyPasskeyRegistration: vi.fn().mockRejectedValue(new ApiError(400, 'Bad request')),
+      verifyPasskeyRegistration: vi
+        .fn()
+        .mockResolvedValue({ ok: false, failure: { kind: 'validation', detail: 'Bad request' } }),
     })
     const port = createFakeWebAuthnBrowserPort()
 
-    await expect(registerPasskey(client, port)).rejects.toBeInstanceOf(ApiError)
+    await expect(registerPasskey(client, port)).resolves.toEqual({ ok: false, failure: { kind: 'validation', detail: 'Bad request' } })
   })
 
   test('options の JSON 文字列を正しくパースして startRegistration に渡す', async () => {
@@ -80,8 +81,8 @@ describe('registerPasskey', () => {
     const startReg = vi.fn().mockResolvedValue(FAKE_CREDENTIAL)
     const client = makeFakeClient({
       getPasskeyRegisterOptions: vi.fn().mockResolvedValue({
-        challenge_id: 'cid',
-        options: JSON.stringify(innerOptions),
+        ok: true,
+        value: { challenge_id: 'cid', options: JSON.stringify(innerOptions) },
       }),
     })
     const port = createFakeWebAuthnBrowserPort({ startRegistration: startReg })
@@ -102,7 +103,9 @@ describe('loginWithPasskey', () => {
     const client = makeFakeClient()
     const port = createFakeWebAuthnBrowserPort({ startAuthentication: startAuth })
 
-    const result = await loginWithPasskey(client, port)
+    const r = await loginWithPasskey(client, port)
+    if (!r.ok) throw new Error('unexpected failure')
+    const result = r.value
 
     expect(client.getPasskeyLoginOptions).toHaveBeenCalledOnce()
     expect(startAuth).toHaveBeenCalledWith(JSON.parse(FAKE_OPTIONS_STR))
@@ -112,11 +115,11 @@ describe('loginWithPasskey', () => {
 
   test('options API エラー時は伝播し verify を呼ばない', async () => {
     const client = makeFakeClient({
-      getPasskeyLoginOptions: vi.fn().mockRejectedValue(new ApiError(503, 'Not configured')),
+      getPasskeyLoginOptions: vi.fn().mockResolvedValue({ ok: false, failure: { kind: 'server', status: 503 } }),
     })
     const port = createFakeWebAuthnBrowserPort()
 
-    await expect(loginWithPasskey(client, port)).rejects.toBeInstanceOf(ApiError)
+    await expect(loginWithPasskey(client, port)).resolves.toEqual({ ok: false, failure: { kind: 'server', status: 503 } })
     expect(client.verifyPasskeyLogin).not.toHaveBeenCalled()
   })
 
@@ -133,21 +136,23 @@ describe('loginWithPasskey', () => {
 
   test('verify API エラー時は伝播する', async () => {
     const client = makeFakeClient({
-      verifyPasskeyLogin: vi.fn().mockRejectedValue(new ApiError(401, 'Auth failed')),
+      verifyPasskeyLogin: vi.fn().mockResolvedValue({ ok: false, failure: { kind: 'unauthorized' } }),
     })
     const port = createFakeWebAuthnBrowserPort()
 
-    await expect(loginWithPasskey(client, port)).rejects.toBeInstanceOf(ApiError)
+    await expect(loginWithPasskey(client, port)).resolves.toEqual({ ok: false, failure: { kind: 'unauthorized' } })
   })
 
   test('戻り値のユーザー情報が正確に返る', async () => {
     const user = { username: 'bob', role: 'admin' as const, display_name: 'Bob' }
     const client = makeFakeClient({
-      verifyPasskeyLogin: vi.fn().mockResolvedValue({ token: 'tok2', user }),
+      verifyPasskeyLogin: vi.fn().mockResolvedValue({ ok: true, value: { token: 'tok2', user } }),
     })
     const port = createFakeWebAuthnBrowserPort()
 
-    const result = await loginWithPasskey(client, port)
+    const r = await loginWithPasskey(client, port)
+    if (!r.ok) throw new Error('unexpected failure')
+    const result = r.value
 
     expect(result.user).toEqual(user)
     expect(result.token).toBe('tok2')
