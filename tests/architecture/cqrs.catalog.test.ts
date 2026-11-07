@@ -1,14 +1,16 @@
 // @vitest-environment node
 // Catalog の query の分離（web-check-07）。本 slice の分: web-query-catalog-02〜04。
-// (a) CatalogQueries の入口の名前の集合 = 3（listEpisodes・getEpisodeDetail・watchGeneration）。型の等価と実行時の両方で過不足なく一致する。
-// (b) 呼出を記録する手書きの CatalogGateway の fake（読み取り 2 種類だけを持つ）を渡し、query を全部呼んでも fake への呼出は読み取りだけ。
-// (c) 戻り値がリードモデルの型（Result の中身を含む）。
+// (a) CatalogQueries の入口の名前の集合 = 4（listEpisodes・getEpisodeDetail・watchGeneration・getFeed）と、CatalogCommands の入口 = 4（starArticle・bulkStar・dismissArticle・unstarArticle）。型の等価と実行時の両方で過不足なく一致する。
+// (b) 呼出を記録する手書きの CatalogGateway の fake（書き込み系 3 method は記録してから reject する）を渡し、query を全部呼んでも fake への記録は読み取り 4 種類だけ。
+// (c) 戻り値がリードモデルの型（Result の中身を含む）。command の戻り値はリードモデルでない（bulkStar の receipt は id の配列と GenerationLimit だけ）。
 // 型の等価は `npm run typecheck` が検査する（等価でなければ代入が TS2322 で落ちる）。実行時の検査は vitest が行う。
 // createCatalogGateway・createGatewayDouble は import しない（unit が infrastructure を値で import すると forbiddenDependency になる）。
 // ApiGateway レベルで GET だけであることは catalogGateway.test.ts（adapter）が持つ。
 //
-// RED 理由（実装前）: `@/lib/catalog/application/queries`（createCatalogQueries・CatalogQueries）が無い（module not found）。
+// RED 理由（実装前）: `@/lib/catalog/application/commands`（createCatalogCommands・CatalogCommands）が無い（module not found）。
 import { describe, expect, test } from 'vitest'
+import { createCatalogCommands } from '@/lib/catalog/application/commands'
+import type { CatalogCommands } from '@/lib/catalog/application/commands'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogQueries, GenerationWatchResult } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
@@ -21,7 +23,8 @@ import type { Result } from '@/lib/shared/result'
 // ---------------------------------------------------------------------------
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
 
-type QueryNames = 'listEpisodes' | 'getEpisodeDetail' | 'watchGeneration'
+type QueryNames = 'listEpisodes' | 'getEpisodeDetail' | 'watchGeneration' | 'getFeed'
+type CommandNames = 'starArticle' | 'bulkStar' | 'dismissArticle' | 'unstarArticle'
 
 function typeProbes(queries: CatalogQueries): void {
   // (a) 名前の集合が過不足なく一致する
@@ -34,14 +37,18 @@ function typeProbes(queries: CatalogQueries): void {
   const watch: Equals<ReturnType<CatalogQueries['watchGeneration']>, GenerationWatchResult> = true
   const watchShape: Equals<GenerationWatchResult, { readonly completedIds: ReadonlyArray<string> }> = true
   const created: CatalogQueries = createCatalogQueries({ gateway: undefined as unknown as CatalogGateway })
-  void [queries, queryKeys, depKeys, list, detail, watch, watchShape, created]
+  // command の入口の名前の集合と deps
+  const commandKeys: Equals<keyof CatalogCommands, CommandNames> = true
+  const commandDepKeys: Equals<keyof Parameters<typeof createCatalogCommands>[0], 'gateway'> = true
+  const createdCommands: CatalogCommands = createCatalogCommands({ gateway: undefined as unknown as CatalogGateway })
+  void [queries, queryKeys, depKeys, list, detail, watch, watchShape, created, commandKeys, commandDepKeys, createdCommands]
 }
 void typeProbes
 
 // ---------------------------------------------------------------------------
-// 呼出を記録する fake（読み取り 2 種類だけ。書き込み系のメソッドを持たない）
+// 呼出を記録する fake（書き込み系 3 method は記録してから reject する。記録しなければ (b) に識別力が無い）
 // ---------------------------------------------------------------------------
-const READ_CALLS: ReadonlySet<string> = new Set(['listEpisodes', 'getEpisode'])
+const READ_CALLS: ReadonlySet<string> = new Set(['listEpisodes', 'getEpisode', 'getFeed', 'getStarredArticles'])
 
 const RECORD: EpisodeRecord = {
   episode: {
@@ -79,6 +86,26 @@ function harness() {
       calls.push('getEpisode')
       return Promise.resolve({ ok: true, value: RECORD })
     },
+    getFeed: () => {
+      calls.push('getFeed')
+      return Promise.resolve({ ok: true, value: { articles: [], starredIds: [], date: null } })
+    },
+    getStarredArticles: () => {
+      calls.push('getStarredArticles')
+      return Promise.resolve({ ok: true, value: [] })
+    },
+    starArticle: () => {
+      calls.push('starArticle')
+      return Promise.resolve({ ok: true, value: { remaining: null } })
+    },
+    dismissArticle: () => {
+      calls.push('dismissArticle')
+      return Promise.resolve({ ok: true, value: undefined })
+    },
+    unstarArticle: () => {
+      calls.push('unstarArticle')
+      return Promise.resolve({ ok: true, value: undefined })
+    },
   }
   return { queries: createCatalogQueries({ gateway }), calls, gateway }
 }
@@ -86,14 +113,25 @@ function harness() {
 // ---------------------------------------------------------------------------
 // (a) 名前の集合
 // ---------------------------------------------------------------------------
-describe('web-check-07 (a) query 3 つは過不足なく公開される', () => {
-  test('verifies: CI-Q4 (web-check-07, web-query-catalog-02) — 戻り値の key は listEpisodes・getEpisodeDetail・watchGeneration の 3 つだけで、すべて関数', () => {
+describe('web-check-07 (a) query 4 つは過不足なく公開される', () => {
+  test('verifies: CI-Q4 (web-check-07, web-query-catalog-02) — 戻り値の key は listEpisodes・getEpisodeDetail・watchGeneration・getFeed の 4 つだけで、すべて関数', () => {
     const { queries } = harness()
-    const names: readonly QueryNames[] = ['listEpisodes', 'getEpisodeDetail', 'watchGeneration']
+    const names: readonly QueryNames[] = ['listEpisodes', 'getEpisodeDetail', 'watchGeneration', 'getFeed']
 
-    expect(names).toHaveLength(3)
+    expect(names).toHaveLength(4)
     expect(Object.keys(queries).sort()).toEqual([...names].sort())
     for (const name of names) expect(typeof queries[name], name).toBe('function')
+  })
+})
+
+describe('web-check-07 (a) command 4 つは過不足なく公開される', () => {
+  test('verifies: CI-RL4 (web-check-07, web-cmd-catalog-01) — 戻り値の key は starArticle・bulkStar・dismissArticle・unstarArticle の 4 つだけで、すべて関数', () => {
+    const { gateway } = harness()
+    const commands = createCatalogCommands({ gateway })
+    const names: readonly CommandNames[] = ['starArticle', 'bulkStar', 'dismissArticle', 'unstarArticle']
+
+    expect(Object.keys(commands).sort()).toEqual([...names].sort())
+    for (const name of names) expect(typeof commands[name], name).toBe('function')
   })
 })
 
@@ -109,17 +147,37 @@ describe('web-check-07 (b) query を全部呼んでも、gateway への呼出は
     expect(calls).toEqual(['listEpisodes'])
   })
 
-  test('verifies: CI-Q4 — 3 つの query を全部呼んでも、記録は読み取り 2 種類だけ（watchGeneration は gateway を呼ばない）', async () => {
+  test('verifies: CI-Q4 — 正方向対照: getFeed() を呼べば fake に getFeed・getStarredArticles が 1 回ずつ記録される（記録が配線されている）', async () => {
+    const { queries, calls } = harness()
+
+    const view = await queries.getFeed()
+    if ('feed' in view) await view.starred
+
+    expect([...calls].sort()).toEqual(['getFeed', 'getStarredArticles'])
+  })
+
+  test('verifies: CI-Q4 — 4 つの query を全部呼んでも、記録は読み取り 4 種類だけ（書き込み系 3 つは 1 回も呼ばれない。watchGeneration は gateway を呼ばない）', async () => {
     const { queries, calls, gateway } = harness()
 
     await queries.listEpisodes()
     await queries.getEpisodeDetail('p1')
     queries.watchGeneration([], [{ id: 'p1', generation: 'completed' }])
+    const view = await queries.getFeed()
+    if ('feed' in view) await view.starred
 
-    expect(calls).toEqual(['listEpisodes', 'getEpisode'])
+    expect([...calls].sort()).toEqual(['getEpisode', 'getFeed', 'getStarredArticles', 'listEpisodes'])
     expect(calls.every((name) => READ_CALLS.has(name))).toBe(true)
-    // fake は読み取りの 2 つしか持たない（書き込み系のメソッドがあれば、ここで増える）
-    expect(Object.keys(gateway).sort()).toEqual(['getEpisode', 'listEpisodes'])
+    for (const write of ['starArticle', 'dismissArticle', 'unstarArticle']) expect(calls).not.toContain(write)
+    // fake は 7 method を持ち（書き込み系は記録してから reject する形で用意している）、query が呼べば記録に残る
+    expect(Object.keys(gateway).sort()).toEqual([
+      'dismissArticle',
+      'getEpisode',
+      'getFeed',
+      'getStarredArticles',
+      'listEpisodes',
+      'starArticle',
+      'unstarArticle',
+    ])
   })
 })
 
@@ -139,5 +197,27 @@ describe('web-check-07 (c) 戻り値はリードモデルで、record・DTO・Ep
     expect(listed.value[0]).not.toHaveProperty('episode')
     expect(detail.value).not.toHaveProperty('episode')
     expect(Object.keys(queries.watchGeneration([], []))).toEqual(['completedIds'])
+  })
+})
+
+describe('web-check-07 (c) command の戻り値はリードモデルでない', () => {
+  test('verifies: CI-RL4 (web-rule-catalog-05) — bulkStar の receipt は starred・failed（id の配列）と limit だけ', async () => {
+    const { gateway } = harness()
+    const commands = createCatalogCommands({ gateway })
+
+    const receipt = await commands.bulkStar(['a1', 'a2'])
+
+    expect(Object.keys(receipt).sort()).toEqual(['failed', 'limit', 'starred'])
+    expect(receipt.starred).toEqual(['a1', 'a2'])
+    expect(receipt.failed).toEqual([])
+    expect(receipt.limit).toBeNull()
+    for (const id of [...receipt.starred, ...receipt.failed]) expect(typeof id).toBe('string')
+  })
+
+  test('verifies: CI-RL4 — starArticle の値は remaining だけで、記事のリードモデル（title など）を持たない', async () => {
+    const { gateway } = harness()
+    const result = await createCatalogCommands({ gateway }).starArticle('a1')
+
+    expect(result.ok && Object.keys(result.value)).toEqual(['remaining'])
   })
 })

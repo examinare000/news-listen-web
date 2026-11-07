@@ -78,13 +78,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "app/(app)/feed/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-03"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "app/(app)/podcast/[id]/page.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -110,13 +103,6 @@
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-02"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "components/ArticleCard.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-03"
   },
   {
     "rule": "web-dep-04",
@@ -229,13 +215,6 @@
     "specifier": "@/lib/sfx",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/feed/page.tsx",
-    "specifier": "@/lib/catalog/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-03"
   },
   {
     "rule": "web-dep-05",

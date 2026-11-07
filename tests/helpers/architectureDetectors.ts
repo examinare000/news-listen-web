@@ -476,6 +476,11 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-catalog-04',
+    allowed: only('lib/catalog/infrastructure/catalogGateway.ts'),
+    patterns: [{ label: 'is_starred', find: (ctx) => regexStarts(ctx.body, /\bis_starred\b/) }],
+  },
+  {
     rule: 'web-rule-catalog-06',
     allowed: only('lib/catalog/domain/generationWatch.ts'),
     patterns: [
