@@ -5,6 +5,7 @@
 import { describe, expect, test } from 'vitest'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
 import type { SourceOrigin } from '@/lib/catalog/domain/episode'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
@@ -42,11 +43,23 @@ interface FakeGateway extends CatalogGateway {
   readonly calls: string[]
 }
 
+type FeedSnapshot = { readonly articles: ReadonlyArray<ArticleRef>; readonly starredIds: ReadonlyArray<string>; readonly date: string | null }
+
 function fake(handlers: {
   list?: () => Promise<Result<ReadonlyArray<EpisodeRecord>, ApiFailure>>
   get?: (id: string) => Promise<Result<EpisodeRecord, ApiFailure>>
+  /** n = その gateway で何回目の getFeed か（1 始まり） */
+  feed?: (n: number) => Promise<Result<FeedSnapshot, ApiFailure>>
+  starred?: (n: number) => Promise<Result<ReadonlyArray<ArticleRef>, ApiFailure>>
 }): FakeGateway {
   const calls: string[] = []
+  let feedCount = 0
+  let starredCount = 0
+  // 変更系は記録してから reject する（query が呼べば calls に残る）
+  const forbidden = (name: string) => () => {
+    calls.push(name)
+    return Promise.reject(new Error(`${name} は query から呼ばれない`))
+  }
   return {
     calls,
     listEpisodes: () => {
@@ -57,6 +70,19 @@ function fake(handlers: {
       calls.push(`getEpisode:${id}`)
       return handlers.get?.(id) ?? Promise.reject(new Error('getEpisode を想定していない'))
     },
+    getFeed: () => {
+      calls.push('getFeed')
+      feedCount += 1
+      return handlers.feed?.(feedCount) ?? Promise.reject(new Error('getFeed を想定していない'))
+    },
+    getStarredArticles: () => {
+      calls.push('getStarredArticles')
+      starredCount += 1
+      return handlers.starred?.(starredCount) ?? Promise.reject(new Error('getStarredArticles を想定していない'))
+    },
+    starArticle: forbidden('starArticle'),
+    dismissArticle: forbidden('dismissArticle'),
+    unstarArticle: forbidden('unstarArticle'),
   }
 }
 
@@ -173,5 +199,235 @@ describe('watchGeneration (web-query-catalog-04)', () => {
   test('verifies: CI-Q3 — 戻りは completedIds だけ（shouldStop を返さない。web-dec-102）', () => {
     const result = createCatalogQueries({ gateway: fake({}) }).watchGeneration([], [])
     expect(Object.keys(result)).toEqual(['completedIds'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getFeed（web-query-catalog-01・web-dec-103・web-dec-105・web-dec-108）: 2 段で返し、古い取得は stale にする
+// ---------------------------------------------------------------------------
+function articleRef(id: string): ArticleRef {
+  return { id, title: `title ${id}`, source: 'Site', url: `https://example.com/${id}`, score: 1, publishedAt: '2026-05-31T06:00:00Z' }
+}
+
+interface Deferred<T> {
+  readonly promise: Promise<T>
+  resolve(value: T): void
+  reject(reason: unknown): void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const feedOk = (ids: string[], starredIds: string[] = [], date: string | null = '2026-06-01'): Result<FeedSnapshot, ApiFailure> => ({
+  ok: true,
+  value: { articles: ids.map(articleRef), starredIds, date },
+})
+
+describe('getFeed (web-query-catalog-01)', () => {
+  test('verifies: CI-FD1 — 呼出の直後（await の前）に getStarredArticles → getFeed の順で 1 回ずつ開始する', () => {
+    const gateway = fake({
+      feed: () => new Promise(() => {}),
+      starred: () => new Promise(() => {}),
+    })
+
+    void createCatalogQueries({ gateway }).getFeed()
+
+    expect(gateway.calls).toEqual(['getStarredArticles', 'getFeed'])
+  })
+
+  test('verifies: CI-FD2 — getStarredArticles が未解決でも 1 段目は解決し、feed は loaded', async () => {
+    const starred = deferred<Result<ReadonlyArray<ArticleRef>, ApiFailure>>()
+    const gateway = fake({ feed: () => Promise.resolve(feedOk(['a1', 'a2'], ['a1'], '2026-06-01')), starred: () => starred.promise })
+
+    const view = await createCatalogQueries({ gateway }).getFeed()
+
+    expect('feed' in view).toBe(true)
+    if (!('feed' in view)) return
+    expect(view.feed).toMatchObject({ articles: [{ id: 'a1', publishedAt: '2026-05-31T06:00:00Z' }, { id: 'a2' }], starredIds: ['a1'], date: '2026-06-01' })
+    starred.resolve({ ok: true, value: [] })
+    expect(await view.starred).toEqual({ articles: [] })
+  })
+
+  test('verifies: CI-FD3 — feed の failure は failed（同じ ApiFailure）、reject は loaded でも failed でもない', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const failed = await createCatalogQueries({
+      gateway: fake({ feed: () => Promise.resolve({ ok: false, failure }), starred: () => Promise.resolve({ ok: true, value: [] }) }),
+    }).getFeed()
+    const rejected = await createCatalogQueries({
+      gateway: fake({ feed: () => Promise.reject(new Error('boom')), starred: () => Promise.resolve({ ok: true, value: [] }) }),
+    }).getFeed()
+
+    if (!('feed' in failed) || !('feed' in rejected)) throw new Error('最新の取得は stale でない')
+    expect('failure' in failed.feed && failed.feed.failure).toBe(failure)
+    expect(failed.feed).not.toHaveProperty('articles')
+    expect(rejected.feed).not.toHaveProperty('articles')
+    expect(rejected.feed).not.toHaveProperty('failure')
+  })
+
+  test('verifies: CI-FD4 — starred: ok → articles、ok:false → not-ok（cause は同じ ApiFailure）', async () => {
+    const failure: ApiFailure = { kind: 'timeout' }
+    const ok = await createCatalogQueries({
+      gateway: fake({ feed: () => Promise.resolve(feedOk([])), starred: () => Promise.resolve({ ok: true, value: [articleRef('s1')] }) }),
+    }).getFeed()
+    const notOk = await createCatalogQueries({
+      gateway: fake({ feed: () => Promise.resolve(feedOk([])), starred: () => Promise.resolve({ ok: false, failure }) }),
+    }).getFeed()
+
+    if (!('feed' in ok) || !('feed' in notOk)) throw new Error('最新の取得は stale でない')
+    expect(await ok.starred).toMatchObject({ articles: [{ id: 's1' }] })
+    const outcome = await notOk.starred
+    expect('cause' in outcome && outcome.cause).toBe(failure)
+    expect(outcome).not.toHaveProperty('articles')
+  })
+
+  test('verifies: CI-FD4・FD5 — starred の reject は not-ok（cause = reject の値）に畳まれ、getFeed も starred も reject しない', async () => {
+    const reason = new Error('starred boom')
+    const view = await createCatalogQueries({
+      gateway: fake({ feed: () => Promise.resolve(feedOk(['a1'])), starred: () => Promise.reject(reason) }),
+    }).getFeed()
+
+    if (!('feed' in view)) throw new Error('最新の取得は stale でない')
+    const outcome = await view.starred
+    expect('cause' in outcome && outcome.cause).toBe(reason)
+  })
+
+  test('verifies: CI-FD7 — feed が failed でも starred は ok で取れる', async () => {
+    const view = await createCatalogQueries({
+      gateway: fake({
+        feed: () => Promise.resolve({ ok: false, failure: { kind: 'network' } }),
+        starred: () => Promise.resolve({ ok: true, value: [articleRef('s1')] }),
+      }),
+    }).getFeed()
+
+    if (!('feed' in view)) throw new Error('最新の取得は stale でない')
+    expect(view.feed).toHaveProperty('failure')
+    expect(await view.starred).toMatchObject({ articles: [{ id: 's1' }] })
+  })
+
+  test('verifies: CI-FD8 — getFeed() の後、gateway への記録に変更系 3 method が無い', async () => {
+    const gateway = fake({ feed: () => Promise.resolve(feedOk(['a1'])), starred: () => Promise.resolve({ ok: true, value: [] }) })
+
+    const view = await createCatalogQueries({ gateway }).getFeed()
+    if ('feed' in view) await view.starred
+
+    expect(gateway.calls).toEqual(['getStarredArticles', 'getFeed'])
+  })
+
+  test('verifies: CI-FD6 — 最新の取得の完了は stale でない（単独の取得、および先発の完了後の後発）', async () => {
+    const gateway = fake({ feed: () => Promise.resolve(feedOk(['a1'])), starred: () => Promise.resolve({ ok: true, value: [] }) })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.getFeed()
+    const second = await queries.getFeed()
+
+    expect('stale' in first).toBe(false)
+    expect('stale' in second).toBe(false)
+    expect(await ('starred' in second ? second.starred : Promise.resolve({ stale: true }))).not.toHaveProperty('stale')
+  })
+
+  test.each([
+    ['成功', (): Result<FeedSnapshot, ApiFailure> => feedOk(['old'])],
+    ['失敗', (): Result<FeedSnapshot, ApiFailure> => ({ ok: false, failure: { kind: 'server', status: 500 } })],
+  ])('verifies: CI-FD6 — 後発が走れば先発の 1 段目は stale（先発の feed が %s）', async (_label, firstFeed) => {
+    const feed1 = deferred<Result<FeedSnapshot, ApiFailure>>()
+    const feed2 = deferred<Result<FeedSnapshot, ApiFailure>>()
+    const gateway = fake({
+      feed: (n) => (n === 1 ? feed1.promise : feed2.promise),
+      starred: () => Promise.resolve({ ok: true, value: [] }),
+    })
+    const queries = createCatalogQueries({ gateway })
+
+    const p1 = queries.getFeed()
+    const p2 = queries.getFeed()
+    feed2.resolve(feedOk(['new']))
+    const second = await p2
+    feed1.resolve(firstFeed())
+    const first = await p1
+
+    expect(first).toMatchObject({ stale: true })
+    expect(first).not.toHaveProperty('feed')
+    expect(second).not.toHaveProperty('stale')
+    expect(await first.starred).toEqual({ stale: true })
+  })
+
+  test('verifies: CI-FD6 — 後発が走れば先発の feed の reject も stale', async () => {
+    const feed1 = deferred<Result<FeedSnapshot, ApiFailure>>()
+    const gateway = fake({
+      feed: (n) => (n === 1 ? feed1.promise : Promise.resolve(feedOk(['new']))),
+      starred: () => Promise.resolve({ ok: true, value: [] }),
+    })
+    const queries = createCatalogQueries({ gateway })
+
+    const p1 = queries.getFeed()
+    await queries.getFeed()
+    feed1.reject(new Error('boom'))
+    const first = await p1
+
+    expect(first).toMatchObject({ stale: true })
+    expect(first).not.toHaveProperty('feed')
+  })
+
+  test('verifies: CI-FD6 — 先発の starred が失敗していれば、stale でも cause を保つ', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 502 }
+    const feed1 = deferred<Result<FeedSnapshot, ApiFailure>>()
+    const gateway = fake({
+      feed: (n) => (n === 1 ? feed1.promise : Promise.resolve(feedOk(['new']))),
+      starred: (n) => (n === 1 ? Promise.resolve({ ok: false, failure }) : Promise.resolve({ ok: true, value: [] })),
+    })
+    const queries = createCatalogQueries({ gateway })
+
+    const p1 = queries.getFeed()
+    await queries.getFeed()
+    feed1.resolve(feedOk(['old']))
+    const first = await p1
+
+    const outcome = await first.starred
+    expect(outcome).toMatchObject({ stale: true })
+    expect('cause' in outcome && outcome.cause).toBe(failure)
+  })
+
+  test('verifies: CI-FD6 — 1 段目が最新でも、starred の決着の前に新しい取得が始まれば starred は stale', async () => {
+    const starred1 = deferred<Result<ReadonlyArray<ArticleRef>, ApiFailure>>()
+    const gateway = fake({
+      feed: () => Promise.resolve(feedOk(['a1'])),
+      starred: (n) => (n === 1 ? starred1.promise : Promise.resolve({ ok: true, value: [] })),
+    })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.getFeed()
+    expect(first).not.toHaveProperty('stale')
+    void queries.getFeed()
+    starred1.resolve({ ok: true, value: [articleRef('s1')] })
+
+    expect(await first.starred).toMatchObject({ stale: true })
+  })
+
+  test('verifies: CI-FD6・FV2 — starred が（最新のうちに）先に決着し、その後に後発が始まって feed が遅れて決着 → 1 段目は stale で starred も StarredStale（cause を保つ）', async () => {
+    const failure: ApiFailure = { kind: 'timeout' }
+    const feed1 = deferred<Result<FeedSnapshot, ApiFailure>>()
+    const gateway = fake({
+      feed: (n) => (n === 1 ? feed1.promise : Promise.resolve(feedOk(['new']))),
+      starred: (n) => (n === 1 ? Promise.resolve({ ok: false, failure }) : Promise.resolve({ ok: true, value: [] })),
+    })
+    const queries = createCatalogQueries({ gateway })
+
+    const p1 = queries.getFeed()
+    await Promise.resolve()
+    await Promise.resolve()
+    await queries.getFeed()
+    feed1.resolve(feedOk(['old']))
+    const first = await p1
+
+    expect(first).toMatchObject({ stale: true })
+    const outcome = await first.starred
+    expect(outcome).toMatchObject({ stale: true })
+    expect('cause' in outcome && outcome.cause).toBe(failure)
   })
 })

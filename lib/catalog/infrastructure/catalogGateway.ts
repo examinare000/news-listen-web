@@ -1,10 +1,13 @@
-// port CatalogGateway の実装。取得は lib/api/podcasts.ts の getPodcasts・getPodcast を呼び（GET のみ）、DTO を EpisodeRecord に写す。
+// port CatalogGateway の実装。lib/api の podcasts・feed・articles を呼び、DTO を EpisodeRecord・ArticleRef に写す。
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
 import { decodeEpisode, readSourceOrigin, readStatus } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { getPodcast, getPodcasts } from '@/lib/api/podcasts'
-import type { Podcast } from '@/types'
+import { dismissArticle, getStarredArticles, starArticle, unstarArticle } from '@/lib/api/articles'
+import { getFeed } from '@/lib/api/feed'
+import type { Article, Podcast } from '@/types'
 
 // 内容 4 つと表示 field は kind に依らず DTO から写す。null・欠落は空配列。
 function toRecord(dto: Podcast): EpisodeRecord {
@@ -27,6 +30,10 @@ function toRecord(dto: Podcast): EpisodeRecord {
   }
 }
 
+function toArticleRef(dto: Article): ArticleRef {
+  return { id: dto.id, title: dto.title, source: dto.source, url: dto.url, score: dto.score, publishedAt: dto.published_at }
+}
+
 export function createCatalogGateway(gateway: ApiGateway): CatalogGateway {
   return {
     async listEpisodes() {
@@ -36,6 +43,41 @@ export function createCatalogGateway(gateway: ApiGateway): CatalogGateway {
     async getEpisode(id) {
       const result = await getPodcast(gateway, id)
       return result.ok ? { ok: true, value: toRecord(result.value) } : result
+    },
+    async getFeed() {
+      const result = await getFeed(gateway)
+      if (!result.ok) return result
+      const { articles, date } = result.value
+      return {
+        ok: true,
+        value: {
+          articles: articles.map(toArticleRef),
+          // undefined は未対応 backend の可能性があり、偽と区別できないので真のものだけを運ぶ。
+          starredIds: articles.filter((a) => a.is_starred).map((a) => a.id),
+          date: date ?? null,
+        },
+      }
+    },
+    async getStarredArticles() {
+      const result = await getStarredArticles(gateway)
+      if (!result.ok) return result
+      // 移行期・プロキシ経由で 200 かつ想定外の body（例: catch-all が返す {}）でも画面を壊さない。
+      const { articles } = result.value
+      return { ok: true, value: Array.isArray(articles) ? articles.map(toArticleRef) : [] }
+    },
+    async starArticle(id, difficulty) {
+      const result = await (difficulty ? starArticle(gateway, id, difficulty) : starArticle(gateway, id))
+      if (!result.ok) return result
+      const { remaining } = result.value
+      return { ok: true, value: { remaining: typeof remaining === 'number' ? remaining : null } }
+    },
+    async dismissArticle(id) {
+      const result = await dismissArticle(gateway, id)
+      return result.ok ? { ok: true, value: undefined } : result
+    },
+    async unstarArticle(id) {
+      const result = await unstarArticle(gateway, id)
+      return result.ok ? { ok: true, value: undefined } : result
     },
   }
 }

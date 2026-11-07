@@ -4,8 +4,9 @@
 //
 // RED 理由（実装前）: `@/lib/catalog/application/readModels` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
-import { toEpisodeCardView, toEpisodeDetailView } from '@/lib/catalog/application/readModels'
+import { toArticleCardView, toEpisodeCardView, toEpisodeDetailView } from '@/lib/catalog/application/readModels'
 import type { EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
 import type {
   FailedEpisode,
@@ -228,5 +229,35 @@ describe('showsShareAlikeNotice (web-rule-catalog-10)', () => {
     const viaUser = toEpisodeDetailView(record({ sources: [sourceCredit(base, 'user')] }))
     const viaOperator = toEpisodeDetailView(record({ sources: [sourceCredit(base, 'operator')] }))
     expect([viaUser.showsShareAlikeNotice, viaOperator.showsShareAlikeNotice]).toEqual([false, true])
+  })
+})
+
+describe('toArticleCardView (web-model-catalog / web-dec-109)', () => {
+  const REF: ArticleRef = {
+    id: 'a1',
+    title: 'タイトル',
+    source: 'Site',
+    url: 'https://example.com/a1',
+    score: 7,
+    publishedAt: '2026-05-31T06:00:00Z',
+  }
+
+  test('verifies: CI-FV1 — ArticleRef と同じ 6 field だけを持つ（isStarred・isBusy・canSelect を持たない）', () => {
+    const view = toArticleCardView(REF)
+
+    expect(view).toEqual(REF)
+    expect(Object.keys(view).sort()).toEqual(['id', 'publishedAt', 'score', 'source', 'title', 'url'])
+  })
+
+  test('verifies: CI-FV3 — 呼ぶたびに別 object で、凍結され、入力を書き換えても変わらない', () => {
+    const input = { ...REF }
+    const view = toArticleCardView(input)
+
+    input.title = 'changed'
+
+    expect(view.title).toBe('タイトル')
+    expect(view).not.toBe(input)
+    expect(toArticleCardView(input)).not.toBe(toArticleCardView(input))
+    expect(Object.isFrozen(view)).toBe(true)
   })
 })
