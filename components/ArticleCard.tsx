@@ -4,7 +4,8 @@ import { usePreferences } from '@/contexts/PreferencesProvider'
 import { timeFormat } from '@/lib/preferences/domain/settings'
 import { Menu } from '@/components/ui/Menu'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
-import type { Article, DifficultyLevel } from '@/types/index'
+import type { ArticleCardView } from '@/lib/catalog/application/readModels'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
 // DIFFICULTY_LABELS のキー順（toeic_600 → ... → eiken_p1）をメニュー表示順として使う。
 // WHY: 難易度の並びを別途配列で複製すると表示順の二重管理になるため、
@@ -12,7 +13,7 @@ import type { Article, DifficultyLevel } from '@/types/index'
 const DIFFICULTY_MENU_ORDER = Object.keys(DIFFICULTY_LABELS) as DifficultyLevel[]
 
 interface ArticleCardProps {
-  article: Article
+  article: ArticleCardView
   onStar: (id: string, difficulty?: DifficultyLevel) => void
   onDismiss: (id: string) => void
   busy: boolean
@@ -80,8 +81,8 @@ export function ArticleCard({
 
   // WHY: now を current time に注入して相対表記を計算する（決定的にテスト可能）
   const formattedDate = get(timeFormat) === 'relative'
-    ? formatRelativeTime(new Date(article.published_at), new Date())
-    : formatDate(article.published_at)
+    ? formatRelativeTime(new Date(article.publishedAt), new Date())
+    : formatDate(article.publishedAt)
 
   const cardClassName = [
     'article-card',

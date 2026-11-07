@@ -6,7 +6,7 @@ import { ArticleCard } from '@/components/ArticleCard'
 import { formatDate, formatRelativeTime } from '@/lib/format'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import type { Article } from '@/types/index'
+import type { ArticleCardView } from '@/lib/catalog/application/readModels'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
@@ -23,17 +23,17 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
   }
 }
 
-const SAMPLE_ARTICLE: Article = {
+const SAMPLE_ARTICLE: ArticleCardView = {
   id: 'a1',
   title: 'TypeScript 5.5 Released',
   url: 'https://devblogs.microsoft.com/typescript/typescript-5-5',
   source: 'Microsoft Blog',
   score: 0.85,
-  published_at: '2026-06-10T09:00:00+09:00',
+  publishedAt: '2026-06-10T09:00:00+09:00',
 }
 
 function renderCard(overrides: Partial<{
-  article: Article
+  article: ArticleCardView
   onStar: (id: string) => void
   onDismiss: (id: string) => void
   onUnstar: (id: string) => void
@@ -200,7 +200,7 @@ describe('ArticleCard restyle (design markup)', () => {
   test('renders published date via formatDate in absolute mode (default)', () => {
     renderCard({ timeFormat: 'absolute' })
     expect(
-      screen.getByText(formatDate(SAMPLE_ARTICLE.published_at))
+      screen.getByText(formatDate(SAMPLE_ARTICLE.publishedAt))
     ).toBeInTheDocument()
   })
 
@@ -208,7 +208,7 @@ describe('ArticleCard restyle (design markup)', () => {
     renderCard({ timeFormat: 'relative' })
     // formatRelativeTime with current now will produce relative string
     const now = new Date()
-    const relativeDate = formatRelativeTime(new Date(SAMPLE_ARTICLE.published_at), now)
+    const relativeDate = formatRelativeTime(new Date(SAMPLE_ARTICLE.publishedAt), now)
     expect(screen.getByText(relativeDate)).toBeInTheDocument()
   })
 

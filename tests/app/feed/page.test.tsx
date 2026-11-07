@@ -1290,3 +1290,588 @@ describe('FeedPage — generation limit message (issue #82 / ADR-073)', () => {
     })
   })
 })
+
+// ==========================================================
+// Feed 画面 — web-slice-catalog-03 の pin（挙動不変の固定。実装前の page で green、実装後も green）
+// ==========================================================
+type GwResult = Result<unknown, ApiFailure>
+
+interface DeferredResponse {
+  promise: Promise<GwResult>
+  resolve: (value: GwResult) => void
+  reject: (reason: unknown) => void
+}
+
+function deferResponse(): DeferredResponse {
+  let resolve!: (value: GwResult) => void
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<GwResult>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const feedOk = (articles: unknown[] = SAMPLE_ARTICLES, date = '2026-06-10'): GwResult => ({ ok: true, value: { articles, date } })
+const starredOk = (articles: unknown[]): GwResult => ({ ok: true, value: { articles } })
+const ART1 = SAMPLE_ARTICLES[0]
+const ART2 = SAMPLE_ARTICLES[1]
+const A1_TITLE = 'TypeScript 5.5 Released'
+const A2_TITLE = 'Next.js 15 Features'
+
+function feedTabs() {
+  return within(screen.getByRole('group', { name: 'フィードの絞り込み' }))
+}
+
+function toastTexts(): string[] {
+  return Array.from(document.querySelectorAll('.toast > span')).map((el) => el.textContent ?? '')
+}
+
+function cardOf(id: string): HTMLElement {
+  const card = screen.getByTestId(`star-button-${id}`).closest('.article-card')
+  if (!(card instanceof HTMLElement)) throw new Error(`card ${id} が無い`)
+  return card
+}
+
+async function openStarredTab() {
+  await userEvent.click(feedTabs().getByRole('button', { name: /スター済み/ }))
+}
+
+/** Star タブを開き、a1 の解除ボタンを押して確認ダイアログを開く。 */
+async function openUnstarDialogForA1() {
+  renderFeedPage()
+  await waitFor(() => screen.getByText(A1_TITLE))
+  await openStarredTab()
+  await waitFor(() => screen.getByTestId('unstar-button-a1'))
+  await userEvent.click(screen.getByTestId('unstar-button-a1'))
+  return within(screen.getByRole('dialog')).getByRole('button', { name: '確認' })
+}
+
+function respondStarredA1Unstar(result: GwResult | (() => Promise<GwResult>)) {
+  gw.respond('GET', FEED_PATH, feedOk([{ ...ART1, is_starred: true }, ART2]))
+  gw.respond('GET', STARRED_PATH, starredOk([ART1]))
+  if (typeof result === 'function') gw.respondWith('DELETE', starPath('a1'), result)
+  else gw.respond('DELETE', starPath('a1'), result)
+}
+
+describe('FeedPage — web-slice-catalog-03 pins', () => {
+  test('web-slice-catalog-03 verifies: CI-PG7.4 — タブを切り替えても request は出ない（GET feed・GET starred の件数が切替の前後で同じ）', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    const before = { feed: callsTo('GET', FEED_PATH).length, starred: callsTo('GET', STARRED_PATH).length }
+
+    await openStarredTab()
+    await userEvent.click(feedTabs().getByRole('button', { name: /すべて/ }))
+    await userEvent.click(feedTabs().getByRole('button', { name: /スター済み/ }))
+
+    expect(before).toEqual({ feed: 1, starred: 1 })
+    expect(callsTo('GET', FEED_PATH)).toHaveLength(before.feed)
+    expect(callsTo('GET', STARRED_PATH)).toHaveLength(before.starred)
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG2.3 — getFeed が unauthorized → 「API キーが正しくありません」', async () => {
+    gw.respond('GET', FEED_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+
+    renderFeedPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('API キーが正しくありません')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.5 — getFeed が reject → 「予期しないエラーが発生しました」', async () => {
+    gw.respondWith('GET', FEED_PATH, () => Promise.reject(new Error('boom')))
+
+    renderFeedPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('予期しないエラーが発生しました')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.8・1.10 — getStarredArticles が ok:false → Star タブの空状態に「スター済み記事の取得に失敗しました」、console.error に失敗が渡る', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      gw.respond('GET', FEED_PATH, feedOk())
+      gw.respond('GET', STARRED_PATH, { ok: false, failure })
+
+      renderFeedPage()
+      await waitFor(() => screen.getByText(A1_TITLE))
+      await openStarredTab()
+
+      expect(await screen.findByText('スター済み記事の取得に失敗しました')).toBeInTheDocument()
+      expect(spy).toHaveBeenCalledWith('[feed] starred一覧の取得に失敗', failure)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG6.4・CM5 — 一括 Star で 1 件が reject → 「1件をスターしました」と「1件のスターに失敗しました」', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', starPath('a1'), { ok: true, value: { status: 'starred', article_id: 'a1' } })
+    gw.respondWith('POST', starPath('a2'), () => Promise.reject(new Error('boom')))
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/ }))
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box)
+    await userEvent.click(screen.getByRole('button', { name: /2件を一括スター/ }))
+
+    await waitFor(() => expect(toastTexts()).toHaveLength(2))
+    expect(toastTexts()).toEqual(['1件をスターしました', '1件のスターに失敗しました'])
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG6.2〜6.7 — 一括 Star の成功の toast の後に失敗の toast。終了後は選択モードが終わり、失敗した記事の操作は enabled で、選択は空', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', starPath('a1'), { ok: true, value: { status: 'starred', article_id: 'a1' } })
+    gw.respond('POST', starPath('a2'), { ok: false, failure: { kind: 'server', status: 500 } })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/ }))
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box)
+    await userEvent.click(screen.getByRole('button', { name: /2件を一括スター/ }))
+
+    await waitFor(() => expect(toastTexts()).toHaveLength(2))
+    expect(toastTexts()).toEqual(['1件をスターしました', '1件のスターに失敗しました'])
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId('star-button-a2')).toBeEnabled())
+    expect(within(cardOf('a2')).getByRole('button', { name: '非表示' })).toBeEnabled()
+
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/ }))
+    for (const box of screen.getAllByRole('checkbox')) expect(box).not.toBeChecked()
+  })
+
+  test.each([
+    ['日次 → 月次', 'Daily podcast generation limit reached.', 'Monthly podcast generation limit reached.', '本日の生成上限に達しました', '今月の生成上限'],
+    ['月次 → 日次', 'Monthly podcast generation limit reached.', 'Daily podcast generation limit reached.', '今月の生成上限に達しました', '本日の生成上限'],
+  ])('web-slice-catalog-03 verifies: CI-PG6.3・CM5 — 一括 Star で 429 が %s の順なら、最初のものの文言だけを出す', async (_label, firstDetail, secondDetail, expected, other) => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', starPath('a1'), {
+      ok: false,
+      failure: { kind: 'rate_limited', retryAfterSeconds: 3600, scope: 'unknown', detail: firstDetail },
+    })
+    gw.respond('POST', starPath('a2'), {
+      ok: false,
+      failure: { kind: 'rate_limited', retryAfterSeconds: 3600, scope: 'unknown', detail: secondDetail },
+    })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByRole('button', { name: /複数選択/ }))
+    for (const box of screen.getAllByRole('checkbox')) await userEvent.click(box)
+    await userEvent.click(screen.getByRole('button', { name: /2件を一括スター/ }))
+
+    await waitFor(() => expect(toastTexts()).toHaveLength(1))
+    expect(toastTexts()[0]).toContain(expected)
+    expect(toastTexts()[0]).not.toContain(other)
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.6・1.7・FD2 — getStarredArticles が未解決でも getFeed の記事が出て読み込み中が解け、starred は解決後に Star タブへ反映される', async () => {
+    const starred = deferResponse()
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respondWith('GET', STARRED_PATH, () => starred.promise)
+
+    renderFeedPage()
+
+    await waitFor(() => screen.getByText(A1_TITLE))
+    expect(screen.queryByRole('status', { name: '読み込み中' })).not.toBeInTheDocument()
+    await act(async () => {
+      starred.resolve(starredOk([ART2]))
+    })
+    await waitFor(() => expect(feedTabs().getByRole('button', { name: /スター済み/ })).toHaveTextContent('1'))
+    await openStarredTab()
+    expect(screen.getByText(A2_TITLE)).toBeInTheDocument()
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.3・5.10・CM4 — 解除の確認を同じ tick に 2 回押しても DELETE は 1 回で、解除ボタンは busy のまま、toast は 1 回目の結果の 1 件だけ', async () => {
+    const del = deferResponse()
+    respondStarredA1Unstar(() => del.promise)
+
+    const confirmButton = await openUnstarDialogForA1()
+    await act(async () => {
+      fireEvent.click(confirmButton)
+      fireEvent.click(confirmButton)
+    })
+
+    expect(callsTo('DELETE', starPath('a1'))).toHaveLength(1)
+    expect(screen.getByTestId('unstar-button-a1')).toBeDisabled()
+    expect(toastTexts()).toEqual([])
+
+    await act(async () => {
+      del.resolve({ ok: true, value: undefined })
+    })
+    await waitFor(() => expect(toastTexts()).toEqual(['スターを解除しました']))
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.9・1.10・FD6 — 古い取得が starred の reject を伴って決着しても、表示は後発のままで、starred の失敗のログは出る', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const feed1 = deferResponse()
+      const feed2 = deferResponse()
+      const starred1 = deferResponse()
+      const starred2 = deferResponse()
+      gw.respondWith('GET', FEED_PATH, () => (callsTo('GET', FEED_PATH).length === 1 ? feed1.promise : feed2.promise))
+      gw.respondWith('GET', STARRED_PATH, () => (callsTo('GET', STARRED_PATH).length === 1 ? starred1.promise : starred2.promise))
+
+      renderFeedPage()
+      await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(1))
+      await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+      await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(2))
+
+      await act(async () => {
+        feed2.resolve(feedOk([ART2], '2026-06-11'))
+        starred2.resolve(starredOk([]))
+      })
+      await waitFor(() => screen.getByText(A2_TITLE))
+      const reason = new Error('starred1 boom')
+      await act(async () => {
+        feed1.resolve(feedOk(SAMPLE_ARTICLES, '2026-06-10'))
+        starred1.reject(reason)
+      })
+
+      await waitFor(() => expect(spy).toHaveBeenCalledWith('[feed] starred一覧の取得に失敗', reason))
+      await expect(waitFor(() => screen.getByText(A1_TITLE), { timeout: 300 })).rejects.toThrow()
+      expect(screen.getByText(A2_TITLE)).toBeInTheDocument()
+      expect(screen.getByText(/2026-06-11/)).toBeInTheDocument()
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG2.2 — getFeed が timeout → 「サーバーに接続できません」', async () => {
+    gw.respond('GET', FEED_PATH, { ok: false, failure: { kind: 'timeout' } })
+
+    renderFeedPage()
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('サーバーに接続できません')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG2.4 — getFeed が server 500 → 完全一致で「エラーが発生しました (500)」', async () => {
+    gw.respond('GET', FEED_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+
+    renderFeedPage()
+
+    expect((await screen.findByRole('alert')).textContent).toBe('エラーが発生しました (500)')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG2.5 — getFeed が forbidden → 完全一致で「エラーが発生しました」', async () => {
+    gw.respond('GET', FEED_PATH, { ok: false, failure: { kind: 'forbidden' } })
+
+    renderFeedPage()
+
+    expect((await screen.findByRole('alert')).textContent).toBe('エラーが発生しました')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.9・FD6 — 先発の feed が（最新のうちに）決着して描いた後、更新で後発が始まり、その後で先発の starred が決着しても Star タブへ反映しない', async () => {
+    const starred1 = deferResponse()
+    const starred2 = deferResponse()
+    const feed2 = deferResponse()
+    gw.respondWith('GET', FEED_PATH, () => (callsTo('GET', FEED_PATH).length === 1 ? Promise.resolve(feedOk()) : feed2.promise))
+    gw.respondWith('GET', STARRED_PATH, () => (callsTo('GET', STARRED_PATH).length === 1 ? starred1.promise : starred2.promise))
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(2))
+
+    await act(async () => {
+      starred1.resolve(starredOk([ART1]))
+    })
+    await act(async () => {
+      feed2.resolve(feedOk())
+      starred2.resolve(starredOk([]))
+    })
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await openStarredTab()
+
+    expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG3.7・3.10 — Star が server 500 → 「エラーが発生しました (500)」。応答が未解決の間は star ボタンが disabled で、決着後に enabled', async () => {
+    const star = deferResponse()
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respondWith('POST', starPath('a1'), () => star.promise)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeDisabled())
+
+    await act(async () => {
+      star.resolve({ ok: false, failure: { kind: 'server', status: 500 } })
+    })
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました (500)']))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG3.8 — Star が forbidden → 完全一致で「エラーが発生しました」', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', starPath('a1'), { ok: false, failure: { kind: 'forbidden' } })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました']))
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG4.2・4.5 — Dismiss が server 500 → 「エラーが発生しました (500)」。toast の後に a1 の「非表示」が enabled', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', dismissPath('a1'), { ok: false, failure: { kind: 'server', status: 500 } })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(within(cardOf('a1')).getByRole('button', { name: '非表示' }))
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました (500)']))
+    await waitFor(() => expect(within(cardOf('a1')).getByRole('button', { name: '非表示' })).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG4.3・4.5 — Dismiss が unauthorized → 完全一致で「エラーが発生しました」（unauthorized の分岐は無い）。toast の後に a1 の「非表示」が enabled', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', dismissPath('a1'), { ok: false, failure: { kind: 'unauthorized' } })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(within(cardOf('a1')).getByRole('button', { name: '非表示' }))
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました']))
+    await waitFor(() => expect(within(cardOf('a1')).getByRole('button', { name: '非表示' })).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.5 — Unstar が not_found → 「記事が見つかりません」。すべてタブからも除かれ、更新で戻った a1 は starredIds からも除かれていて「スターする」', async () => {
+    respondStarredA1Unstar({ ok: false, failure: { kind: 'not_found' } })
+
+    const confirmButton = await openUnstarDialogForA1()
+    await userEvent.click(confirmButton)
+
+    await waitFor(() => expect(toastTexts()).toEqual(['記事が見つかりません']))
+    await userEvent.click(feedTabs().getByRole('button', { name: /すべて/ }))
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+    expect(screen.getByText(A2_TITLE)).toBeInTheDocument()
+
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('GET', STARRED_PATH, starredOk([]))
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeInTheDocument())
+    expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スターする')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.6・5.10 — Unstar が unauthorized → 「API キーが正しくありません」。toast の後に解除ボタンが enabled', async () => {
+    respondStarredA1Unstar({ ok: false, failure: { kind: 'unauthorized' } })
+
+    await userEvent.click(await openUnstarDialogForA1())
+
+    await waitFor(() => expect(toastTexts()).toEqual(['API キーが正しくありません']))
+    await waitFor(() => expect(screen.getByTestId('unstar-button-a1')).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.8・5.10 — Unstar が forbidden → 完全一致で「エラーが発生しました」。toast の後に解除ボタンが enabled', async () => {
+    respondStarredA1Unstar({ ok: false, failure: { kind: 'forbidden' } })
+
+    await userEvent.click(await openUnstarDialogForA1())
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました']))
+    await waitFor(() => expect(screen.getByTestId('unstar-button-a1')).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.9・5.10 — Unstar が reject → 「予期しないエラーが発生しました」。toast の後に解除ボタンが enabled', async () => {
+    respondStarredA1Unstar(() => Promise.reject(new Error('boom')))
+
+    await userEvent.click(await openUnstarDialogForA1())
+
+    await waitFor(() => expect(toastTexts()).toEqual(['予期しないエラーが発生しました']))
+    await waitFor(() => expect(screen.getByTestId('unstar-button-a1')).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.7・5.10 — Unstar が server 500 → 「エラーが発生しました (500)」。toast の後に解除ボタンが enabled', async () => {
+    respondStarredA1Unstar({ ok: false, failure: { kind: 'server', status: 500 } })
+
+    await userEvent.click(await openUnstarDialogForA1())
+
+    await waitFor(() => expect(toastTexts()).toEqual(['エラーが発生しました (500)']))
+    await waitFor(() => expect(screen.getByTestId('unstar-button-a1')).toBeEnabled())
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.12・1.13・1.7 — 更新で feed は ok・starred は未解決のとき、feed と starred のエラー表示は開始時に消えていて、starred を解決すると反映される', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      gw.respond('GET', FEED_PATH, { ok: false, failure: { kind: 'network' } })
+      gw.respond('GET', STARRED_PATH, { ok: false, failure: { kind: 'network' } })
+
+      renderFeedPage()
+      expect(await screen.findByRole('alert')).toHaveTextContent('サーバーに接続できません')
+
+      const starred = deferResponse()
+      gw.respond('GET', FEED_PATH, feedOk())
+      gw.respondWith('GET', STARRED_PATH, () => starred.promise)
+      await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+      await waitFor(() => screen.getByText(A1_TITLE))
+
+      expect(screen.queryByText('サーバーに接続できません')).not.toBeInTheDocument()
+      await openStarredTab()
+      expect(screen.queryByText('スター済み記事の取得に失敗しました')).not.toBeInTheDocument()
+      expect(screen.getByText('スター済みの記事はありません')).toBeInTheDocument()
+
+      await act(async () => {
+        starred.resolve(starredOk([ART1]))
+      })
+      await waitFor(() => expect(screen.getByText(A1_TITLE)).toBeInTheDocument())
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG10・PG3.3 — a1・a2 の Star が未解決のまま a2 → a1 の順に解決しても、Star タブに a1・a2 の両方が出る', async () => {
+    const star1 = deferResponse()
+    const star2 = deferResponse()
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respondWith('POST', starPath('a1'), () => star1.promise)
+    gw.respondWith('POST', starPath('a2'), () => star2.promise)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+    await userEvent.click(screen.getByTestId('star-button-a2'))
+
+    await act(async () => {
+      star2.resolve({ ok: true, value: { status: 'starred', article_id: 'a2' } })
+    })
+    await act(async () => {
+      star1.resolve({ ok: true, value: { status: 'starred', article_id: 'a1' } })
+    })
+    await openStarredTab()
+
+    expect(screen.getByText(A1_TITLE)).toBeInTheDocument()
+    expect(screen.getByText(A2_TITLE)).toBeInTheDocument()
+    expect(feedTabs().getByRole('button', { name: /スター済み/ })).toHaveTextContent('2')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG10・PG1.7 — feed は解決・starred は未解決で a1 の Star が未解決のまま、starred を [a2] で解決し、その後 Star を解決 → Star タブに a2 と a1 の両方', async () => {
+    const starred = deferResponse()
+    const star1 = deferResponse()
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respondWith('GET', STARRED_PATH, () => starred.promise)
+    gw.respondWith('POST', starPath('a1'), () => star1.promise)
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+    await act(async () => {
+      starred.resolve(starredOk([ART2]))
+    })
+    await act(async () => {
+      star1.resolve({ ok: true, value: { status: 'starred', article_id: 'a1' } })
+    })
+    await openStarredTab()
+
+    expect(screen.getByText(A2_TITLE)).toBeInTheDocument()
+    expect(screen.getByText(A1_TITLE)).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.3・PG7.2・AR2 — feed の a1 が is_starred なら「スター済み」。is_starred が欠落した更新でも「スター済み」のまま', async () => {
+    gw.respond('GET', FEED_PATH, feedOk([{ ...ART1, is_starred: true }, ART2]))
+
+    renderFeedPage()
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み'))
+
+    gw.respond('GET', FEED_PATH, feedOk([ART1, ART2]))
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(2))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeInTheDocument())
+
+    expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み')
+    expect(screen.getByTestId('star-button-a2')).toHaveAttribute('aria-label', 'スターする')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG3.4 — すべてタブの「スター済み」の a1 を押して 404 → 「記事が見つかりません」。両タブから除かれ、更新で戻った a1 は（404 は starredIds を残すので）「スター済み」のまま', async () => {
+    gw.respond('GET', FEED_PATH, feedOk([{ ...ART1, is_starred: true }, ART2]))
+    gw.respond('GET', STARRED_PATH, starredOk([ART1]))
+    gw.respond('POST', starPath('a1'), { ok: false, failure: { kind: 'not_found' } })
+
+    renderFeedPage()
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み'))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+
+    await waitFor(() => expect(toastTexts()).toEqual(['記事が見つかりません']))
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+    await openStarredTab()
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+
+    gw.respond('GET', FEED_PATH, feedOk([ART1, ART2]))
+    gw.respond('GET', STARRED_PATH, starredOk([]))
+    await userEvent.click(feedTabs().getByRole('button', { name: /すべて/ }))
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeInTheDocument())
+
+    expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG1.2 — 先発の feed が後発より後に決着しても、後発が未解決の間は loading を解かず、先発の記事も出さない', async () => {
+    const feed1 = deferResponse()
+    const feed2 = deferResponse()
+    gw.respondWith('GET', FEED_PATH, () => (callsTo('GET', FEED_PATH).length === 1 ? feed1.promise : feed2.promise))
+
+    renderFeedPage()
+    await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(1))
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(2))
+
+    await act(async () => {
+      feed1.resolve(feedOk(SAMPLE_ARTICLES, '2026-06-10'))
+    })
+
+    await expect(waitFor(() => screen.getByText(A1_TITLE), { timeout: 300 })).rejects.toThrow()
+    expect(screen.getByRole('status', { name: '読み込み中' })).toBeInTheDocument()
+
+    await act(async () => {
+      feed2.resolve(feedOk([ART2], '2026-06-11'))
+    })
+    await waitFor(() => screen.getByText(A2_TITLE))
+    expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG4.6 — a1 を Star → Dismiss した後、更新で is_starred 無しで戻った a1 は（Dismiss は starredIds を残すので）「スター済み」', async () => {
+    gw.respond('GET', FEED_PATH, feedOk())
+    gw.respond('POST', starPath('a1'), { ok: true, value: { status: 'starred', article_id: 'a1' } })
+    gw.respond('POST', dismissPath('a1'), { ok: true, value: { status: 'dismissed', article_id: 'a1' } })
+
+    renderFeedPage()
+    await waitFor(() => screen.getByText(A1_TITLE))
+    await userEvent.click(screen.getByTestId('star-button-a1'))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み'))
+    await userEvent.click(within(cardOf('a1')).getByRole('button', { name: '非表示' }))
+    await waitFor(() => expect(screen.queryByText(A1_TITLE)).not.toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole('button', { name: /更新/ }))
+    await waitFor(() => expect(callsTo('GET', FEED_PATH)).toHaveLength(2))
+    await waitFor(() => expect(screen.getByTestId('star-button-a1')).toBeInTheDocument())
+
+    expect(screen.getByTestId('star-button-a1')).toHaveAttribute('aria-label', 'スター済み')
+  })
+
+  test('web-slice-catalog-03 verifies: CI-PG5.3・CM4 — 同じ tick の「確認」→ 解除ボタン →「確認」でも、2 回目の確認は何もせず、解除ボタンで開き直した確認ダイアログは開いたまま。DELETE は 1 回・toast は解決後の 1 件', async () => {
+    const del = deferResponse()
+    respondStarredA1Unstar(() => del.promise)
+
+    const confirmButton = await openUnstarDialogForA1()
+    const unstarButton = screen.getByTestId('unstar-button-a1')
+    await act(async () => {
+      fireEvent.click(confirmButton)
+      fireEvent.click(unstarButton)
+      fireEvent.click(confirmButton)
+    })
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(callsTo('DELETE', starPath('a1'))).toHaveLength(1)
+    expect(toastTexts()).toEqual([])
+
+    await act(async () => {
+      del.resolve({ ok: true, value: undefined })
+    })
+    await waitFor(() => expect(toastTexts()).toEqual(['スターを解除しました']))
+  })
+})
