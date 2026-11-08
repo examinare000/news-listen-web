@@ -6,7 +6,7 @@
 import { describe, expect, test } from 'vitest'
 import { createCatalogGateway } from '@/lib/catalog/infrastructure/catalogGateway'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
-import type { Article, Podcast } from '@/types'
+import type { Article, FeaturedSource, Podcast } from '@/types'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 
 const LIST_PATH = '/api/backend/podcasts'
@@ -412,5 +412,300 @@ describe('createCatalogGateway.dismissArticle・unstarArticle', () => {
 
     expect(!dismissed.ok && dismissed.failure).toBe(failure)
     expect(!unstarred.ok && unstarred.failure).toBe(failure)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 購読・おすすめ・onboarding（settings 系 6 method）
+// ---------------------------------------------------------------------------
+const SOURCES_PATH = '/api/backend/settings/sources'
+const FEATURED_PATH = '/api/backend/settings/featured-sources'
+const ONBOARDING_PATH = '/api/backend/settings/onboarding'
+const COMPLETE_PATH = '/api/backend/settings/onboarding/complete'
+
+const SOURCES_DTO = {
+  sources: [
+    { name: 'A', url: 'https://a.example/rss' },
+    { name: 'B', url: 'https://b.example/rss' },
+  ],
+}
+const SOURCES_VALUE = [
+  { name: 'A', url: 'https://a.example/rss' },
+  { name: 'B', url: 'https://b.example/rss' },
+]
+
+function featuredDto(id: string, overrides: Partial<FeaturedSource> = {}): FeaturedSource {
+  return { id, name: `name ${id}`, url: `https://example.com/${id}.xml`, order: 3, ...overrides }
+}
+
+describe('createCatalogGateway.getSources', () => {
+  test('GET /api/backend/settings/sources を 1 回だけ呼び、応答の sources を { name, url } の配列に順序どおり写す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', SOURCES_PATH, { ok: true, value: SOURCES_DTO })
+
+    const result = await createCatalogGateway(gateway).getSources()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: SOURCES_PATH, body: undefined }])
+    expect(result).toEqual({ ok: true, value: SOURCES_VALUE })
+  })
+
+  test('空の購読一覧は空のまま ok', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    expect(await createCatalogGateway(gateway).getSources()).toEqual({ ok: true, value: [] })
+  })
+
+  test('failure は変えずに同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'unauthorized' }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', SOURCES_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).getSources()
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.addSource (web-rule-catalog-07)', () => {
+  test('web-rule-catalog-07 — POST /api/backend/settings/sources に body { name, url } を送り、応答の sources を写して返す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: true, value: SOURCES_DTO })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'u')
+
+    expect(gateway.calls).toEqual([{ method: 'POST', path: SOURCES_PATH, body: { name: 'n', url: 'u' } }])
+    expect(result).toEqual({ ok: true, value: SOURCES_VALUE })
+  })
+
+  test('web-rule-catalog-07 — 409 (conflict) は already_registered', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'conflict' } })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'https://example.com/rss')
+
+    expect(result).toEqual({ ok: false, failure: { kind: 'already_registered' } })
+  })
+
+  test('web-rule-catalog-07 — 422 (validation / reason schema) は invalid_feed', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'validation', detail: 'bad feed', reason: 'schema' } })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'https://example.com/rss')
+
+    expect(result).toEqual({ ok: false, failure: { kind: 'invalid_feed' } })
+  })
+
+  test('web-rule-catalog-07 — reason の無い validation も invalid_feed（reason !== rule は 422 とみなす）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'validation', detail: 'bad feed' } })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'https://example.com/rss')
+
+    expect(result).toEqual({ ok: false, failure: { kind: 'invalid_feed' } })
+  })
+
+  test('web-rule-catalog-07 — 400 (validation / reason rule) は invalid_feed ではなく failed で、元の failure を保つ', async () => {
+    const failure: ApiFailure = { kind: 'validation', detail: 'rule violation', reason: 'rule' }
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'https://example.com/rss')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure.kind).toBe('failed')
+    expect(result.failure).not.toEqual({ kind: 'invalid_feed' })
+    expect(result.failure.kind === 'failed' && result.failure.failure).toBe(failure)
+  })
+
+  test.each<[string, ApiFailure]>([
+    ['5xx (server)', { kind: 'server', status: 500 }],
+    ['network', { kind: 'network' }],
+    ['unknown status', { kind: 'unknown', status: 418 }],
+    ['unauthorized', { kind: 'unauthorized' }],
+  ])('web-rule-catalog-07 — %s は failed で、元の failure を同じ参照で保つ', async (_label, failure) => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', SOURCES_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).addSource('n', 'https://example.com/rss')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure.kind).toBe('failed')
+    expect(result.failure.kind === 'failed' && result.failure.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.deleteSource', () => {
+  test('DELETE /api/backend/settings/sources?url=<encodeURIComponent(url)> を body なしで呼び、残りの一覧を返す', async () => {
+    const url = 'https://a.example/b?c=1&d=日本'
+    const path = `${SOURCES_PATH}?url=${encodeURIComponent(url)}`
+    const gateway = createGatewayDouble()
+    gateway.respond('DELETE', path, { ok: true, value: { sources: [{ name: 'B', url: 'https://b.example/rss' }] } })
+
+    const result = await createCatalogGateway(gateway).deleteSource(url)
+
+    expect(gateway.calls).toEqual([{ method: 'DELETE', path: '/api/backend/settings/sources?url=https%3A%2F%2Fa.example%2Fb%3Fc%3D1%26d%3D%E6%97%A5%E6%9C%AC', body: undefined }])
+    expect(result).toEqual({ ok: true, value: [{ name: 'B', url: 'https://b.example/rss' }] })
+  })
+
+  test('failure は変えずに同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'not_found' }
+    const gateway = createGatewayDouble()
+    gateway.respond('DELETE', `${SOURCES_PATH}?url=${encodeURIComponent('https://x')}`, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).deleteSource('https://x')
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.getFeaturedSources', () => {
+  test('GET /api/backend/settings/featured-sources を 1 回呼び、全 field を写して順序どおり返す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
+        sites: [
+          featuredDto('f2', { category: 'sports', thumbnail_url: 'https://img.example/f2.png', description: '説明' }),
+          featuredDto('f1', { category: 'culture' }),
+        ],
+      },
+    })
+
+    const result = await createCatalogGateway(gateway).getFeaturedSources()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: FEATURED_PATH, body: undefined }])
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          id: 'f2',
+          name: 'name f2',
+          url: 'https://example.com/f2.xml',
+          category: 'sports',
+          thumbnailUrl: 'https://img.example/f2.png',
+          description: '説明',
+        },
+        { id: 'f1', name: 'name f1', url: 'https://example.com/f1.xml', category: 'culture', thumbnailUrl: null, description: null },
+      ],
+    })
+  })
+
+  test('thumbnail_url・description が欠落 / null なら thumbnailUrl・description は null（undefined にしない）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: {
+        sites: [
+          featuredDto('missing', { category: 'tech' }),
+          featuredDto('nulls', { category: 'tech', thumbnail_url: null, description: null }),
+        ],
+      },
+    })
+
+    const result = await createCatalogGateway(gateway).getFeaturedSources()
+
+    if (!result.ok) throw new Error('成功のはず')
+    for (const site of result.value) {
+      expect(site.thumbnailUrl).toBeNull()
+      expect(site.description).toBeNull()
+    }
+  })
+
+  test.each<[string, string | null | undefined]>([
+    ['未知の値', 'unknown-category'],
+    ['null', null],
+    ['欠落', undefined],
+    ['空文字', ''],
+  ])('category が %s なら tech に倒す', async (_label, category) => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [featuredDto('f1', { category })] } })
+
+    const result = await createCatalogGateway(gateway).getFeaturedSources()
+
+    expect(result.ok && result.value[0].category).toBe('tech')
+  })
+
+  test('既知の 5 値の category はそのまま写す', async () => {
+    const categories = ['tech', 'business', 'sports', 'entertainment', 'culture']
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: { sites: categories.map((category, index) => featuredDto(`f${index}`, { category })) },
+    })
+
+    const result = await createCatalogGateway(gateway).getFeaturedSources()
+
+    expect(result.ok && result.value.map((site) => site.category)).toEqual(categories)
+  })
+
+  test('DTO の order は持ち込まず、key は 6 つだけ', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [featuredDto('f1', { category: 'tech' })] } })
+
+    const result = await createCatalogGateway(gateway).getFeaturedSources()
+
+    if (!result.ok) throw new Error('成功のはず')
+    expect(result.value[0]).not.toHaveProperty('order')
+    expect(Object.keys(result.value[0]).sort()).toEqual(['category', 'description', 'id', 'name', 'thumbnailUrl', 'url'])
+  })
+
+  test('空の一覧は空のまま ok、failure は同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const empty = createGatewayDouble()
+    empty.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [] } })
+    const failing = createGatewayDouble()
+    failing.respond('GET', FEATURED_PATH, { ok: false, failure })
+
+    expect(await createCatalogGateway(empty).getFeaturedSources()).toEqual({ ok: true, value: [] })
+    const result = await createCatalogGateway(failing).getFeaturedSources()
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.getOnboardingStatus', () => {
+  test.each([true, false])('GET /api/backend/settings/onboarding を 1 回呼び、onboarding_completed=%s を { completed } に写す', async (completed) => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', ONBOARDING_PATH, { ok: true, value: { onboarding_completed: completed } })
+
+    const result = await createCatalogGateway(gateway).getOnboardingStatus()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: ONBOARDING_PATH, body: undefined }])
+    expect(result).toEqual({ ok: true, value: { completed } })
+    expect(result.ok && Object.keys(result.value)).toEqual(['completed'])
+  })
+
+  test('failure は変えずに同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'timeout' }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', ONBOARDING_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).getOnboardingStatus()
+
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})
+
+describe('createCatalogGateway.completeOnboarding', () => {
+  test('POST /api/backend/settings/onboarding/complete を body なしで 1 回呼び、ok の value は undefined', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', COMPLETE_PATH, { ok: true, value: { onboarding_completed: true } })
+
+    const result = await createCatalogGateway(gateway).completeOnboarding()
+
+    expect(gateway.calls).toEqual([{ method: 'POST', path: COMPLETE_PATH, body: undefined }])
+    expect(result).toEqual({ ok: true, value: undefined })
+    expect(result.ok && result.value).toBeUndefined()
+  })
+
+  test('failure は変えずに同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 503 }
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', COMPLETE_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).completeOnboarding()
+
+    expect(!result.ok && result.failure).toBe(failure)
   })
 })

@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（15 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（16 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -15,6 +15,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-03',
   'web-rule-catalog-04',
   'web-rule-catalog-06',
+  'web-rule-catalog-09',
   'web-rule-catalog-10',
   'web-rule-catalog-11',
   'web-rule-account-03',
@@ -34,7 +35,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 15 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 16 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -116,6 +117,26 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "const on = p.source_kind === 'user'")).toEqual([])
     expect(rows(F, "// p.source_kind === 'featured' は書かない\nconst a = 1")).toEqual([])
     expect(rows('lib/catalog/domain/episode.ts', "const on = p.source_kind === 'featured'")).toEqual([])
+  })
+
+  test('web-rule-catalog-09: \'tech\' とほかの文字列リテラルを含む配列リテラルは 1 行に拾い、\'tech\' だけの配列・型引数・コメントの中・出てよい featuredCategory.ts は拾わない', () => {
+    const prefix = 'web-rule-catalog-09 | '
+    for (const code of [
+      "const c = ['tech', 'business']",
+      'const c = [ "business", "tech" ]',
+      "const c = [\n  'tech',\n  'business',\n]",
+    ]) {
+      const found = rows(F, code)
+      expect(found, code).toHaveLength(1)
+      expect(found[0].startsWith(`${prefix}${F} | `), code).toBe(true)
+    }
+    // 負例
+    expect(rows(F, "const c = ['tech']")).toEqual([])
+    expect(rows(F, "const [s, setS] = useState<string>('tech')")).toEqual([])
+    expect(rows(F, "// const c = ['tech', 'business']\nconst a = 1")).toEqual([])
+    expect(rows('lib/catalog/domain/featuredCategory.ts', "const c = ['tech', 'business']")).toEqual([])
+    // 正方向対照: 同じ入力を出てよいファイルの外に置くと拾う
+    expect(rows('lib/catalog/domain/other.ts', "const c = ['tech', 'business']")).toHaveLength(1)
   })
 
   test('web-rule-catalog-04: is_starred は条件式・比較の中でも拾い（1 ファイル 1 行にまとまる）、isStarred・コメントの中・出てよい catalogGateway.ts は拾わない', () => {

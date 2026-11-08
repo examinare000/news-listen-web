@@ -5,9 +5,11 @@
 // RED 理由（実装前）: `@/lib/catalog/application/readModels` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { toArticleCardView, toEpisodeCardView, toEpisodeDetailView } from '@/lib/catalog/application/readModels'
+import { toFeaturedSourceView, toOnboardingView, toSourceView } from '@/lib/catalog/application/readModels'
 import type { EpisodeRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
+import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import type {
   FailedEpisode,
   GeneratingEpisode,
@@ -259,5 +261,68 @@ describe('toArticleCardView (web-model-catalog / web-dec-109)', () => {
     expect(view).not.toBe(input)
     expect(toArticleCardView(input)).not.toBe(toArticleCardView(input))
     expect(Object.isFrozen(view)).toBe(true)
+  })
+})
+
+describe('toSourceView・toFeaturedSourceView・toOnboardingView (web-query-catalog-05・06・07)', () => {
+  function isDeepFrozen(value: unknown): boolean {
+    if (value === null || typeof value !== 'object') return true
+    return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen)
+  }
+
+  const SOURCE: SourceRef = { name: 'Site', url: 'https://example.com/rss' }
+  const FEATURED: FeaturedSourceRef = {
+    id: 'f1',
+    name: 'Featured',
+    url: 'https://example.com/f1.xml',
+    category: 'culture',
+    thumbnailUrl: 'https://img.example/f1.png',
+    description: '説明',
+  }
+
+  test('toSourceView は name・url だけを持つ凍結した別 object で、入力を書き換えても変わらない', () => {
+    const input = { ...SOURCE }
+    const view = toSourceView(input)
+
+    input.name = 'changed'
+
+    expect(view).toEqual(SOURCE)
+    expect(Object.keys(view).sort()).toEqual(['name', 'url'])
+    expect(view).not.toBe(input)
+    expect(toSourceView(SOURCE)).not.toBe(toSourceView(SOURCE))
+    expect(isDeepFrozen(view)).toBe(true)
+  })
+
+  test('toFeaturedSourceView は 6 field を持つ凍結した別 object で、null を保ち、入力を書き換えても変わらない', () => {
+    const input = { ...FEATURED }
+    const view = toFeaturedSourceView(input)
+    const withNulls = toFeaturedSourceView({ ...FEATURED, thumbnailUrl: null, description: null })
+
+    input.name = 'changed'
+
+    expect(view).toEqual(FEATURED)
+    expect(Object.keys(view).sort()).toEqual(['category', 'description', 'id', 'name', 'thumbnailUrl', 'url'])
+    expect(withNulls).toMatchObject({ thumbnailUrl: null, description: null })
+    expect(view).not.toBe(input)
+    expect(toFeaturedSourceView(FEATURED)).not.toBe(toFeaturedSourceView(FEATURED))
+    expect(isDeepFrozen(view)).toBe(true)
+    expect(isDeepFrozen(withNulls)).toBe(true)
+  })
+
+  test.each([true, false])('toOnboardingView(completed=%s) は completed だけの凍結した別 object', (completed) => {
+    const input = { completed }
+    const view = toOnboardingView(input)
+
+    expect(view).toEqual({ completed })
+    expect(Object.keys(view)).toEqual(['completed'])
+    expect(view).not.toBe(input)
+    expect(toOnboardingView(input)).not.toBe(toOnboardingView(input))
+    expect(isDeepFrozen(view)).toBe(true)
+  })
+
+  test('toOnboardingView は入力に余分な key があっても completed 以外を持たない', () => {
+    const view = toOnboardingView({ completed: true, featured: [], onboarding_completed: true } as unknown as { completed: boolean })
+
+    expect(Object.keys(view)).toEqual(['completed'])
   })
 })

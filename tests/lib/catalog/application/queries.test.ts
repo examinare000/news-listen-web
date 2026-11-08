@@ -6,6 +6,7 @@ import { describe, expect, test } from 'vitest'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
+import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
 import type { SourceOrigin } from '@/lib/catalog/domain/episode'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
@@ -51,6 +52,9 @@ function fake(handlers: {
   /** n = その gateway で何回目の getFeed か（1 始まり） */
   feed?: (n: number) => Promise<Result<FeedSnapshot, ApiFailure>>
   starred?: (n: number) => Promise<Result<ReadonlyArray<ArticleRef>, ApiFailure>>
+  sources?: () => Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
+  featured?: () => Promise<Result<ReadonlyArray<FeaturedSourceRef>, ApiFailure>>
+  onboarding?: () => Promise<Result<{ readonly completed: boolean }, ApiFailure>>
 }): FakeGateway {
   const calls: string[] = []
   let feedCount = 0
@@ -83,6 +87,21 @@ function fake(handlers: {
     starArticle: forbidden('starArticle'),
     dismissArticle: forbidden('dismissArticle'),
     unstarArticle: forbidden('unstarArticle'),
+    getSources: () => {
+      calls.push('getSources')
+      return handlers.sources?.() ?? Promise.reject(new Error('getSources を想定していない'))
+    },
+    addSource: forbidden('addSource'),
+    deleteSource: forbidden('deleteSource'),
+    getFeaturedSources: () => {
+      calls.push('getFeaturedSources')
+      return handlers.featured?.() ?? Promise.reject(new Error('getFeaturedSources を想定していない'))
+    },
+    getOnboardingStatus: () => {
+      calls.push('getOnboardingStatus')
+      return handlers.onboarding?.() ?? Promise.reject(new Error('getOnboardingStatus を想定していない'))
+    },
+    completeOnboarding: forbidden('completeOnboarding'),
   }
 }
 
@@ -429,5 +448,208 @@ describe('getFeed (web-query-catalog-01)', () => {
     const outcome = await first.starred
     expect(outcome).toMatchObject({ stale: true })
     expect('cause' in outcome && outcome.cause).toBe(failure)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// listSources・getFeaturedSources・getOnboardingStatus
+// ---------------------------------------------------------------------------
+const WRITE_CALLS = ['starArticle', 'dismissArticle', 'unstarArticle', 'addSource', 'deleteSource', 'completeOnboarding']
+
+function isDeepFrozen(value: unknown): boolean {
+  if (value === null || typeof value !== 'object') return true
+  if (!Object.isFrozen(value)) return false
+  return Object.values(value).every(isDeepFrozen)
+}
+
+const featuredRef = (id: string, overrides: Partial<FeaturedSourceRef> = {}): FeaturedSourceRef => ({
+  id,
+  name: `name ${id}`,
+  url: `https://example.com/${id}.xml`,
+  category: 'tech',
+  thumbnailUrl: null,
+  description: null,
+  ...overrides,
+})
+
+describe('listSources (web-query-catalog-05)', () => {
+  test('web-query-catalog-05 — 購読一覧を gateway から 1 回だけ取り、{ name, url } の凍結した view を順序どおりに返す', async () => {
+    const gateway = fake({
+      sources: () =>
+        Promise.resolve({
+          ok: true,
+          value: [
+            { name: 'B', url: 'https://b.example/rss' },
+            { name: 'A', url: 'https://a.example/rss' },
+          ],
+        }),
+    })
+
+    const result = await createCatalogQueries({ gateway }).listSources()
+
+    expect(gateway.calls).toEqual(['getSources'])
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { name: 'B', url: 'https://b.example/rss' },
+        { name: 'A', url: 'https://a.example/rss' },
+      ],
+    })
+    expect(result.ok && isDeepFrozen(result.value)).toBe(true)
+  })
+
+  test('web-query-catalog-05 — 空の一覧は空のまま ok で、変更系は 1 回も呼ばれない', async () => {
+    const gateway = fake({ sources: () => Promise.resolve({ ok: true, value: [] }) })
+
+    expect(await createCatalogQueries({ gateway }).listSources()).toEqual({ ok: true, value: [] })
+    for (const write of WRITE_CALLS) expect(gateway.calls).not.toContain(write)
+  })
+
+  test('web-query-catalog-05 — gateway の failure は同じ参照のまま返し、value を持たない', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 503 }
+    const gateway = fake({ sources: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogQueries({ gateway }).listSources()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+    expect(result).not.toHaveProperty('value')
+  })
+
+  test('web-query-catalog-05 — gateway の reject はそのまま伝わる', async () => {
+    const gateway = fake({ sources: () => Promise.reject(new Error('boom')) })
+    await expect(createCatalogQueries({ gateway }).listSources()).rejects.toThrow('boom')
+  })
+
+  test('web-query-catalog-05 — 呼ぶたびに別の凍結した値になり、gateway の object と参照を共有しない', async () => {
+    const raw: SourceRef[] = [{ name: 'A', url: 'https://a.example/rss' }]
+    const gateway = fake({ sources: () => Promise.resolve({ ok: true, value: raw }) })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.listSources()
+    const second = await queries.listSources()
+
+    if (!first.ok || !second.ok) throw new Error('成功のはず')
+    expect(first.value).not.toBe(raw)
+    expect(first.value[0]).not.toBe(raw[0])
+    expect(first.value).not.toBe(second.value)
+    expect(first.value[0]).not.toBe(second.value[0])
+    expect(isDeepFrozen(first.value)).toBe(true)
+    expect(isDeepFrozen(second.value)).toBe(true)
+  })
+})
+
+describe('getFeaturedSources (web-query-catalog-06)', () => {
+  test('web-query-catalog-06 — featured を gateway から 1 回だけ取り、全 field を保った凍結 view を順序どおりに返す。購読一覧は引かない', async () => {
+    const gateway = fake({
+      featured: () =>
+        Promise.resolve({
+          ok: true,
+          value: [
+            featuredRef('f2', { category: 'sports', thumbnailUrl: 'https://img.example/f2.png', description: 'desc' }),
+            featuredRef('f1'),
+          ],
+        }),
+    })
+
+    const result = await createCatalogQueries({ gateway }).getFeaturedSources()
+
+    expect(gateway.calls).toEqual(['getFeaturedSources'])
+    expect(gateway.calls).not.toContain('getSources')
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          id: 'f2',
+          name: 'name f2',
+          url: 'https://example.com/f2.xml',
+          category: 'sports',
+          thumbnailUrl: 'https://img.example/f2.png',
+          description: 'desc',
+        },
+        { id: 'f1', name: 'name f1', url: 'https://example.com/f1.xml', category: 'tech', thumbnailUrl: null, description: null },
+      ],
+    })
+    expect(result.ok && isDeepFrozen(result.value)).toBe(true)
+  })
+
+  test('web-query-catalog-06 — gateway の failure は同じ参照のまま返し、購読一覧は引かない', async () => {
+    const failure: ApiFailure = { kind: 'network' }
+    const gateway = fake({ featured: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogQueries({ gateway }).getFeaturedSources()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+    expect(gateway.calls).toEqual(['getFeaturedSources'])
+  })
+
+  test('web-query-catalog-06 — gateway の reject はそのまま伝わる', async () => {
+    const gateway = fake({ featured: () => Promise.reject(new Error('boom')) })
+    await expect(createCatalogQueries({ gateway }).getFeaturedSources()).rejects.toThrow('boom')
+  })
+
+  test('web-query-catalog-06 — 呼ぶたびに別の凍結した値になり、gateway の object と参照を共有しない', async () => {
+    const raw: FeaturedSourceRef[] = [featuredRef('f1')]
+    const gateway = fake({ featured: () => Promise.resolve({ ok: true, value: raw }) })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.getFeaturedSources()
+    const second = await queries.getFeaturedSources()
+
+    if (!first.ok || !second.ok) throw new Error('成功のはず')
+    expect(first.value).not.toBe(raw)
+    expect(first.value[0]).not.toBe(raw[0])
+    expect(first.value).not.toBe(second.value)
+    expect(first.value[0]).not.toBe(second.value[0])
+    expect(isDeepFrozen(first.value)).toBe(true)
+    expect(isDeepFrozen(second.value)).toBe(true)
+  })
+})
+
+describe('getOnboardingStatus (web-query-catalog-07)', () => {
+  test.each([true, false])('web-query-catalog-07 — completed=%s を gateway から 1 回だけ取り、{ completed } だけの凍結した値を返す', async (completed) => {
+    const gateway = fake({ onboarding: () => Promise.resolve({ ok: true, value: { completed } }) })
+
+    const result = await createCatalogQueries({ gateway }).getOnboardingStatus()
+
+    expect(gateway.calls).toEqual(['getOnboardingStatus'])
+    expect(result).toEqual({ ok: true, value: { completed } })
+    if (!result.ok) return
+    expect(Object.keys(result.value)).toEqual(['completed'])
+    expect(isDeepFrozen(result.value)).toBe(true)
+  })
+
+  test('web-query-catalog-07 — gateway の failure は同じ参照のまま返す', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const gateway = fake({ onboarding: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogQueries({ gateway }).getOnboardingStatus()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+  })
+
+  test('web-query-catalog-07 — gateway の reject はそのまま伝わる', async () => {
+    const gateway = fake({ onboarding: () => Promise.reject(new Error('boom')) })
+    await expect(createCatalogQueries({ gateway }).getOnboardingStatus()).rejects.toThrow('boom')
+  })
+
+  test('web-query-catalog-07 — 呼ぶたびに別の凍結した値になり、gateway の object と参照を共有しない', async () => {
+    const raw = { completed: true }
+    const gateway = fake({ onboarding: () => Promise.resolve({ ok: true, value: raw }) })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.getOnboardingStatus()
+    const second = await queries.getOnboardingStatus()
+
+    if (!first.ok || !second.ok) throw new Error('成功のはず')
+    expect(first.value).not.toBe(raw)
+    expect(first.value).not.toBe(second.value)
+    expect(Object.isFrozen(first.value)).toBe(true)
+    expect(Object.isFrozen(second.value)).toBe(true)
   })
 })

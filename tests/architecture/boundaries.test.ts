@@ -142,6 +142,11 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-catalog-03')).toHaveLength(0)
   })
+
+  test('removeBy が web-slice-catalog-04 の行は 0 件（web-slice-catalog-04 で消した）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-catalog-04')).toHaveLength(0)
+  })
 })
 
 // ---------------------------------------------------------------------------

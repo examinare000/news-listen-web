@@ -3,10 +3,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getSources, getFeaturedSources, addSource, deleteSource } from '@/lib/catalog/infrastructure/api'
-import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, groupByCategoryInOrder } from '@/lib/featuredCategories'
-import type { Source, FeaturedSource } from '@/types/index'
+import { useCatalogCommands } from '@/contexts/useCatalogCommands'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import { FEATURED_CATEGORIES, groupByCategoryInOrder } from '@/lib/catalog/domain/featuredCategory'
+import { recommendedSources } from '@/lib/catalog/domain/source'
+import type { FeaturedSourceView, SourceView } from '@/lib/catalog/application/readModels'
+import { FEATURED_CATEGORY_LABELS } from '@/lib/catalog/presentation/featuredCategoryLabels'
 
 function TrashIcon() {
   return (
@@ -28,14 +30,15 @@ function TrashIcon() {
 
 export default function SubscriptionsPage() {
   const { showToast } = useToast()
-  const gateway = useApiClient()
+  const queries = useCatalogQueries()
+  const commands = useCatalogCommands()
 
-  const [sources, setSources] = useState<Source[]>([])
+  const [sources, setSources] = useState<ReadonlyArray<SourceView>>([])
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
 
   // システム提供のおすすめサイト（DB 駆動）
-  const [featured, setFeatured] = useState<FeaturedSource[]>([])
+  const [featured, setFeatured] = useState<ReadonlyArray<FeaturedSourceView>>([])
   // issue #164: 取得失敗をサイレントにせず、専用のエラー状態から再読み込みできるようにする。
   const [featuredLoadError, setFeaturedLoadError] = useState(false)
   // 即購読中のおすすめサイト id（ボタンの二重押下防止）
@@ -49,19 +52,18 @@ export default function SubscriptionsPage() {
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   // Delete dialog state
-  const [deleteTarget, setDeleteTarget] = useState<Source | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<SourceView | null>(null)
 
   // 既に購読済みのサイトはおすすめから除外する（URL で突合）。
   // サーバ側は featured / sources とも Pydantic HttpUrl で同一正規化され、重複判定も完全一致のため、
   // フロントでも URL の完全一致で判定する（末尾スラッシュ違いは別フィードとして残す）。
-  const subscribedUrls = new Set(sources.map((s) => s.url))
-  const recommended = featured.filter((site) => !subscribedUrls.has(site.url))
+  const recommended = recommendedSources(featured, sources)
 
   const fetchSources = useCallback(async () => {
     setLoading(true)
     setFetchError(null)
     try {
-      const result = await getSources(gateway)
+      const result = await queries.listSources()
       if (!result.ok) {
         const failure = result.failure
         if (failure.kind === 'unauthorized') {
@@ -73,17 +75,17 @@ export default function SubscriptionsPage() {
         }
         return
       }
-      setSources(result.value.sources)
+      setSources(result.value)
     } catch {
       setFetchError('予期しないエラーが発生しました')
     } finally {
       setLoading(false)
     }
-  }, [gateway])
+  }, [queries])
 
   const fetchFeatured = useCallback(async () => {
     try {
-      const result = await getFeaturedSources(gateway)
+      const result = await queries.getFeaturedSources()
       if (!result.ok) {
         // issue #164: おすすめ欄の取得失敗は購読一覧・追加フォームに影響しないため空表示は維持しつつ、
         // サイレントにはせず専用のエラー状態から再読み込みできるようにする。
@@ -91,7 +93,7 @@ export default function SubscriptionsPage() {
         setFeaturedLoadError(true)
         return
       }
-      setFeatured(result.value.sites)
+      setFeatured(result.value)
       setFeaturedLoadError(false)
     } catch {
       // issue #164: おすすめ欄の取得失敗は購読一覧・追加フォームに影響しないため空表示は維持しつつ、
@@ -99,7 +101,7 @@ export default function SubscriptionsPage() {
       setFeatured([])
       setFeaturedLoadError(true)
     }
-  }, [gateway])
+  }, [queries])
 
   useEffect(() => {
     fetchSources()
@@ -107,22 +109,22 @@ export default function SubscriptionsPage() {
   }, [fetchSources, fetchFeatured])
 
   // おすすめサイトをワンクリックで即購読する。
-  async function handleSubscribeFeatured(site: FeaturedSource) {
+  async function handleSubscribeFeatured(site: FeaturedSourceView) {
     setSubscribingId(site.id)
     try {
-      const result = await addSource(gateway, site.name, site.url)
+      const result = await commands.subscribeFeatured(site.name, site.url)
       if (!result.ok) {
         const failure = result.failure
-        if (failure.kind === 'conflict') {
+        if (failure.kind === 'already_registered') {
           showToast(`「${site.name}」は登録済みです`, 'error')
-        } else if (failure.kind === 'server' || failure.kind === 'unknown') {
-          showToast(`購読に失敗しました (${failure.status})`, 'error')
+        } else if (failure.kind === 'failed' && (failure.failure.kind === 'server' || failure.failure.kind === 'unknown')) {
+          showToast(`購読に失敗しました (${failure.failure.status})`, 'error')
         } else {
           showToast('購読に失敗しました', 'error')
         }
         return
       }
-      setSources(result.value.sources)
+      setSources(result.value)
       showToast(`「${site.name}」を購読しました`, 'success')
     } catch {
       showToast('購読に失敗しました', 'error')
@@ -132,29 +134,26 @@ export default function SubscriptionsPage() {
   }
 
   async function handleAdd() {
-    // Client-side validation: URL must start with http:// or https://
-    if (!newUrl.startsWith('http://') && !newUrl.startsWith('https://')) {
-      setAddError('URL は http:// または https:// から始めてください')
-      return
-    }
     setAddError(null)
     setSubmitting(true)
     try {
-      const result = await addSource(gateway, newName, newUrl)
+      const result = await commands.addSource(newName, newUrl)
       if (!result.ok) {
         const failure = result.failure
-        if (failure.kind === 'conflict') {
+        if (failure.kind === 'invalid_url') {
+          setAddError('URL は http:// または https:// から始めてください')
+        } else if (failure.kind === 'already_registered') {
           setAddError('この URL は登録済みです')
-        } else if (failure.kind === 'validation' && failure.reason !== 'rule') {
+        } else if (failure.kind === 'invalid_feed') {
           setAddError('URL の形式が正しくありません')
-        } else if (failure.kind === 'server' || failure.kind === 'unknown') {
-          setAddError(`エラーが発生しました (${failure.status})`)
+        } else if (failure.failure.kind === 'server' || failure.failure.kind === 'unknown') {
+          setAddError(`エラーが発生しました (${failure.failure.status})`)
         } else {
           setAddError('エラーが発生しました')
         }
         return
       }
-      setSources(result.value.sources)
+      setSources(result.value)
       setNewName('')
       setNewUrl('')
     } catch {
@@ -169,7 +168,7 @@ export default function SubscriptionsPage() {
     const target = deleteTarget
     setDeleteTarget(null)
     try {
-      const result = await deleteSource(gateway, target.url)
+      const result = await commands.removeSource(target.url)
       if (!result.ok) {
         const failure = result.failure
         if (failure.kind === 'server' || failure.kind === 'unknown') {
@@ -180,7 +179,7 @@ export default function SubscriptionsPage() {
         return
       }
       // Replace state with the response (no re-GET needed)
-      setSources(result.value.sources)
+      setSources(result.value)
     } catch {
       showToast('削除に失敗しました', 'error')
     }
@@ -390,10 +389,10 @@ export default function SubscriptionsPage() {
                                   }}
                                 >
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                    {site.thumbnail_url ? (
+                                    {site.thumbnailUrl ? (
                                       // eslint-disable-next-line @next/next/no-img-element -- 任意ホストのサムネイルのため next/image の最適化対象外
                                       <img
-                                        src={site.thumbnail_url}
+                                        src={site.thumbnailUrl}
                                         alt=""
                                         width={20}
                                         height={20}

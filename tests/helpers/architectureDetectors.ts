@@ -490,6 +490,20 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-catalog-09',
+    allowed: only('lib/catalog/domain/featuredCategory.ts'),
+    patterns: [
+      {
+        label: "'tech' と他の文字列リテラルを含む配列リテラル",
+        find: (ctx) =>
+          arrayLiteralStarts(ctx, (elements) => {
+            const values = stringValues(elements)
+            return values.includes('tech') && values.length >= 2
+          }),
+      },
+    ],
+  },
+  {
     rule: 'web-rule-catalog-10',
     allowed: only('lib/catalog/domain/episode.ts'),
     patterns: [

@@ -144,3 +144,127 @@ describe('OnboardingSourcesModal', () => {
     })
   })
 })
+
+// ==========================================================
+// 購読・完了の pin（web-slice-catalog-04）— 現行の振る舞いを固定する特性化テスト
+// ==========================================================
+describe('OnboardingSourcesModal — 購読・完了の pin (web-slice-catalog-04)', () => {
+  const SOURCES_PATH = '/api/backend/settings/sources'
+  const COMPLETE_PATH = '/api/backend/settings/onboarding/complete'
+  const SITE = { id: 'f1', name: 'Tech Site', url: 'https://tech.example.com/rss', order: 0, category: 'tech' }
+
+  const callsTo = (method: string, path: string) =>
+    gw.calls.filter((c) => c.method === method && c.path === path)
+
+  function renderWithSite(onDone: () => void = vi.fn()) {
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [SITE] } })
+    render(<OnboardingSourcesModal {...defaultProps} onDone={onDone} />)
+  }
+  const subscribeButton = () => screen.findByRole('button', { name: 'Tech Site を購読' })
+
+  test('web-slice-catalog-04: 購読が成功するとボタンが「購読済み」で disabled になり、POST の body は { name, url }', async () => {
+    gw.respond('POST', SOURCES_PATH, { ok: true, value: { sources: [{ name: SITE.name, url: SITE.url }] } })
+    renderWithSite()
+
+    await userEvent.click(await subscribeButton())
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tech Site を購読' })).toHaveTextContent('購読済み')
+    })
+    expect(screen.getByRole('button', { name: 'Tech Site を購読' })).toBeDisabled()
+    expect(callsTo('POST', SOURCES_PATH)).toEqual([
+      { method: 'POST', path: SOURCES_PATH, body: { name: SITE.name, url: SITE.url } },
+    ])
+  })
+
+  test('web-slice-catalog-04: 購読が 409 でも「購読済み」になる', async () => {
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'conflict' } })
+    renderWithSite()
+
+    await userEvent.click(await subscribeButton())
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Tech Site を購読' })).toHaveTextContent('購読済み')
+    })
+    expect(screen.getByRole('button', { name: 'Tech Site を購読' })).toBeDisabled()
+  })
+
+  test('web-slice-catalog-04: 購読が 422 と 500 のときは「購読」のまま有効（追加済みにするのは 409 だけ）', async () => {
+    renderWithSite()
+    const button = await subscribeButton()
+
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'validation', detail: 'bad', reason: 'schema' } })
+    await userEvent.click(button)
+    await waitFor(() => expect(callsTo('POST', SOURCES_PATH)).toHaveLength(1))
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(button).toHaveTextContent('購読')
+    expect(button).not.toHaveTextContent('購読済み')
+
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    await userEvent.click(button)
+    await waitFor(() => expect(callsTo('POST', SOURCES_PATH)).toHaveLength(2))
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(button).not.toHaveTextContent('購読済み')
+  })
+
+  test('web-slice-catalog-04: 購読が reject しても何も起きず、ボタンが再び有効になる', async () => {
+    gw.respondWith('POST', SOURCES_PATH, () => Promise.reject(new Error('boom')))
+    renderWithSite()
+    const button = await subscribeButton()
+
+    await userEvent.click(button)
+
+    await waitFor(() => expect(callsTo('POST', SOURCES_PATH)).toHaveLength(1))
+    await waitFor(() => expect(button).toBeEnabled())
+    expect(button).not.toHaveTextContent('購読済み')
+  })
+
+  test('web-slice-catalog-04: 完了で POST onboarding/complete が 1 回、失敗・reject でも onDone が 1 回だけ呼ばれる', async () => {
+    // 成功
+    gw.respond('POST', COMPLETE_PATH, { ok: true, value: { onboarding_completed: true } })
+    const okDone = vi.fn()
+    const first = render(<OnboardingSourcesModal {...defaultProps} onDone={okDone} />)
+    await userEvent.click(screen.getByRole('button', { name: '完了' }))
+    await waitFor(() => expect(okDone).toHaveBeenCalledTimes(1))
+    expect(callsTo('POST', COMPLETE_PATH)).toHaveLength(1)
+    first.unmount()
+
+    // 失敗（5xx）
+    gw.respond('POST', COMPLETE_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    const failDone = vi.fn()
+    const second = render(<OnboardingSourcesModal {...defaultProps} onDone={failDone} />)
+    await userEvent.click(screen.getByRole('button', { name: '完了' }))
+    await waitFor(() => expect(failDone).toHaveBeenCalledTimes(1))
+    expect(callsTo('POST', COMPLETE_PATH)).toHaveLength(2)
+    second.unmount()
+
+    // reject
+    gw.respondWith('POST', COMPLETE_PATH, () => Promise.reject(new Error('boom')))
+    const rejectDone = vi.fn()
+    render(<OnboardingSourcesModal {...defaultProps} onDone={rejectDone} />)
+    await userEvent.click(screen.getByRole('button', { name: 'スキップ' }))
+    await waitFor(() => expect(rejectDone).toHaveBeenCalledTimes(1))
+    expect(callsTo('POST', COMPLETE_PATH)).toHaveLength(3)
+  })
+
+  test('web-slice-catalog-04: GET sources は 0 件で featured を全件出し、featured の取得失敗（!ok）でもスキップ・完了が使える', async () => {
+    const second = { id: 'f2', name: 'Biz Site', url: 'https://biz.example.com/rss', order: 1, category: 'business' }
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [SITE, second] } })
+    const first = render(<OnboardingSourcesModal {...defaultProps} />)
+
+    expect(await screen.findByRole('button', { name: 'Tech Site を購読' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Biz Site を購読' })).toBeInTheDocument()
+    expect(callsTo('GET', SOURCES_PATH)).toHaveLength(0)
+    first.unmount()
+
+    gw.respond('GET', FEATURED_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    const onDone = vi.fn()
+    render(<OnboardingSourcesModal {...defaultProps} onDone={onDone} />)
+
+    await waitFor(() => expect(callsTo('GET', FEATURED_PATH)).toHaveLength(2))
+    expect(screen.getByRole('button', { name: 'スキップ' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '完了' })).toBeEnabled()
+    await userEvent.click(screen.getByRole('button', { name: '完了' }))
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1))
+  })
+})

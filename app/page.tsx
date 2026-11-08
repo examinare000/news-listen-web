@@ -7,89 +7,79 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { LandingPage } from '@/components/lp/LandingPage'
 import { LoginModal } from '@/components/ui/LoginModal'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getOnboardingStatus } from '@/lib/catalog/infrastructure/api'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import { entryGate } from '@/lib/account/application/entryGate'
 
-// Entry gate（ランディングページ導入後）:
-// - resolving / anonymous → LandingPage を即座に表示（LP は静的なので PreferencesProvider の ready を
-//   待たない。以前のスケルトン分岐は撤去）。ログインボタンでオーバーレイの LoginModal を開く。
-// - 認証済み:
-//     - onboarding 状態を取得する間は LandingPage を表示（ブランク遷移防止。以前は null）
-//     - onboarding_completed=false → OnboardingSourcesModal（追加ステップ）
-//     - onboarding_completed=true  → /feed へ replace
-type OnboardingGate = 'unknown' | 'needed' | 'done'
+// Entry gate（ランディングページ導入後）: 分岐は entryGate（判定表）が決め、ここは描画と遷移だけを持つ。
+// - login: LP を即座に表示（LP は静的なので PreferencesProvider の ready を待たない）。ログインボタンで LoginModal を開く。
+// - loading / feed: LP だけ（LoginModal は描かない）。feed は /feed へ replace する。
+// - onboarding: OnboardingSourcesModal（追加ステップ）。
+// - retry: 認証状態を確認できないので再試行を促す。
+type OnboardingState = 'pending' | 'incomplete' | 'completed' | 'failed'
 
 export default function RootPage() {
   const { ready } = usePreferences()
-  const { status: authStatus, session, retry } = useAuth()
+  const { session, retry } = useAuth()
   const router = useRouter()
-  const gateway = useApiClient()
+  const queries = useCatalogQueries()
 
-  // ログイン済みになった後にだけ取得する onboarding ゲート状態。
-  const [gate, setGate] = useState<OnboardingGate>('unknown')
+  // ログイン済みになった後にだけ取得する onboarding の状態。
+  const [onboarding, setOnboarding] = useState<OnboardingState>('pending')
   // LP 上でログインボタンを押した時だけ LoginModal をオーバーレイ表示する。
   const [showLoginModal, setShowLoginModal] = useState(false)
 
   // ログイン完了後に onboarding 状態を取得する（未認証では API が 401 になるため）。
   useEffect(() => {
-    if (!ready || authStatus !== 'authenticated') return
+    if (!ready || session.kind !== 'authenticated') return
     let cancelled = false
-    getOnboardingStatus(gateway)
+    queries
+      .getOnboardingStatus()
       .then((result) => {
         if (cancelled) return
+        // 取得失敗時はオンボーディングを挟まずフィードへ進ませる（行き止まりを防ぐ）
         if (!result.ok) {
-          // 取得失敗時はオンボーディングを挟まずフィードへ進ませる（行き止まりを防ぐ）
-          setGate('done')
+          setOnboarding('failed')
           return
         }
-        setGate(result.value.onboarding_completed ? 'done' : 'needed')
+        setOnboarding(result.value.completed ? 'completed' : 'incomplete')
       })
       .catch(() => {
-        // 取得失敗時はオンボーディングを挟まずフィードへ進ませる（行き止まりを防ぐ）
-        if (!cancelled) setGate('done')
+        if (!cancelled) setOnboarding('failed')
       })
     return () => {
       cancelled = true
     }
-  }, [ready, authStatus, gateway])
+  }, [ready, session.kind, queries])
+
+  const gate = entryGate({ preferencesReady: ready, session, onboarding })
 
   // onboarding 完了（または取得失敗）が確定したらフィードへ。
   useEffect(() => {
-    if (
-      ready &&
-      authStatus === 'authenticated' &&
-      gate === 'done'
-    ) {
-      router.replace('/feed')
-    }
-  }, [ready, authStatus, gate, router])
+    if (gate === 'feed') router.replace('/feed')
+  }, [gate, router])
 
-  if (authStatus === 'authenticated') {
-    if (gate === 'needed') {
-      return <OnboardingSourcesModal onDone={() => setGate('done')} />
-    }
-    // gate が unknown（取得中）/ done（リダイレクト in-flight）の間も、以前の null 表示に
-    // 代えて LP を出すことでブランク画面のちらつきを防ぐ。ログインボタンは事実上使われない。
-    return <LandingPage onLoginClick={() => setShowLoginModal(true)} />
+  switch (gate) {
+    case 'onboarding':
+      return <OnboardingSourcesModal onDone={() => setOnboarding('completed')} />
+    case 'loading':
+    case 'feed':
+      // 取得中・リダイレクト in-flight の間もブランク画面を避けて LP を出す。ログインボタンは事実上使われない。
+      return <LandingPage onLoginClick={() => setShowLoginModal(true)} />
+    case 'retry':
+      return (
+        <div className="content-area content-narrow">
+          <p className="settings-row-desc" role="status">接続できませんでした</p>
+          <button type="button" className="btn btn-primary" data-testid="auth-retry" onClick={() => void retry()}>
+            再試行
+          </button>
+        </div>
+      )
+    case 'login':
+      return (
+        <>
+          <LandingPage onLoginClick={() => setShowLoginModal(true)} />
+          {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
+        </>
+      )
   }
-
-  // 認証状態を確認できない（接続失敗など）: LP もログインモーダルも出さず、再試行を促す（web-dec-69）。
-  if (session.kind === 'unavailable') {
-    return (
-      <div className="content-area content-narrow">
-        <p className="settings-row-desc" role="status">接続できませんでした</p>
-        <button type="button" className="btn btn-primary" data-testid="auth-retry" onClick={() => void retry()}>
-          再試行
-        </button>
-      </div>
-    )
-  }
-
-  // resolving（/auth/me 解決中）/ anonymous: LP を即座に表示する。
-  return (
-    <>
-      <LandingPage onLoginClick={() => setShowLoginModal(true)} />
-      {showLoginModal && <LoginModal onClose={() => setShowLoginModal(false)} />}
-    </>
-  )
 }

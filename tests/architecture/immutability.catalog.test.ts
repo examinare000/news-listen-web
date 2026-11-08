@@ -26,6 +26,10 @@ import {
   visibleArticles,
 } from '@/lib/catalog/domain/article'
 import type { ArticleRef, StarState } from '@/lib/catalog/domain/article'
+import { groupByCategoryInOrder } from '@/lib/catalog/domain/featuredCategory'
+import { recommendedSources } from '@/lib/catalog/domain/source'
+import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
+import { createCatalogCommands } from '@/lib/catalog/application/commands'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
@@ -383,6 +387,12 @@ function queriesOver(records: DeepMutable<EpisodeRecord>[]) {
     starArticle: () => Promise.reject(new Error('starArticle を想定していない')),
     dismissArticle: () => Promise.reject(new Error('dismissArticle を想定していない')),
     unstarArticle: () => Promise.reject(new Error('unstarArticle を想定していない')),
+    getSources: () => Promise.reject(new Error('getSources を想定していない')),
+    addSource: () => Promise.reject(new Error('addSource を想定していない')),
+    deleteSource: () => Promise.reject(new Error('deleteSource を想定していない')),
+    getFeaturedSources: () => Promise.reject(new Error('getFeaturedSources を想定していない')),
+    getOnboardingStatus: () => Promise.reject(new Error('getOnboardingStatus を想定していない')),
+    completeOnboarding: () => Promise.reject(new Error('completeOnboarding を想定していない')),
   }
   return createCatalogQueries({ gateway })
 }
@@ -610,6 +620,12 @@ function feedQueriesOver(feed: { articles: DeepMutable<ArticleRef>[]; starredIds
     starArticle: reject('starArticle'),
     dismissArticle: reject('dismissArticle'),
     unstarArticle: reject('unstarArticle'),
+    getSources: reject('getSources'),
+    addSource: reject('addSource'),
+    deleteSource: reject('deleteSource'),
+    getFeaturedSources: reject('getFeaturedSources'),
+    getOnboardingStatus: reject('getOnboardingStatus'),
+    completeOnboarding: reject('completeOnboarding'),
   }
   return createCatalogQueries({ gateway })
 }
@@ -652,5 +668,236 @@ describe('web-check-06 getFeed() の値', () => {
     expect(second.feed).not.toBe(first.feed)
     expect('articles' in second.feed && 'articles' in first.feed && second.feed.articles).not.toBe('articles' in first.feed && first.feed.articles)
     expect(second.feed).toEqual(first.feed)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 購読・おすすめ・onboarding: domain の純関数は入力を書き換えず、query / command の値は gateway の値と参照を共有せず、全深さで凍結される
+// ---------------------------------------------------------------------------
+function mutableSource(name: string, url = `https://${name}.example/rss`): DeepMutable<SourceRef> {
+  return { name, url }
+}
+
+function mutableFeatured(id: string, overrides: Partial<DeepMutable<FeaturedSourceRef>> = {}): DeepMutable<FeaturedSourceRef> {
+  return { id, name: `name ${id}`, url: `https://example.com/${id}.xml`, category: 'tech', thumbnailUrl: null, description: null, ...overrides }
+}
+
+/** 購読系の読み取り 3 method だけを実装し、他は呼ばれたら reject する gateway から作った query */
+function sourceQueriesOver(data: {
+  sources: DeepMutable<SourceRef>[]
+  featured: DeepMutable<FeaturedSourceRef>[]
+  onboarding: { completed: boolean }
+}) {
+  const reject = (name: string) => () => Promise.reject(new Error(`${name} を想定していない`))
+  const gateway: CatalogGateway = {
+    listEpisodes: reject('listEpisodes'),
+    getEpisode: reject('getEpisode'),
+    getFeed: reject('getFeed'),
+    getStarredArticles: reject('getStarredArticles'),
+    starArticle: reject('starArticle'),
+    dismissArticle: reject('dismissArticle'),
+    unstarArticle: reject('unstarArticle'),
+    getSources: () => Promise.resolve({ ok: true, value: data.sources }),
+    addSource: reject('addSource'),
+    deleteSource: reject('deleteSource'),
+    getFeaturedSources: () => Promise.resolve({ ok: true, value: data.featured }),
+    getOnboardingStatus: () => Promise.resolve({ ok: true, value: data.onboarding }),
+    completeOnboarding: reject('completeOnboarding'),
+  }
+  return createCatalogQueries({ gateway })
+}
+
+/** addSource・deleteSource が同じ可変の配列を返す gateway から作った command */
+function sourceCommandsOver(sources: DeepMutable<SourceRef>[]) {
+  const reject = (name: string) => () => Promise.reject(new Error(`${name} を想定していない`))
+  const gateway: CatalogGateway = {
+    listEpisodes: reject('listEpisodes'),
+    getEpisode: reject('getEpisode'),
+    getFeed: reject('getFeed'),
+    getStarredArticles: reject('getStarredArticles'),
+    starArticle: reject('starArticle'),
+    dismissArticle: reject('dismissArticle'),
+    unstarArticle: reject('unstarArticle'),
+    getSources: reject('getSources'),
+    addSource: () => Promise.resolve({ ok: true, value: sources }),
+    deleteSource: () => Promise.resolve({ ok: true, value: sources }),
+    getFeaturedSources: reject('getFeaturedSources'),
+    getOnboardingStatus: reject('getOnboardingStatus'),
+    completeOnboarding: reject('completeOnboarding'),
+  }
+  return createCatalogCommands({ gateway })
+}
+
+describe('web-check-06 recommendedSources・groupByCategoryInOrder (web-rule-catalog-08・web-rule-catalog-09)', () => {
+  test('recommendedSources は入力の配列も要素も書き換えず、凍結した新しい配列を返す', () => {
+    // 要素は application が凍結して渡した view なので、domain は要素の参照をそのまま運ぶ。
+    const featured = [mutableFeatured('f1'), mutableFeatured('f2'), mutableFeatured('f3')].map((site) => Object.freeze(site))
+    const subscribed = [mutableSource('s1', featured[1].url)]
+    const featuredBefore = structuredClone(featured)
+    const subscribedBefore = structuredClone(subscribed)
+
+    const result = recommendedSources(featured, subscribed)
+
+    expect(result.map((site) => site.id)).toEqual(['f1', 'f3'])
+    expect(featured).toEqual(featuredBefore)
+    expect(subscribed).toEqual(subscribedBefore)
+    expect(result).not.toBe(featured)
+    expectDeeplyFrozen('recommendedSources', result)
+  })
+
+  test('recommendedSources は空の入力でも凍結した空配列を返し、全件除かれても凍結している', () => {
+    const none = recommendedSources([], [])
+    const all = recommendedSources([mutableFeatured('f1')], [mutableSource('s1', 'https://example.com/f1.xml')])
+
+    expect(none).toEqual([])
+    expect(all).toEqual([])
+    expectDeeplyFrozen('recommendedSources(empty)', none)
+    expectDeeplyFrozen('recommendedSources(all removed)', all)
+  })
+
+  test('recommendedSources の戻りへの書込みは throw し、値は元のまま', () => {
+    const result = recommendedSources([mutableFeatured('f1')], []) as DeepMutable<ReadonlyArray<FeaturedSourceRef>>
+
+    expect(() => result.push(mutableFeatured('x'))).toThrow(TypeError)
+    expect(result).toHaveLength(1)
+  })
+
+  test('groupByCategoryInOrder は入力を書き換えず、戻りの object と各配列を凍結する（5 つの key は空でも持つ）', () => {
+    const items = [
+      mutableFeatured('f1', { category: 'sports' }),
+      mutableFeatured('f2', { category: 'tech' }),
+      mutableFeatured('f3', { category: 'sports' }),
+    ]
+    const itemsBefore = structuredClone(items)
+
+    const grouped = groupByCategoryInOrder(items)
+
+    expect(items).toEqual(itemsBefore)
+    expect(Object.keys(grouped).sort()).toEqual(['business', 'culture', 'entertainment', 'sports', 'tech'])
+    expect(grouped.sports.map((site) => site.id)).toEqual(['f1', 'f3'])
+    expect(grouped.culture).toEqual([])
+    expect(Object.isFrozen(grouped)).toBe(true)
+    for (const [category, list] of Object.entries(grouped)) expect(Object.isFrozen(list), category).toBe(true)
+  })
+
+  test('groupByCategoryInOrder の戻りへの書込みは throw し、値は元のまま', () => {
+    const grouped = groupByCategoryInOrder([mutableFeatured('f1')]) as unknown as Record<string, FeaturedSourceRef[]>
+
+    expect(() => grouped.tech.push(mutableFeatured('x'))).toThrow(TypeError)
+    expect(() => {
+      grouped.extra = []
+    }).toThrow(TypeError)
+    expect(grouped.tech).toHaveLength(1)
+  })
+})
+
+describe('web-check-06 listSources・getFeaturedSources・getOnboardingStatus の値 (web-query-catalog-05・06・07)', () => {
+  const data = () => ({
+    sources: [mutableSource('a'), mutableSource('b')],
+    featured: [mutableFeatured('f1', { thumbnailUrl: 'https://img.example/f1.png', description: 'desc' }), mutableFeatured('f2')],
+    onboarding: { completed: true },
+  })
+
+  test('3 つの値は全深さで凍結され、gateway の値と参照を共有しない', async () => {
+    const raw = data()
+    const queries = sourceQueriesOver(raw)
+
+    const sources = await queries.listSources()
+    const featured = await queries.getFeaturedSources()
+    const onboarding = await queries.getOnboardingStatus()
+
+    if (!sources.ok || !featured.ok || !onboarding.ok) throw new Error('成功を期待した')
+    expectDeeplyFrozen('listSources', sources.value)
+    expectDeeplyFrozen('getFeaturedSources', featured.value)
+    expectDeeplyFrozen('getOnboardingStatus', onboarding.value)
+    expect(sources.value).not.toBe(raw.sources)
+    expect(sources.value[0]).not.toBe(raw.sources[0])
+    expect(featured.value).not.toBe(raw.featured)
+    expect(featured.value[0]).not.toBe(raw.featured[0])
+    expect(onboarding.value).not.toBe(raw.onboarding)
+  })
+
+  test('gateway の値を後から書き換えても、すでに返した値は変わらない', async () => {
+    const raw = data()
+    const queries = sourceQueriesOver(raw)
+    const sources = await queries.listSources()
+    const featured = await queries.getFeaturedSources()
+    const onboarding = await queries.getOnboardingStatus()
+    if (!sources.ok || !featured.ok || !onboarding.ok) throw new Error('成功を期待した')
+    const before = structuredClone({ sources: sources.value, featured: featured.value, onboarding: onboarding.value })
+
+    raw.sources[0].name = 'changed'
+    raw.sources.push(mutableSource('z'))
+    raw.featured[0].name = 'changed'
+    raw.featured.push(mutableFeatured('f9'))
+    raw.onboarding.completed = false
+
+    expect({ sources: sources.value, featured: featured.value, onboarding: onboarding.value }).toEqual(before)
+  })
+
+  test('呼ぶたびに別の object で、内容は等しい', async () => {
+    const queries = sourceQueriesOver(data())
+
+    const [s1, s2] = [await queries.listSources(), await queries.listSources()]
+    const [f1, f2] = [await queries.getFeaturedSources(), await queries.getFeaturedSources()]
+    const [o1, o2] = [await queries.getOnboardingStatus(), await queries.getOnboardingStatus()]
+
+    if (!s1.ok || !s2.ok || !f1.ok || !f2.ok || !o1.ok || !o2.ok) throw new Error('成功を期待した')
+    expect(s2.value).not.toBe(s1.value)
+    expect(s2.value[0]).not.toBe(s1.value[0])
+    expect(f2.value).not.toBe(f1.value)
+    expect(f2.value[0]).not.toBe(f1.value[0])
+    expect(o2.value).not.toBe(o1.value)
+    expect(s2.value).toEqual(s1.value)
+    expect(f2.value).toEqual(f1.value)
+    expect(o2.value).toEqual(o1.value)
+  })
+
+  test('strict mode の書込みは throw し、値は元のまま', async () => {
+    const queries = sourceQueriesOver(data())
+    const sources = await queries.listSources()
+    const featured = await queries.getFeaturedSources()
+    const onboarding = await queries.getOnboardingStatus()
+    if (!sources.ok || !featured.ok || !onboarding.ok) throw new Error('成功を期待した')
+    const list = sources.value as DeepMutable<typeof sources.value>
+    const sites = featured.value as DeepMutable<typeof featured.value>
+    const status = onboarding.value as DeepMutable<typeof onboarding.value>
+
+    expect(() => list.push(mutableSource('x'))).toThrow(TypeError)
+    expect(() => {
+      list[0].name = 'changed'
+    }).toThrow(TypeError)
+    expect(() => {
+      sites[0].description = 'changed'
+    }).toThrow(TypeError)
+    expect(() => {
+      status.completed = false
+    }).toThrow(TypeError)
+
+    expect(list[0].name).toBe('a')
+    expect(sites[0].description).toBe('desc')
+    expect(status.completed).toBe(true)
+  })
+})
+
+describe('web-check-06 addSource・subscribeFeatured・removeSource の成功の値 (web-cmd-catalog-05・06)', () => {
+  test.each([
+    ['addSource', (commands: ReturnType<typeof sourceCommandsOver>) => commands.addSource('n', 'https://example.com/rss')],
+    ['subscribeFeatured', (commands: ReturnType<typeof sourceCommandsOver>) => commands.subscribeFeatured('n', 'https://example.com/rss')],
+    ['removeSource', (commands: ReturnType<typeof sourceCommandsOver>) => commands.removeSource('https://a.example/rss')],
+  ])('%s の成功の購読一覧は全深さで凍結した複製で、gateway の配列・要素と参照を共有せず、後から書き換えても変わらない', async (label, run) => {
+    const raw = [mutableSource('a'), mutableSource('b')]
+    const result = await run(sourceCommandsOver(raw))
+
+    if (!result.ok) throw new Error('成功を期待した')
+    const before = structuredClone(result.value)
+    expectDeeplyFrozen(label, result.value)
+    expect(result.value).not.toBe(raw)
+    expect(result.value[0]).not.toBe(raw[0])
+
+    raw[0].name = 'changed'
+    raw.push(mutableSource('z'))
+
+    expect(result.value).toEqual(before)
   })
 })

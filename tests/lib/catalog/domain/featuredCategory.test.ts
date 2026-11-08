@@ -1,27 +1,23 @@
+// featured の category の値域と畳み込み（web-rule-catalog-09）。旧 lib の同名テストの観点を移した。
+// RED 理由（実装前）: `@/lib/catalog/domain/featuredCategory` が無い（module not found）。
 import { describe, test, expect } from 'vitest'
 import {
   FEATURED_CATEGORIES,
-  FEATURED_CATEGORY_LABELS,
   normalizeFeaturedCategory,
   groupByCategoryInOrder,
-} from '@/lib/featuredCategories'
-import type { FeaturedSource } from '@/types/index'
+} from '@/lib/catalog/domain/featuredCategory'
 
-describe('featuredCategories', () => {
+interface FeaturedSource {
+  id: string
+  name: string
+  url: string
+  order: number
+  category?: string | null
+}
+
+describe('featured category の値域 (web-rule-catalog-09)', () => {
   test('FEATURED_CATEGORIES has expected order', () => {
     expect(FEATURED_CATEGORIES).toEqual(['tech', 'business', 'sports', 'entertainment', 'culture'])
-  })
-
-  test('FEATURED_CATEGORY_LABELS includes all categories with Japanese labels', () => {
-    FEATURED_CATEGORIES.forEach((cat) => {
-      expect(FEATURED_CATEGORY_LABELS[cat]).toBeDefined()
-      expect(typeof FEATURED_CATEGORY_LABELS[cat]).toBe('string')
-    })
-    expect(FEATURED_CATEGORY_LABELS.tech).toBe('テクノロジー')
-    expect(FEATURED_CATEGORY_LABELS.business).toBe('ビジネス')
-    expect(FEATURED_CATEGORY_LABELS.sports).toBe('スポーツ')
-    expect(FEATURED_CATEGORY_LABELS.entertainment).toBe('芸能')
-    expect(FEATURED_CATEGORY_LABELS.culture).toBe('カルチャー')
   })
 
   describe('normalizeFeaturedCategory', () => {
@@ -96,6 +92,29 @@ describe('featuredCategories', () => {
       expect(Object.keys(grouped)).toHaveLength(5)
       FEATURED_CATEGORIES.forEach((cat) => {
         expect(grouped[cat]).toEqual([])
+      })
+    })
+
+    test('web-rule-catalog-09: does not mutate the input array', () => {
+      const items: FeaturedSource[] = [
+        { id: '1', name: 'A', url: 'https://a.com', order: 0, category: 'business' },
+        { id: '2', name: 'B', url: 'https://b.com', order: 1 },
+      ]
+      const snapshot = JSON.parse(JSON.stringify(items))
+
+      groupByCategoryInOrder(items)
+
+      expect(items).toEqual(snapshot)
+    })
+
+    test('web-rule-catalog-09: returned object and each array are frozen', () => {
+      const grouped = groupByCategoryInOrder([
+        { id: '1', name: 'A', url: 'https://a.com', order: 0, category: 'sports' },
+      ])
+
+      expect(Object.isFrozen(grouped)).toBe(true)
+      FEATURED_CATEGORIES.forEach((cat) => {
+        expect(Object.isFrozen(grouped[cat])).toBe(true)
       })
     })
   })

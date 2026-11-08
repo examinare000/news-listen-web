@@ -237,3 +237,134 @@ describe('RootPage — unavailable', () => {
     expect(screen.queryByTestId('auth-retry')).not.toBeInTheDocument()
   })
 })
+
+// ==========================================================
+// 入口の pin（web-slice-catalog-04）— 現行の入口の振る舞いを固定する特性化テスト
+// ==========================================================
+describe('RootPage — 入口の pin (web-slice-catalog-04)', () => {
+  const ONBOARDING_PATH = '/api/backend/settings/onboarding'
+  const COMPLETE_PATH = '/api/backend/settings/onboarding/complete'
+  const FEATURED_PATH = '/api/backend/settings/featured-sources'
+
+  type FakeResponse = { ok: boolean; status: number; json: () => Promise<unknown> }
+  const okJson = (body: unknown): FakeResponse => ({ ok: true, status: 200, json: () => Promise.resolve(body) })
+  const failJson = (status: number): FakeResponse => ({
+    ok: false,
+    status,
+    json: () => Promise.resolve({ detail: 'x' }),
+  })
+
+  // fetch の呼出を (method, path) で記録し、path ごとに応答を決める
+  function stubFetch(handler: (method: string, path: string) => Promise<FakeResponse>) {
+    const calls: Array<{ method: string; path: string }> = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string, init?: { method?: string }) => {
+        const method = init?.method ?? 'GET'
+        calls.push({ method, path })
+        return handler(method, path)
+      }),
+    )
+    return calls
+  }
+  const countOf = (calls: Array<{ method: string; path: string }>, method: string, path: string) =>
+    calls.filter((c) => c.method === method && c.path === path).length
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  test('web-slice-catalog-04: onboarding が完了済み（true）なら replace("/feed") を呼び、modal は出ない', async () => {
+    stubFetch(() => Promise.resolve(okJson({ onboarding_completed: true })))
+    renderRootPage()
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/feed'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: onboarding の取得が 5xx でも reject でも replace("/feed") を呼び、modal は出ない', async () => {
+    stubFetch(() => Promise.resolve(failJson(500)))
+    const first = renderRootPage()
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/feed'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    first.unmount()
+
+    mockReplace.mockClear()
+    stubFetch(() => Promise.reject(new Error('network down')))
+    renderRootPage()
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/feed'))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: authenticated で ready が偽なら LP を出し、GET onboarding は 0 件で replace もしない', async () => {
+    const calls = stubFetch(() => Promise.resolve(okJson({ onboarding_completed: true })))
+    usePreferencesOverride.current = () => ({ ready: false, get: vi.fn(), set: vi.fn() })
+
+    renderRootPage()
+
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    expect(countOf(calls, 'GET', ONBOARDING_PATH)).toBe(0)
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  test('web-slice-catalog-04: unavailable で ready が偽でも再試行 UI を出し、LP は出さない', () => {
+    authSessionOverride.current = { kind: 'unavailable', failure: { reason: 'network' } }
+    usePreferencesOverride.current = () => ({ ready: false, get: vi.fn(), set: vi.fn() })
+
+    renderRootPage()
+
+    expect(screen.getByTestId('auth-retry')).toBeInTheDocument()
+    expect(screen.queryByTestId('lp-hero')).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: anonymous で ready が偽でも、ログインボタンで LoginModal が開く', async () => {
+    authSessionOverride.current = { kind: 'anonymous' }
+    usePreferencesOverride.current = () => ({ ready: false, get: vi.fn(), set: vi.fn() })
+    renderRootPage()
+    const user = userEvent.setup()
+
+    await user.click(screen.getAllByRole('button', { name: 'ログイン' })[0])
+
+    expect(await screen.findByRole('dialog', { name: 'ログイン' })).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: onboarding の取得が未解決の間は LP（lp-hero）を出し、dialog も replace もない', async () => {
+    const calls = stubFetch(() => new Promise<FakeResponse>(() => {}))
+    renderRootPage()
+
+    expect(await screen.findByTestId('lp-hero')).toBeInTheDocument()
+    await waitFor(() => expect(countOf(calls, 'GET', ONBOARDING_PATH)).toBe(1))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  test('web-slice-catalog-04: modal の「スキップ」で POST onboarding/complete の後に replace("/feed") が 1 回だけ呼ばれる', async () => {
+    const calls = stubFetch((method, path) => {
+      if (method === 'GET' && path === ONBOARDING_PATH) return Promise.resolve(okJson({ onboarding_completed: false }))
+      if (method === 'GET' && path === FEATURED_PATH) return Promise.resolve(okJson({ sites: [] }))
+      if (method === 'POST' && path === COMPLETE_PATH) return Promise.resolve(okJson({ onboarding_completed: true }))
+      return Promise.resolve(failJson(500))
+    })
+    renderRootPage()
+    const user = userEvent.setup()
+
+    await user.click(await screen.findByRole('button', { name: 'スキップ' }))
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/feed'))
+    expect(mockReplace).toHaveBeenCalledTimes(1)
+    expect(countOf(calls, 'POST', COMPLETE_PATH)).toBe(1)
+  })
+
+  test('web-slice-catalog-04: authenticated で取得が未解決の間は、LP のログインボタンを押しても LoginModal が出ない', async () => {
+    stubFetch(() => new Promise<FakeResponse>(() => {}))
+    renderRootPage()
+    const user = userEvent.setup()
+
+    await user.click((await screen.findAllByRole('button', { name: 'ログイン' }))[0])
+
+    expect(screen.queryByRole('dialog', { name: 'ログイン' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('lp-hero')).toBeInTheDocument()
+  })
+})

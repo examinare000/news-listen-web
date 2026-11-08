@@ -11,6 +11,7 @@ import type {
   TranscriptLine,
 } from '@/lib/catalog/domain/episode'
 import type { GenerationSnapshot } from '@/lib/catalog/domain/generationWatch'
+import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
@@ -31,6 +32,12 @@ export interface EpisodeRecord {
   readonly sources: ReadonlyArray<SourceCredit>
 }
 
+/** 手入力の追加の失敗。409・422 の意味づけは infrastructure が済ませる。 */
+export type AddSourceGatewayFailure =
+  | { readonly kind: 'already_registered' }
+  | { readonly kind: 'invalid_feed' }
+  | { readonly kind: 'failed'; readonly failure: ApiFailure }
+
 export interface CatalogGateway {
   listEpisodes(): Promise<Result<ReadonlyArray<EpisodeRecord>, ApiFailure>>
   getEpisode(id: string): Promise<Result<EpisodeRecord, ApiFailure>>
@@ -46,4 +53,10 @@ export interface CatalogGateway {
   starArticle(id: string, difficulty?: DifficultyLevel): Promise<Result<{ readonly remaining: number | null }, ApiFailure>>
   dismissArticle(id: string): Promise<Result<void, ApiFailure>>
   unstarArticle(id: string): Promise<Result<void, ApiFailure>>
+  getSources(): Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
+  addSource(name: string, url: string): Promise<Result<ReadonlyArray<SourceRef>, AddSourceGatewayFailure>>
+  deleteSource(url: string): Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
+  getFeaturedSources(): Promise<Result<ReadonlyArray<FeaturedSourceRef>, ApiFailure>>
+  getOnboardingStatus(): Promise<Result<{ readonly completed: boolean }, ApiFailure>>
+  completeOnboarding(): Promise<Result<void, ApiFailure>>
 }

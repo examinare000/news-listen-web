@@ -92,13 +92,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "app/(app)/subscriptions/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-04"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -110,13 +103,6 @@
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "components/ui/OnboardingSourcesModal.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-04"
   },
   {
     "rule": "web-dep-04",
@@ -260,13 +246,6 @@
   },
   {
     "rule": "web-dep-05",
-    "file": "app/(app)/subscriptions/page.tsx",
-    "specifier": "@/lib/catalog/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-04"
-  },
-  {
-    "rule": "web-dep-05",
     "file": "app/(app)/vocabulary-test/page.tsx",
     "specifier": "@/lib/learning/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
@@ -285,13 +264,6 @@
     "specifier": "@/lib/reportClientError",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-platform-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/page.tsx",
-    "specifier": "@/lib/catalog/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-04"
   },
   {
     "rule": "web-dep-05",
@@ -334,13 +306,6 @@
     "specifier": "@/lib/webauthnBrowserPort",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-account-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "components/ui/OnboardingSourcesModal.tsx",
-    "specifier": "@/lib/catalog/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-catalog-04"
   },
   {
     "rule": "web-dep-05",

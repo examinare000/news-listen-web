@@ -1,15 +1,21 @@
-// Catalog の query（読み取りだけ）: web-query-catalog-01〜04。失敗は Result で返し、toast は page が出す。
+// Catalog の query（読み取りだけ）: web-query-catalog-01〜07（購読一覧・おすすめ・onboarding の状態を含む）。失敗は Result で返し、toast は page が出す。
 import type { CatalogGateway } from '@/lib/catalog/application/ports'
 import {
   toEpisodeCardView,
   toEpisodeDetailView,
+  toFeaturedSourceView,
   toFeedFailed,
   toFeedLoaded,
+  toOnboardingView,
+  toSourceView,
   toStarredOk,
   type EpisodeCardView,
   type EpisodeDetailView,
+  type FeaturedSourceView,
   type FeedOutcome,
   type FeedView,
+  type OnboardingView,
+  type SourceView,
   type StarredOutcome,
   type StarredStale,
 } from '@/lib/catalog/application/readModels'
@@ -29,6 +35,9 @@ export interface CatalogQueries {
     next: ReadonlyArray<GenerationSnapshot>,
   ): GenerationWatchResult
   getFeed(): Promise<FeedView>
+  listSources(): Promise<Result<ReadonlyArray<SourceView>, ApiFailure>>
+  getFeaturedSources(): Promise<Result<ReadonlyArray<FeaturedSourceView>, ApiFailure>>
+  getOnboardingStatus(): Promise<Result<OnboardingView, ApiFailure>>
 }
 
 function toStale(outcome: StarredOutcome): StarredStale {
@@ -51,6 +60,18 @@ export function createCatalogQueries({ gateway }: { readonly gateway: CatalogGat
     },
     watchGeneration(previous, next) {
       return Object.freeze({ completedIds: detectCompleted(previous, next) })
+    },
+    async listSources() {
+      const result = await gateway.getSources()
+      return result.ok ? { ok: true, value: Object.freeze(result.value.map(toSourceView)) } : result
+    },
+    async getFeaturedSources() {
+      const result = await gateway.getFeaturedSources()
+      return result.ok ? { ok: true, value: Object.freeze(result.value.map(toFeaturedSourceView)) } : result
+    },
+    async getOnboardingStatus() {
+      const result = await gateway.getOnboardingStatus()
+      return result.ok ? { ok: true, value: toOnboardingView(result.value) } : result
     },
     getFeed() {
       const requestId = ++latestRequest
