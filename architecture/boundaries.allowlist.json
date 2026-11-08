@@ -177,23 +177,9 @@
   {
     "rule": "web-dep-05",
     "file": "app/(app)/settings/page.tsx",
-    "specifier": "@/lib/catalog/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-prefs-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/settings/page.tsx",
     "specifier": "@/lib/learning/infrastructure/api",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-learning-03"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/settings/page.tsx",
-    "specifier": "@/lib/preferences/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-prefs-01"
   },
   {
     "rule": "web-dep-05",
