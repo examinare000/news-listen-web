@@ -1,10 +1,9 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getMetrics } from '@/lib/admin/infrastructure/api'
+import { useAdminQueries } from '@/contexts/useAdminQueries'
+import type { MetricsView } from '@/lib/admin/application/readModels'
 import { AdminGate } from '@/components/AdminGate'
-import type { MetricsSnapshot } from '@/types/index'
 
 // 欠落値の表示（backend は数値フィールドは常に返す契約だが、rate 系は分母0で null になり得る
 // ため、また不測のスキーマ変化に備え、常に defensive に描画する・ADR-075）。
@@ -41,8 +40,8 @@ export default function AdminMetricsPage() {
 }
 
 function AdminMetricsPanel() {
-  const gateway = useApiClient()
-  const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null)
+  const queries = useAdminQueries()
+  const [metrics, setMetrics] = useState<MetricsView | null>(null)
   const [notFound, setNotFound] = useState(false)
   const [loadError, setLoadError] = useState(false)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -51,7 +50,7 @@ function AdminMetricsPanel() {
     setLoadError(false)
     setNotFound(false)
     try {
-      const result = await getMetrics(gateway)
+      const result = await queries.getMetrics()
       if (!result.ok) {
         setMetrics(null)
         // 404 = 指定日のスナップショット未生成（集計ジョブ未実行・rollout 直後）。
@@ -70,7 +69,7 @@ function AdminMetricsPanel() {
     } finally {
       setHasLoaded(true)
     }
-  }, [gateway])
+  }, [queries])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -100,9 +99,8 @@ function AdminMetricsPanel() {
       )
     }
 
-    // backend との契約は確定済みだが、不測のスキーマ変化で壊れないよう optional chaining を使う。
-    const { d7, completion, weekly_star: weeklyStar } = metrics
-    const d30 = metrics.d30
+    // 欠落値は gateway が null に倒しているので、ここでは null を DASH で描くだけでよい。
+    const { d7, d30, completion, weeklyStar } = metrics
 
     return (
       <>
@@ -113,15 +111,15 @@ function AdminMetricsPanel() {
           <div className="settings-row">
             <div className="settings-row-label">D7 継続率</div>
             <div>
-              <span>{formatPercent(d7?.rate)}</span>
-              <span className="settings-row-desc">（{formatNumber(d7?.retained)}/{formatNumber(d7?.eligible)}）</span>
+              <span>{formatPercent(d7.rate)}</span>
+              <span className="settings-row-desc">（{formatNumber(d7.retained)}/{formatNumber(d7.eligible)}）</span>
             </div>
           </div>
           <div className="settings-row">
             <div className="settings-row-label">D30 継続率</div>
             <div>
-              <span>{formatPercent(d30?.rate)}</span>
-              <span className="settings-row-desc">（{formatNumber(d30?.retained)}/{formatNumber(d30?.eligible)}）</span>
+              <span>{formatPercent(d30.rate)}</span>
+              <span className="settings-row-desc">（{formatNumber(d30.retained)}/{formatNumber(d30.eligible)}）</span>
             </div>
           </div>
         </section>
@@ -132,11 +130,11 @@ function AdminMetricsPanel() {
           </div>
           <div className="settings-row">
             <div className="settings-row-label">完聴率（聴取開始比・primary）</div>
-            <div>{formatPercent(completion?.rate_started)}</div>
+            <div>{formatPercent(completion.rateStarted)}</div>
           </div>
           <div className="settings-row">
             <div className="settings-row-label">完聴率（配信済み比・secondary）</div>
-            <div>{formatPercent(completion?.rate_delivered)}</div>
+            <div>{formatPercent(completion.rateDelivered)}</div>
           </div>
         </section>
 
@@ -146,7 +144,7 @@ function AdminMetricsPanel() {
           </div>
           <div className="settings-row">
             <div className="settings-row-label">アクティブユーザーあたり平均</div>
-            <div>{formatAverage(weeklyStar?.avg_per_active_user)}</div>
+            <div>{formatAverage(weeklyStar.avgPerActiveUser)}</div>
           </div>
         </section>
 

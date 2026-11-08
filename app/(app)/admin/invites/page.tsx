@@ -2,12 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { createInvite, listInvites, revokeInvite } from '@/lib/admin/infrastructure/api'
+import { useAdminCommands } from '@/contexts/useAdminCommands'
+import { useAdminQueries } from '@/contexts/useAdminQueries'
+import type { InviteReceipt, InviteRow, InviteStatus } from '@/lib/admin/application/readModels'
+import { parseOptionalPositiveInt } from '@/lib/admin/domain/inviteInput'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AdminGate } from '@/components/AdminGate'
 import { useToast } from '@/components/ui/Toast'
-import type { Invite, InviteCreateResponse, InviteStatus } from '@/types/index'
 
 const STATUS_LABELS: Record<InviteStatus, string> = {
   active: '有効',
@@ -27,14 +28,6 @@ function InviteStatusBadge({ status }: { status: InviteStatus }) {
   return <span className={`badge ${STATUS_TONES[status]}`}>{STATUS_LABELS[status]}</span>
 }
 
-// 正の整数のみ許容する任意入力欄のパース。空欄は「未指定」（undefined）として扱う。
-function parseOptionalPositiveInt(raw: string): number | undefined | 'invalid' {
-  if (!raw.trim()) return undefined
-  const n = Number(raw)
-  if (!Number.isInteger(n) || n < 1) return 'invalid'
-  return n
-}
-
 // 管理者用招待コード管理画面。作成・一覧・失効を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
 // gating（未認証・非 admin・読み込み中）は AdminGate に集約する（web-contract-19）。
@@ -47,10 +40,11 @@ export default function AdminInvitesPage() {
 }
 
 function AdminInvitesPanel() {
-  const gateway = useApiClient()
+  const commands = useAdminCommands()
+  const queries = useAdminQueries()
   const { showToast } = useToast()
 
-  const [invites, setInvites] = useState<Invite[]>([])
+  const [invites, setInvites] = useState<ReadonlyArray<InviteRow>>([])
   const [loadError, setLoadError] = useState('')
 
   // 作成フォーム
@@ -60,8 +54,8 @@ function AdminInvitesPanel() {
   const [formError, setFormError] = useState('')
   const [creating, setCreating] = useState(false)
 
-  // 作成直後のみ表示する invite_url（以降は一覧再取得しても復元できない）。
-  const [createdInvite, setCreatedInvite] = useState<InviteCreateResponse | null>(null)
+  // 作成直後のみ表示する招待 URL（以降は一覧再取得しても復元できない）。
+  const [createdInvite, setCreatedInvite] = useState<InviteReceipt | null>(null)
 
   // 失効確認
   const [revokeTargetId, setRevokeTargetId] = useState<string | null>(null)
@@ -69,16 +63,16 @@ function AdminInvitesPanel() {
   const reload = useCallback(async () => {
     setLoadError('')
     try {
-      const result = await listInvites(gateway)
+      const result = await queries.listInvites()
       if (!result.ok) {
         setLoadError('招待コード一覧の取得に失敗しました')
         return
       }
-      setInvites(result.value.invites)
+      setInvites(result.value)
     } catch {
       setLoadError('招待コード一覧の取得に失敗しました')
     }
-  }, [gateway])
+  }, [queries])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -102,10 +96,10 @@ function AdminInvitesPanel() {
 
     setCreating(true)
     try {
-      const result = await createInvite(gateway, {
+      const result = await commands.createInvite({
         note: note.trim() || undefined,
-        max_uses: maxUsesParsed,
-        expires_in_days: expiresParsed,
+        maxUses: maxUsesParsed,
+        expiresInDays: expiresParsed,
       })
       if (!result.ok) {
         setFormError('招待コードの作成に失敗しました')
@@ -126,7 +120,7 @@ function AdminInvitesPanel() {
   async function handleCopy() {
     if (!createdInvite) return
     try {
-      await navigator.clipboard.writeText(createdInvite.invite_url)
+      await navigator.clipboard.writeText(createdInvite.inviteUrl)
       showToast('招待URLをコピーしました', 'success')
     } catch {
       showToast('コピーに失敗しました', 'error')
@@ -146,7 +140,7 @@ function AdminInvitesPanel() {
     const id = revokeTargetId
     setRevokeTargetId(null)
     try {
-      const result = await revokeInvite(gateway, id)
+      const result = await commands.revokeInvite(id)
       if (!result.ok) {
         setLoadError('招待コードの失効に失敗しました')
         return
@@ -217,7 +211,7 @@ function AdminInvitesPanel() {
             </div>
             <div style={{ padding: '0 20px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               <p className="form-input" style={{ wordBreak: 'break-all', userSelect: 'all' }}>
-                {createdInvite.invite_url}
+                {createdInvite.inviteUrl}
               </p>
               <button className="btn btn-ghost" onClick={handleCopy} style={{ alignSelf: 'flex-start' }}>
                 コピー
@@ -240,9 +234,9 @@ function AdminInvitesPanel() {
                     {invite.note ?? '（メモなし）'} <InviteStatusBadge status={invite.status} />
                   </div>
                   <div className="settings-row-desc">
-                    使用状況: {invite.use_count}/{invite.max_uses} ・
-                    有効期限: {invite.expires_at ? new Date(invite.expires_at).toLocaleDateString('ja-JP') : '無期限'} ・
-                    作成者: {invite.created_by}
+                    使用状況: {invite.useCount}/{invite.maxUses} ・
+                    有効期限: {invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString('ja-JP') : '無期限'} ・
+                    作成者: {invite.createdBy}
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>

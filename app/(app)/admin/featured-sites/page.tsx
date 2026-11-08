@@ -2,18 +2,13 @@
 
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import {
-  createFeaturedSite,
-  deleteFeaturedSite,
-  listFeaturedSites,
-  updateFeaturedSite,
-} from '@/lib/admin/infrastructure/api'
+import { useAdminCommands } from '@/contexts/useAdminCommands'
+import { useAdminQueries } from '@/contexts/useAdminQueries'
+import type { FeaturedSiteRow } from '@/lib/admin/application/readModels'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AdminGate } from '@/components/AdminGate'
-import { FEATURED_CATEGORIES, normalizeFeaturedCategory } from '@/lib/catalog/domain/featuredCategory'
+import { FEATURED_CATEGORIES, normalizeFeaturedCategory, type FeaturedCategory } from '@/lib/catalog/domain/featuredCategory'
 import { FEATURED_CATEGORY_LABELS } from '@/lib/catalog/presentation/featuredCategoryLabels'
-import type { FeaturedSource } from '@/types/index'
 
 // 管理者用おすすめサイト管理画面。一覧・作成・編集・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
@@ -27,9 +22,10 @@ export default function AdminFeaturedSitesPage() {
 }
 
 function AdminFeaturedSitesPanel() {
-  const gateway = useApiClient()
+  const commands = useAdminCommands()
+  const queries = useAdminQueries()
 
-  const [sites, setSites] = useState<FeaturedSource[]>([])
+  const [sites, setSites] = useState<ReadonlyArray<FeaturedSiteRow>>([])
   const [loadError, setLoadError] = useState('')
 
   // 作成フォーム
@@ -37,7 +33,7 @@ function AdminFeaturedSitesPanel() {
   const [newUrl, setNewUrl] = useState('')
   const [newThumbnail, setNewThumbnail] = useState('')
   const [newDescription, setNewDescription] = useState('')
-  const [newCategory, setNewCategory] = useState<string>('tech')
+  const [newCategory, setNewCategory] = useState<FeaturedCategory>('tech')
   const [formError, setFormError] = useState('')
 
   // 編集モード
@@ -46,7 +42,7 @@ function AdminFeaturedSitesPanel() {
   const [editUrl, setEditUrl] = useState('')
   const [editThumbnail, setEditThumbnail] = useState('')
   const [editDescription, setEditDescription] = useState('')
-  const [editCategory, setEditCategory] = useState<string>('tech')
+  const [editCategory, setEditCategory] = useState<FeaturedCategory>('tech')
   const [editError, setEditError] = useState('')
 
   // 削除確認
@@ -65,19 +61,19 @@ function AdminFeaturedSitesPanel() {
   const reload = useCallback(async () => {
     setListLoading(true)
     try {
-      const result = await listFeaturedSites(gateway)
+      const result = await queries.listFeaturedSites()
       if (!result.ok) {
         setLoadError('一覧の取得に失敗しました')
         return
       }
-      setSites(result.value.sites)
+      setSites(result.value)
       setLoadError('')
     } catch {
       setLoadError('一覧の取得に失敗しました')
     } finally {
       setListLoading(false)
     }
-  }, [gateway])
+  }, [queries])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -93,14 +89,12 @@ function AdminFeaturedSitesPanel() {
       return
     }
     try {
-      const nextOrder = sites.length === 0 ? 0 : Math.max(...sites.map((s) => s.order)) + 1
-      const result = await createFeaturedSite(gateway, {
+      const result = await commands.createFeaturedSite(sites, {
         name: newName,
         url: newUrl,
-        thumbnail_url: newThumbnail || undefined,
+        thumbnailUrl: newThumbnail || undefined,
         description: newDescription || undefined,
         category: newCategory,
-        order: nextOrder,
       })
       if (!result.ok) {
         setFormError('サイト作成に失敗しました')
@@ -117,14 +111,14 @@ function AdminFeaturedSitesPanel() {
     }
   }
 
-  function handleEditClick(site: FeaturedSource) {
+  function handleEditClick(site: FeaturedSiteRow) {
     setEditError('')
     setEditingId(site.id)
     setEditName(site.name)
     setEditUrl(site.url)
-    setEditThumbnail(site.thumbnail_url ?? '')
-    setEditDescription(site.description ?? '')
-    setEditCategory(normalizeFeaturedCategory(site.category))
+    setEditThumbnail(site.thumbnailUrl)
+    setEditDescription(site.description)
+    setEditCategory(site.category)
   }
 
   function handleEditCancel() {
@@ -145,16 +139,12 @@ function AdminFeaturedSitesPanel() {
       return
     }
     try {
-      // PUT は全置換のため、表示順（order）を送らないと既定値 0 で上書きされてしまう。
-      // 編集フォームは order を扱わないので、既存の値をそのまま引き継いで送る。
-      const currentOrder = sites.find((s) => s.id === id)?.order ?? 0
-      const result = await updateFeaturedSite(gateway, id, {
+      const result = await commands.updateFeaturedSite(sites, id, {
         name: editName,
         url: editUrl,
-        thumbnail_url: editThumbnail || undefined,
+        thumbnailUrl: editThumbnail || undefined,
         description: editDescription || undefined,
         category: editCategory,
-        order: currentOrder,
       })
       if (!result.ok) {
         setEditError('サイト更新に失敗しました')
@@ -167,39 +157,16 @@ function AdminFeaturedSitesPanel() {
     }
   }
 
-  // 隣接する行と入れ替え、配列インデックスと order が一致しない行だけを PUT で更新する
-  // （＝表示順が変わった行。既存データに重複・欠番があっても、このタイミングで自己修復される）。
+  // 並べ替えの手順（入れ替え・順序がずれた行の更新・最初の失敗で停止）は command が持つ。
   // 途中で失敗しても一覧を再取得して整合させ、エラーを表示する。
   async function handleMove(id: string, direction: 'up' | 'down') {
     if (controlsDisabled) return
-    const index = sites.findIndex((s) => s.id === id)
-    if (index === -1) return
-    const swapIndex = direction === 'up' ? index - 1 : index + 1
-    if (swapIndex < 0 || swapIndex >= sites.length) return
-
-    const reordered = [...sites]
-    ;[reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]]
-
     setReordering(true)
     let failed = false
     try {
-      for (let i = 0; i < reordered.length; i++) {
-        const site = reordered[i]
-        if (site.order !== i) {
-          const result = await updateFeaturedSite(gateway, site.id, {
-            name: site.name,
-            url: site.url,
-            thumbnail_url: site.thumbnail_url || undefined,
-            description: site.description || undefined,
-            category: normalizeFeaturedCategory(site.category),
-            order: i,
-          })
-          if (!result.ok) {
-            failed = true
-            break
-          }
-        }
-      }
+      const result = await commands.reorderFeaturedSites(sites, id, direction)
+      if (result.ok && !result.value.moved) return
+      failed = !result.ok
     } catch {
       failed = true
     } finally {
@@ -224,7 +191,7 @@ function AdminFeaturedSitesPanel() {
   async function handleDeleteConfirm(id: string) {
     if (controlsDisabled) return
     try {
-      const result = await deleteFeaturedSite(gateway, id)
+      const result = await commands.deleteFeaturedSite(id)
       if (!result.ok) {
         setLoadError('サイトの削除に失敗しました')
         return
@@ -287,7 +254,7 @@ function AdminFeaturedSitesPanel() {
             <select
               className="form-input"
               value={newCategory}
-              onChange={(e) => setNewCategory(e.target.value)}
+              onChange={(e) => setNewCategory(normalizeFeaturedCategory(e.target.value))}
               aria-label="カテゴリ"
             >
               {FEATURED_CATEGORIES.map((cat) => (
@@ -347,7 +314,7 @@ function AdminFeaturedSitesPanel() {
                       <select
                         className="form-input"
                         value={editCategory}
-                        onChange={(e) => setEditCategory(e.target.value)}
+                        onChange={(e) => setEditCategory(normalizeFeaturedCategory(e.target.value))}
                         aria-label={`${site.name} のカテゴリ`}
                       >
                         {FEATURED_CATEGORIES.map((cat) => (
@@ -378,7 +345,7 @@ function AdminFeaturedSitesPanel() {
                     <div>
                       <div className="settings-row-label">
                         {site.name}
-                        {/* category 欠落の旧データも tech として常時表示（編集・並び替え時の正規化と揃える） */}
+                        {/* category 欠落の旧データは gateway が tech に正規化済み */}
                         <span
                           style={{
                             display: 'inline-block',
@@ -391,7 +358,7 @@ function AdminFeaturedSitesPanel() {
                             color: 'var(--text-secondary)',
                           }}
                         >
-                          {FEATURED_CATEGORY_LABELS[normalizeFeaturedCategory(site.category)]}
+                          {FEATURED_CATEGORY_LABELS[site.category]}
                         </span>
                       </div>
                       <div className="settings-row-desc">
