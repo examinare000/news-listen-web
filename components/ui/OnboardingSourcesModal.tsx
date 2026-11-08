@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getFeaturedSources, addSource, completeOnboarding } from '@/lib/catalog/infrastructure/api'
-import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, groupByCategoryInOrder } from '@/lib/featuredCategories'
-import type { FeaturedSource } from '@/types/index'
+import { useCatalogCommands } from '@/contexts/useCatalogCommands'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import type { FeaturedSourceView } from '@/lib/catalog/application/readModels'
+import { FEATURED_CATEGORIES, groupByCategoryInOrder } from '@/lib/catalog/domain/featuredCategory'
+import { FEATURED_CATEGORY_LABELS } from '@/lib/catalog/presentation/featuredCategoryLabels'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 
 interface OnboardingSourcesModalProps {
@@ -19,9 +20,10 @@ interface OnboardingSourcesModalProps {
  * おすすめサイトをワンクリックで即購読でき、「完了」/「スキップ」で completeOnboarding を呼ぶ。
  */
 export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) {
-  const gateway = useApiClient()
+  const queries = useCatalogQueries()
+  const commands = useCatalogCommands()
 
-  const [featured, setFeatured] = useState<FeaturedSource[]>([])
+  const [featured, setFeatured] = useState<ReadonlyArray<FeaturedSourceView>>([])
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set())
   const [subscribingId, setSubscribingId] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
@@ -29,10 +31,10 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
 
   useEffect(() => {
     let cancelled = false
-    getFeaturedSources(gateway)
+    queries.getFeaturedSources()
       .then((result) => {
         if (cancelled) return
-        setFeatured(result.ok ? result.value.sites : [])
+        setFeatured(result.ok ? result.value : [])
       })
       .catch(() => {
         if (!cancelled) setFeatured([])
@@ -40,15 +42,15 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
     return () => {
       cancelled = true
     }
-  }, [gateway])
+  }, [queries])
 
-  async function handleSubscribe(site: FeaturedSource) {
+  async function handleSubscribe(site: FeaturedSourceView) {
     setSubscribingId(site.id)
     try {
-      const result = await addSource(gateway, site.name, site.url)
+      const result = await commands.subscribeFeatured(site.name, site.url)
       if (!result.ok) {
-        // 既に登録済み（409）も「追加済み」として扱う
-        if (result.failure.kind === 'conflict') {
+        // 既に登録済みも「追加済み」として扱う
+        if (result.failure.kind === 'already_registered') {
           setAddedIds((prev) => new Set(prev).add(site.id))
         }
         return
@@ -65,7 +67,7 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
     setFinishing(true)
     try {
       // 完了フラグの保存に失敗してもフィードへは進ませる（次回再表示されるだけ）ので、結果も例外も見ない。
-      await completeOnboarding(gateway)
+      await commands.completeOnboarding()
     } catch {
       // 上のコメントのとおり
     } finally {
@@ -121,10 +123,10 @@ export function OnboardingSourcesModal({ onDone }: OnboardingSourcesModalProps) 
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                          {site.thumbnail_url ? (
+                          {site.thumbnailUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element -- 任意ホストのサムネイルのため next/image の最適化対象外
                             <img
-                              src={site.thumbnail_url}
+                              src={site.thumbnailUrl}
                               alt=""
                               width={24}
                               height={24}

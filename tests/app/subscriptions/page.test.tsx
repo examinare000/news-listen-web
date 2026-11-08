@@ -589,3 +589,161 @@ describe('SubscriptionsPage — featured sources by category', () => {
     )
   })
 })
+
+// ==========================================================
+// 購読管理の pin（web-slice-catalog-04）— 現行の振る舞いを固定する特性化テスト
+// ==========================================================
+describe('SubscriptionsPage — pin (web-slice-catalog-04)', () => {
+  const FEATURED_SITE = { id: 'verge', name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' }
+
+  async function typeUrlAndSubmit(url: string) {
+    await waitFor(() => screen.getByRole('textbox', { name: /URL/i }))
+    await userEvent.type(screen.getByRole('textbox', { name: /URL/i }), url)
+    await userEvent.click(screen.getByRole('button', { name: '追加する' }))
+  }
+
+  async function renderWithFeatured(options: { sources?: typeof SAMPLE_SOURCES } = {}) {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: options.sources ?? [] } })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [FEATURED_SITE] } })
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'The Verge を購読' }))
+  }
+
+  test('web-slice-catalog-04: 手入力の追加が 400（reason: rule）なら「エラーが発生しました」で、形式の文言にはならない', async () => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'validation', detail: 'rule', reason: 'rule' } })
+    renderSubscriptionsPage()
+
+    await typeUrlAndSubmit('https://example.com/rss')
+
+    expect(await screen.findByText('エラーが発生しました')).toBeInTheDocument()
+    expect(screen.queryByText(/URL の形式が正しくありません/)).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: 手入力の追加が 5xx なら「エラーが発生しました (500)」', async () => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    renderSubscriptionsPage()
+
+    await typeUrlAndSubmit('https://example.com/rss')
+
+    expect(await screen.findByText('エラーが発生しました (500)')).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: おすすめの購読が 409 なら toast「「name」は登録済みです」', async () => {
+    await renderWithFeatured()
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'conflict' } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
+
+    expect(await screen.findByText('「The Verge」は登録済みです')).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: おすすめの購読が 5xx なら「購読に失敗しました (500)」、network なら「購読に失敗しました」', async () => {
+    await renderWithFeatured()
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
+    expect(await screen.findByText('購読に失敗しました (500)')).toBeInTheDocument()
+
+    gw.respond('POST', SOURCES_PATH, { ok: false, failure: { kind: 'network' } })
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
+    await waitFor(() => expect(callsTo('POST', SOURCES_PATH)).toHaveLength(2))
+    expect(await screen.findByText('購読に失敗しました')).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: おすすめの購読が 422 なら「購読に失敗しました」で、形式の文言にはならない', async () => {
+    await renderWithFeatured()
+    gw.respond('POST', SOURCES_PATH, {
+      ok: false,
+      failure: { kind: 'validation', detail: 'value is not a valid URL', reason: 'schema' },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'The Verge を購読' }))
+
+    expect(await screen.findByText('購読に失敗しました')).toBeInTheDocument()
+    expect(screen.queryByText(/URL の形式が正しくありません/)).not.toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: おすすめの url が http で始まらなくても POST が出る（検査しない）', async () => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    gw.respond('GET', FEATURED_PATH, {
+      ok: true,
+      value: { sites: [{ id: 'ftp1', name: 'FTP Site', url: 'ftp://files.example.com/rss' }] },
+    })
+    gw.respond('POST', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [{ name: 'FTP Site', url: 'ftp://files.example.com/rss' }] },
+    })
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByRole('button', { name: 'FTP Site を購読' }))
+
+    await userEvent.click(screen.getByRole('button', { name: 'FTP Site を購読' }))
+
+    await waitFor(() => {
+      expect(callsTo('POST', SOURCES_PATH)).toEqual([
+        { method: 'POST', path: SOURCES_PATH, body: { name: 'FTP Site', url: 'ftp://files.example.com/rss' } },
+      ])
+    })
+  })
+
+  test('web-slice-catalog-04: 追加の reject は何も表示せずボタンが再び有効になり、削除の reject は toast「削除に失敗しました」', async () => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: SAMPLE_SOURCES } })
+    gw.respondWith('POST', SOURCES_PATH, () => Promise.reject(new Error('boom')))
+    gw.respondWith('DELETE', deleteSourcePath(SAMPLE_SOURCES[0].url), () => Promise.reject(new Error('boom')))
+    renderSubscriptionsPage()
+
+    await typeUrlAndSubmit('https://example.com/rss')
+
+    await waitFor(() => expect(callsTo('POST', SOURCES_PATH)).toHaveLength(1))
+    await waitFor(() => expect(screen.getByRole('button', { name: '追加する' })).toBeEnabled())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getAllByRole('button', { name: /削除|delete/i })[0])
+    await userEvent.click(screen.getByRole('button', { name: /確認|OK/i }))
+
+    expect(await screen.findByText('削除に失敗しました')).toBeInTheDocument()
+  })
+
+  test('web-slice-catalog-04: 追加後・削除後も GET sources と GET featured は 1 回のままで、削除した購読が featured にあればおすすめに戻る', async () => {
+    const verge = { name: FEATURED_SITE.name, url: FEATURED_SITE.url }
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [SAMPLE_SOURCES[0], verge] } })
+    gw.respond('GET', FEATURED_PATH, { ok: true, value: { sites: [FEATURED_SITE] } })
+    gw.respond('POST', SOURCES_PATH, {
+      ok: true,
+      value: { sources: [SAMPLE_SOURCES[0], verge, { name: 'Added', url: 'https://example.com/rss' }] },
+    })
+    gw.respond('DELETE', deleteSourcePath(verge.url), {
+      ok: true,
+      value: { sources: [SAMPLE_SOURCES[0], { name: 'Added', url: 'https://example.com/rss' }] },
+    })
+    renderSubscriptionsPage()
+    await waitFor(() => screen.getByText('2 ソース購読中'))
+    // 購読済みの featured はおすすめにない
+    expect(screen.queryByRole('button', { name: 'The Verge を購読' })).not.toBeInTheDocument()
+
+    await typeUrlAndSubmit('https://example.com/rss')
+    await waitFor(() => screen.getByText('3 ソース購読中'))
+
+    // verge は 2 番目の行
+    await userEvent.click(screen.getAllByRole('button', { name: /削除|delete/i })[1])
+    await userEvent.click(screen.getByRole('button', { name: /確認|OK/i }))
+
+    await waitFor(() => screen.getByText('2 ソース購読中'))
+    expect(await screen.findByRole('button', { name: 'The Verge を購読' })).toBeInTheDocument()
+    expect(callsTo('GET', SOURCES_PATH)).toHaveLength(1)
+    expect(callsTo('GET', FEATURED_PATH)).toHaveLength(1)
+  })
+
+  test('web-slice-catalog-04: 大文字の HTTPS://example.com/rss は不正（現行）で request が出ず、ボタンは有効のまま', async () => {
+    gw.respond('GET', SOURCES_PATH, { ok: true, value: { sources: [] } })
+    renderSubscriptionsPage()
+
+    await typeUrlAndSubmit('HTTPS://example.com/rss')
+
+    expect(await screen.findByText(/http/i, { selector: 'p' })).toBeInTheDocument()
+    expect(callsTo('POST', SOURCES_PATH)).toHaveLength(0)
+    expect(gw.calls.filter((c) => c.method !== 'GET')).toHaveLength(0)
+    expect(screen.getByRole('button', { name: '追加する' })).toBeEnabled()
+  })
+})

@@ -11,7 +11,8 @@ import {
 } from '@/lib/admin/infrastructure/api'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { AdminGate } from '@/components/AdminGate'
-import { FEATURED_CATEGORIES, FEATURED_CATEGORY_LABELS, normalizeFeaturedCategory } from '@/lib/featuredCategories'
+import { FEATURED_CATEGORIES, normalizeFeaturedCategory } from '@/lib/catalog/domain/featuredCategory'
+import { FEATURED_CATEGORY_LABELS } from '@/lib/catalog/presentation/featuredCategoryLabels'
 import type { FeaturedSource } from '@/types/index'
 
 // 管理者用おすすめサイト管理画面。一覧・作成・編集・削除を行う。
