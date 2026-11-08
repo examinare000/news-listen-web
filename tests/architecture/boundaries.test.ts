@@ -147,6 +147,11 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-catalog-04')).toHaveLength(0)
   })
+
+  test('removeBy が web-slice-account-01 の行は 0 件（web-slice-account-01 で消した。admin-01・notify-01 の行は残る）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-account-01')).toHaveLength(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -231,15 +236,15 @@ const importCases: readonly ImportCase[] = [
   // web-dep-02（別 context の domain・application は型だけ許す）
   {
     name: 'web-dep-02 正例: account の APP が playback の値を import する（TV-1 の反例そのもの）',
-    file: 'lib/passkey.ts',
+    file: 'lib/account/application/passkey.ts',
     source: "import { createPlaybackSession } from '@/lib/playback/domain/session'",
-    expected: ['web-dep-02 | lib/passkey.ts | @/lib/playback/domain/session'],
+    expected: ['web-dep-02 | lib/account/application/passkey.ts | @/lib/playback/domain/session'],
   },
   {
     name: 'web-dep-02 正例: type の無い指定子を含む',
-    file: 'lib/passkey.ts',
+    file: 'lib/account/application/passkey.ts',
     source: "import { type PlaybackState, createPlaybackSession } from '@/lib/playback/domain/session'",
-    expected: ['web-dep-02 | lib/passkey.ts | @/lib/playback/domain/session'],
+    expected: ['web-dep-02 | lib/account/application/passkey.ts | @/lib/playback/domain/session'],
   },
   {
     name: 'web-dep-02 正例: 相対 path を解いて別 context と判定する（名前空間は値）',
@@ -249,7 +254,7 @@ const importCases: readonly ImportCase[] = [
   },
   {
     name: 'web-dep-02 負例: 型だけの 3 つの書き方',
-    file: 'lib/passkey.ts',
+    file: 'lib/account/application/passkey.ts',
     source: [
       "import type { PlaybackState } from '@/lib/playback/domain/session'",
       "import { type PlaybackState as S2 } from '@/lib/playback/domain/session'",
@@ -259,7 +264,7 @@ const importCases: readonly ImportCase[] = [
   },
   {
     name: 'web-dep-02 負例: 同じ context の domain の値',
-    file: 'lib/passkey.ts',
+    file: 'lib/account/application/passkey.ts',
     source: "import { adminAccess } from '@/lib/account/domain/adminAccess'",
     expected: [],
   },
@@ -277,14 +282,14 @@ const importCases: readonly ImportCase[] = [
   },
   {
     name: 'web-dep-02 正例: APP が @/types・adapter を import する（現状の違反の形）。shared とパッケージは許す',
-    file: 'lib/passkey.ts',
+    file: 'lib/account/application/passkey.ts',
     source: [
       "import type { X } from '@/types/index'",
       "import { y } from '@/lib/webauthnBrowserPort'",
       "import { z } from '@/lib/shared/apiFailure'",
       "import { w } from '@simplewebauthn/browser'",
     ].join('\n'),
-    expected: ['web-dep-02 | lib/passkey.ts | @/lib/webauthnBrowserPort', 'web-dep-02 | lib/passkey.ts | @/types/index'],
+    expected: ['web-dep-02 | lib/account/application/passkey.ts | @/lib/webauthnBrowserPort', 'web-dep-02 | lib/account/application/passkey.ts | @/types/index'],
   },
   // web-dep-05（PRES は再生 domain の session・queue の値を import しない。型と PLAYBACK_SPEEDS を除く）
   {
@@ -495,7 +500,7 @@ describe('web-check-02 層の判定（helper）', () => {
   test.each([
     ['lib/playback/domain/queue.ts', 'DOMAIN'],
     ['lib/account/domain/role.ts', 'DOMAIN'],
-    ['lib/passkey.ts', 'APP'],
+    ['lib/account/application/passkey.ts', 'APP'],
     ['lib/push/pushRegistration.ts', 'APP'],
     ['lib/catalog/application/x.ts', 'APP'],
     ['lib/shared/result.ts', 'SHARED'],
@@ -616,12 +621,12 @@ const SESSION = '@/lib/playback/domain/session'
 const QUEUE = '@/lib/playback/domain/queue'
 
 const lintExamples: readonly LintExample[] = [
-  { name: 'web-dep-02 正例: account の APP が playback の値を import する', filePath: 'lib/passkey.ts', source: `import { createPlaybackSession } from '${SESSION}'`, flagged: true },
-  { name: 'web-dep-02 正例: type の無い指定子を含む', filePath: 'lib/passkey.ts', source: `import { type PlaybackState, createPlaybackSession } from '${SESSION}'`, flagged: true },
-  { name: 'web-dep-02 負例: import type', filePath: 'lib/passkey.ts', source: `import type { PlaybackState } from '${SESSION}'`, flagged: false },
-  { name: 'web-dep-02 負例: すべての指定子が type', filePath: 'lib/passkey.ts', source: `import { type PlaybackState } from '${SESSION}'`, flagged: false },
-  { name: 'web-dep-02 負例: export type … from', filePath: 'lib/passkey.ts', source: `export type { QueueState } from '${QUEUE}'`, flagged: false },
-  { name: 'web-dep-02 負例: 同じ context の domain の値', filePath: 'lib/passkey.ts', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: false },
+  { name: 'web-dep-02 正例: account の APP が playback の値を import する', filePath: 'lib/account/application/passkey.ts', source: `import { createPlaybackSession } from '${SESSION}'`, flagged: true },
+  { name: 'web-dep-02 正例: type の無い指定子を含む', filePath: 'lib/account/application/passkey.ts', source: `import { type PlaybackState, createPlaybackSession } from '${SESSION}'`, flagged: true },
+  { name: 'web-dep-02 負例: import type', filePath: 'lib/account/application/passkey.ts', source: `import type { PlaybackState } from '${SESSION}'`, flagged: false },
+  { name: 'web-dep-02 負例: すべての指定子が type', filePath: 'lib/account/application/passkey.ts', source: `import { type PlaybackState } from '${SESSION}'`, flagged: false },
+  { name: 'web-dep-02 負例: export type … from', filePath: 'lib/account/application/passkey.ts', source: `export type { QueueState } from '${QUEUE}'`, flagged: false },
+  { name: 'web-dep-02 負例: 同じ context の domain の値', filePath: 'lib/account/application/passkey.ts', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: false },
   { name: 'web-dep-02 負例: pushRegistration（notifications）の同じ context の domain', filePath: 'lib/push/pushRegistration.ts', source: "import { x } from '@/lib/notifications/domain/subscription'", flagged: false },
   { name: 'web-dep-02 正例: pushRegistration から account の値', filePath: 'lib/push/pushRegistration.ts', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: true },
   { name: 'web-dep-05 正例: PRES が queue の値を import する', filePath: 'components/AdminGate.tsx', source: `import { start } from '${QUEUE}'`, flagged: true },
@@ -694,7 +699,7 @@ describe('web-dep-08 eslint: HTTP status の数値分岐は error、web-dep-03 �
   const FEED = 'app/(app)/feed/page.tsx'
   const EPISODE = 'lib/catalog/domain/episode.ts'
   const REPORTER = 'lib/playback/application/positionReporter.ts'
-  const PASSKEY = 'lib/passkey.ts'
+  const PASSKEY = 'lib/account/application/passkey.ts'
   const ALLOWED_THREE = ['lib/api/gateway.ts', 'lib/platform/cacheStore.ts', 'app/api/backend/[...path]/route.ts']
 
   test('前提: 例のファイルが実在する', () => {
@@ -721,7 +726,7 @@ describe('web-dep-08 eslint: HTTP status の数値分岐は error、web-dep-03 �
     ['DOMAIN 両方', EPISODE, `${NUMERIC_COMPARE}\n${JSON_PARSE}`, [true, true]],
     ['APP 数値との比較', REPORTER, NUMERIC_COMPARE, [true, false]],
     ['APP JSON.parse（web-dep-03 が効いたまま）', REPORTER, JSON_PARSE, [false, true]],
-    ['旧ファイル APP 数値との比較と JSON.parse（許可リストの exempt は外れたまま）', PASSKEY, `${NUMERIC_COMPARE}\n${JSON_PARSE}`, [true, false]],
+    ['APP の passkey 数値との比較と JSON.parse（web-dep-03 の exempt 行が無いので両方 flag される）', PASSKEY, `${NUMERIC_COMPARE}\n${JSON_PARSE}`, [true, true]],
     ['旧ファイル APP JSON.stringify（exempt でない呼出は web-dep-03）', PASSKEY, 'JSON.stringify({})', [false, true]],
   ] as const)('%s', async (_name, file, source, expected) => {
     expect(await flags(file, source)).toEqual(expected)

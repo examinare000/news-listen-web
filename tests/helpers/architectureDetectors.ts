@@ -541,6 +541,16 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-account-04',
+    allowed: only('lib/account/domain/username.ts'),
+    patterns: [
+      { label: '{2,31}', find: (ctx) => regexStarts(ctx.body, /\{2,31\}/) },
+      { label: '{3,32}', find: (ctx) => regexStarts(ctx.body, /\{3,32\}/) },
+      { label: 'username.length', find: (ctx) => regexStarts(ctx.body, /username\.length/i) },
+      { label: 'USERNAME_MIN_LENGTH', find: (ctx) => regexStarts(ctx.body, /\bUSERNAME_MIN_LENGTH\b/) },
+    ],
+  },
+  {
     rule: 'web-rule-account-06',
     allowed: only('lib/account/domain/adminAccess.ts'),
     patterns: [{ label: "role === 'admin'", find: (ctx) => regexStarts(ctx.body, /role\s*===\s*'admin'/) }],

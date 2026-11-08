@@ -11,16 +11,22 @@
 import type { MigrationAllowance, TestInventoryEntry } from '../helpers/architectureDetectors'
 
 const UNIT_TESTS: readonly string[] = [
+  'tests/architecture/cqrs.account.test.ts',
   'tests/architecture/cqrs.playback.test.ts',
   'tests/architecture/immutability.account.test.ts',
   'tests/architecture/immutability.playback.test.ts',
   'tests/architecture/readonly.types.test.ts',
   'tests/lib/account/adminAccess.test.ts',
+  'tests/lib/account/application/commands.test.ts',
+  'tests/lib/account/application/passkey.test.ts',
+  'tests/lib/account/application/queries.test.ts',
+  'tests/lib/account/application/readModels.test.ts',
   'tests/lib/account/application/subjectCleanup.test.ts',
   'tests/lib/account/application/entryGate.test.ts',
   'tests/lib/account/domain/authSession.test.ts',
   'tests/lib/account/domain/password.test.ts',
   'tests/lib/account/domain/subject.test.ts',
+  'tests/lib/account/domain/username.test.ts',
   'tests/lib/catalog/domain/article.test.ts',
   'tests/lib/catalog/domain/episode.test.ts',
   'tests/lib/catalog/domain/featuredCategory.test.ts',
@@ -30,7 +36,6 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/catalog/presentation/featuredCategoryLabels.test.ts',
   'tests/lib/format.test.ts',
   'tests/lib/highlightTerms.test.ts',
-  'tests/lib/passkey.test.ts',
   'tests/lib/playback/application/coordinator.test.ts',
   'tests/lib/playback/application/positionReporter.test.ts',
   'tests/lib/playback/application/readModels.test.ts',
@@ -51,6 +56,7 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/preferences/domain/settings.test.ts',
   'tests/lib/push/pushRegistration.test.ts',
   'tests/lib/relativeTime.conformance.test.ts',
+  'tests/helpers/fakeWebAuthnBrowserPort.test.ts',
   'tests/lib/webpush.test.ts',
   'tests/next.config.test.ts',
   'tests/types/index.test.ts',
@@ -87,12 +93,13 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/reportClientError.test.ts',
       'tests/lib/sfx.test.ts',
       'tests/lib/swCacheCleanup.test.ts',
-      'tests/lib/webauthnBrowserPort.test.ts',
+      'tests/lib/platform/webauthn.test.ts',
     ],
   },
   {
     reason: 'infrastructure の gateway と mapper が backend の応答を domain の型へ変換する挙動を検証する',
     files: [
+      'tests/lib/account/infrastructure/accountGateway.test.ts',
       'tests/lib/catalog/infrastructure/episodeGateway.test.ts',
       'tests/lib/catalog/infrastructure/catalogGateway.test.ts',
       'tests/lib/catalog/infrastructure/episodeMapper.test.ts',
@@ -196,6 +203,9 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/PlaybackProvider.queue.test.tsx',
       'tests/contexts/PlaybackProvider.server.test.tsx',
       'tests/contexts/PreferencesProvider.test.tsx',
+      'tests/contexts/useAccountCommands.test.tsx',
+      'tests/contexts/useAccountQueries.test.tsx',
+      'tests/contexts/usePasskeySupport.test.tsx',
       'tests/contexts/useCatalogCommands.test.tsx',
       'tests/contexts/useCatalogQueries.test.tsx',
       'tests/contexts/StreakContext.test.tsx',
@@ -273,7 +283,19 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/catalog/domain/source.ts': ['tests/lib/catalog/domain/source.test.ts'],
   'lib/catalog/domain/featuredCategory.ts': ['tests/lib/catalog/domain/featuredCategory.test.ts'],
   'lib/account/application/entryGate.ts': ['tests/lib/account/application/entryGate.test.ts'],
-  'lib/passkey.ts': ['tests/lib/passkey.test.ts'],
+  'lib/account/application/passkey.ts': ['tests/lib/account/application/passkey.test.ts'],
+  'lib/account/application/commands.ts': ['tests/lib/account/application/commands.test.ts', 'tests/architecture/cqrs.account.test.ts'],
+  'lib/account/application/queries.ts': [
+    'tests/architecture/cqrs.account.test.ts',
+    'tests/architecture/immutability.account.test.ts',
+    'tests/lib/account/application/queries.test.ts',
+  ],
+  'lib/account/application/readModels.ts': [
+    'tests/architecture/immutability.account.test.ts',
+    'tests/lib/account/application/readModels.test.ts',
+  ],
+  'lib/account/application/ports.ts': [],
+  'lib/account/domain/username.ts': ['tests/lib/account/domain/username.test.ts'],
   'lib/playback/application/coordinator.ts': [
     'tests/architecture/cqrs.playback.test.ts',
     'tests/architecture/immutability.playback.test.ts',
@@ -316,16 +338,6 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
  * 最終 task（web-slice-closure-01）で 0 件にする。
  */
 export const MIGRATION_ALLOWANCES: readonly MigrationAllowance[] = [
-  {
-    file: 'tests/lib/passkey.test.ts',
-    specifier: '@/lib/webauthnBrowserPort',
-    owner: 'user',
-    reason:
-      'passkey が port の型と実装を同じ module から受け取る旧構成。この module の移動は account と notify の 2 つの slice で重なり、' +
-      '先に移した slice が fake を tests/helpers/ に置いてこの行を削除する',
-    removeBy: 'web-slice-account-01',
-    task: 'web-slice-account-01',
-  },
   {
     file: 'tests/lib/push/pushRegistration.test.ts',
     specifier: '@/lib/pushBrowserPort',
