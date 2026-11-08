@@ -48,7 +48,7 @@ describe('SidebarAccount', () => {
   // 認証済み状態（status === 'authenticated' && user が存在）
   // ──────────────────────────────────────────────────
   test('authenticated + user → displays user label and logout button', async () => {
-    await mockUseAuth({ status: 'authenticated', user: MOCK_USER_AUTHENTICATED })
+    await mockUseAuth({ view: { kind: 'authenticated', user: MOCK_USER_AUTHENTICATED } })
 
     render(<SidebarAccount />)
 
@@ -59,7 +59,7 @@ describe('SidebarAccount', () => {
   })
 
   test('authenticated + admin user → displays admin user label', async () => {
-    await mockUseAuth({ status: 'authenticated', user: MOCK_USER_ADMIN })
+    await mockUseAuth({ view: { kind: 'authenticated', user: MOCK_USER_ADMIN } })
 
     render(<SidebarAccount />)
 
@@ -70,7 +70,7 @@ describe('SidebarAccount', () => {
   // 未認証状態（status === 'unauthenticated'）→ 何も描画しない
   // ──────────────────────────────────────────────────
   test('unauthenticated → renders nothing (null)', async () => {
-    await mockUseAuth({ status: 'unauthenticated', user: null })
+    await mockUseAuth({ view: { kind: 'anonymous', user: null } })
 
     const { container } = render(<SidebarAccount />)
 
@@ -81,7 +81,7 @@ describe('SidebarAccount', () => {
   // ローディング中状態（status === 'unknown'）→ 何も描画しない
   // ──────────────────────────────────────────────────
   test('unknown (loading) → renders nothing (null)', async () => {
-    await mockUseAuth({ status: 'unknown', user: null })
+    await mockUseAuth({ view: { kind: 'resolving', user: null } })
 
     const { container } = render(<SidebarAccount />)
 

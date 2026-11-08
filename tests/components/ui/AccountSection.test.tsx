@@ -23,21 +23,23 @@ const { mockRegisterPasskey, mockLogout, mockRefreshMe, mockRouterReplace } = vi
 }))
 
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+// WebAuthn の対応判定を、テストごとに切り替える（既定は対応あり）
+const webauthn = vi.hoisted(() => ({ supported: true }))
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 // passkey.ts の registerPasskey をモック（browser port を使うため）
-vi.mock('@/lib/passkey', () => ({
+vi.mock('@/lib/account/application/passkey', () => ({
   registerPasskey: mockRegisterPasskey,
   loginWithPasskey: vi.fn(),
 }))
 
 // createRealWebAuthnBrowserPort はテスト不要なのでフェイクに差し替え
-vi.mock('@/lib/webauthnBrowserPort', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/webauthnBrowserPort')>()
+vi.mock('@/lib/platform/webauthn', async () => {
+  const { createFakeWebAuthnBrowserPort } = await import('../../helpers/fakeWebAuthnBrowserPort')
   return {
-    ...actual,
-    createRealWebAuthnBrowserPort: () => actual.createFakeWebAuthnBrowserPort(),
+    createRealWebAuthnBrowserPort: () =>
+      createFakeWebAuthnBrowserPort({ supportsWebAuthn: () => webauthn.supported }),
   }
 })
 
@@ -45,7 +47,7 @@ const MOCK_USER = { username: 'alice', role: 'user' as const, display_name: 'Ali
 
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
-    user: MOCK_USER,
+    view: { kind: 'authenticated', user: MOCK_USER },
     logout: mockLogout,
     refreshMe: mockRefreshMe,
     loginWithPasskey: vi.fn(),
@@ -112,6 +114,7 @@ beforeEach(() => {
   // clearAllMocks はモック実装をリセットしないため、テスト間漏れを防ぐため明示的に reset する
   // （LogoutButton.test.tsx と同じ理由）。
   mockRouterReplace.mockReset()
+  webauthn.supported = true
 })
 
 const SESSIONS = {
@@ -722,8 +725,7 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
     vi.mocked(useAuth).mockReturnValue({
       session: { kind: 'authenticated', user: MOCK_USER },
       retry: vi.fn(),
-      status: 'authenticated',
-      user: MOCK_USER,
+      view: { kind: 'authenticated', user: MOCK_USER },
       login: vi.fn(),
       logout: mockLogout,
       register: vi.fn(),
@@ -738,8 +740,7 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
     vi.mocked(useAuth).mockReturnValue({
       session: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin', userId: 'u-admin' } },
       retry: vi.fn(),
-      status: 'authenticated',
-      user: { username: 'admin', role: 'admin', display_name: 'Admin', userId: 'u-admin' },
+      view: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin', userId: 'u-admin' } },
       login: vi.fn(),
       logout: mockLogout,
       register: vi.fn(),
@@ -759,5 +760,138 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
     render(<AccountSection />)
 
     expect(screen.queryByLabelText('計測ダッシュボードを開く')).not.toBeInTheDocument()
+  })
+})
+
+// ==========================================================
+// 特性テスト: 現行の挙動（request・文言・refreshMe/logout/遷移の順序と回数）を先に固定する
+// ==========================================================
+describe('AccountSection — web-slice-account-01 の特性テスト', () => {
+  test('web-slice-account-01: 表示名の更新が成功すると PATCH の body が { display_name } で、「表示名を更新しました」を出し、refreshMe を PATCH の後に 1 回呼ぶ', async () => {
+    let callsWhenRefreshed = -1
+    mockRefreshMe.mockImplementation(async () => {
+      callsWhenRefreshed = gw.calls.length
+    })
+    gw.respond('PATCH', ME_PATH, { ok: true, value: { user_id: 'u-alice', username: 'alice', role: 'user', display_name: 'Alice2' } })
+    render(<AccountSection />)
+
+    const input = screen.getByLabelText('表示名')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Alice2')
+    await userEvent.click(screen.getByRole('button', { name: '表示名を更新' }))
+
+    expect(await screen.findByText('表示名を更新しました')).toBeInTheDocument()
+    expect(callsTo('PATCH', ME_PATH)).toEqual([{ method: 'PATCH', path: ME_PATH, body: { display_name: 'Alice2' } }])
+    expect(mockRefreshMe).toHaveBeenCalledTimes(1)
+    const patchIndex = gw.calls.findIndex((c) => c.method === 'PATCH' && c.path === ME_PATH)
+    expect(callsWhenRefreshed).toBeGreaterThan(patchIndex)
+    mockRefreshMe.mockReset()
+  })
+
+  test('web-slice-account-01: 表示名の PATCH が API 失敗だと「表示名の更新に失敗しました」を出し、refreshMe を呼ばない', async () => {
+    gw.respond('PATCH', ME_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '表示名を更新' }))
+
+    expect(await screen.findByText('表示名の更新に失敗しました')).toBeInTheDocument()
+    expect(callsTo('PATCH', ME_PATH)).toHaveLength(1)
+    expect(mockRefreshMe).not.toHaveBeenCalled()
+  })
+
+  test('web-slice-account-01: 表示名の PATCH が reject しても「表示名の更新に失敗しました」を出し、refreshMe を呼ばない', async () => {
+    gw.respondWith('PATCH', ME_PATH, () => Promise.reject(new Error('network down')))
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '表示名を更新' }))
+
+    expect(await screen.findByText('表示名の更新に失敗しました')).toBeInTheDocument()
+    expect(mockRefreshMe).not.toHaveBeenCalled()
+  })
+
+  test('web-slice-account-01: パスワード変更が reject すると「パスワード変更に失敗しました」を出し、入力欄は残る', async () => {
+    gw.respondWith('POST', PASSWORD_PATH, () => Promise.reject(new Error('network down')))
+    render(<AccountSection />)
+
+    const currentPwInput = screen.getByLabelText('現在のパスワード')
+    const newPwInput = screen.getByLabelText('新しいパスワード')
+    await userEvent.type(currentPwInput, 'current-password')
+    await userEvent.type(newPwInput, 'Abcd1234567!')
+    await userEvent.click(screen.getByRole('button', { name: 'パスワードを変更' }))
+
+    expect(await screen.findByText('パスワード変更に失敗しました')).toBeInTheDocument()
+    expect(currentPwInput).toHaveValue('current-password')
+    expect(newPwInput).toHaveValue('Abcd1234567!')
+  })
+
+  test('web-slice-account-01: 退会が reject すると「アカウントの削除に失敗しました」を出し、logout と router.replace を呼ばない', async () => {
+    gw.respondWith('DELETE', ME_PATH, () => Promise.reject(new Error('network down')))
+    render(<AccountSection />)
+
+    await userEvent.click(screen.getByRole('button', { name: '退会する' }))
+    await userEvent.type(screen.getByLabelText('退会確認用の現在のパスワード'), 'my-password')
+    await userEvent.click(screen.getByRole('button', { name: '退会を実行する' }))
+
+    expect(await screen.findByText('アカウントの削除に失敗しました')).toBeInTheDocument()
+    expect(mockLogout).not.toHaveBeenCalled()
+    expect(mockRouterReplace).not.toHaveBeenCalled()
+  })
+
+  test('web-slice-account-01: 個別ログアウトが API 失敗だと「ログアウトに失敗しました」を出し、セッション一覧を再取得しない', async () => {
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
+    gw.respond('DELETE', sessionPath('sid-other'), { ok: false, failure: { kind: 'server', status: 500 } })
+    render(<AccountSection />)
+
+    await screen.findByText('Safari on iOS')
+    expect(callsTo('GET', SESSIONS_PATH)).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: /デバイスをログアウト: Safari on iOS/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Safari on iOS をログアウト/ }))
+
+    expect(await screen.findByText('ログアウトに失敗しました')).toBeInTheDocument()
+    expect(callsTo('DELETE', sessionPath('sid-other'))).toHaveLength(1)
+    expect(callsTo('GET', SESSIONS_PATH)).toHaveLength(1)
+  })
+
+  test('web-slice-account-01: 一括ログアウトが API 失敗だと「一括ログアウトに失敗しました」を出し、セッション一覧を再取得しない', async () => {
+    gw.respond('GET', SESSIONS_PATH, { ok: true, value: SESSIONS })
+    gw.respond('POST', REVOKE_OTHERS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    render(<AccountSection />)
+
+    await screen.findByText('Safari on iOS')
+    expect(callsTo('GET', SESSIONS_PATH)).toHaveLength(1)
+    await userEvent.click(screen.getByRole('button', { name: '他のデバイスからログアウト' }))
+    await userEvent.click(screen.getByRole('button', { name: '他のデバイスからログアウトを実行' }))
+
+    expect(await screen.findByText('一括ログアウトに失敗しました')).toBeInTheDocument()
+    expect(callsTo('POST', REVOKE_OTHERS_PATH)).toHaveLength(1)
+    expect(callsTo('GET', SESSIONS_PATH)).toHaveLength(1)
+  })
+
+  test('web-slice-account-01: Passkey の削除が API 失敗だと「Passkey の削除に失敗しました」を出し、一覧を再取得しない', async () => {
+    gw.respond('GET', CREDENTIALS_PATH, { ok: true, value: { credentials: [FAKE_CRED] } })
+    gw.respond('DELETE', credentialPath(FAKE_CRED.credential_id), { ok: false, failure: { kind: 'server', status: 500 } })
+    render(<AccountSection />)
+
+    await userEvent.click(await screen.findByRole('button', { name: /削除/i }))
+    await userEvent.click(await screen.findByRole('button', { name: /My Passkey を削除/i }))
+
+    expect(await screen.findByText('Passkey の削除に失敗しました')).toBeInTheDocument()
+    expect(callsTo('DELETE', credentialPath(FAKE_CRED.credential_id))).toHaveLength(1)
+    expect(callsTo('GET', CREDENTIALS_PATH)).toHaveLength(1)
+  })
+
+  test('web-slice-account-01: WebAuthn 非対応だと「Passkey を登録」ボタンが disabled になり、aria-label が非対応を示す', async () => {
+    webauthn.supported = false
+    render(<AccountSection />)
+
+    const button = await screen.findByRole('button', { name: 'お使いのブラウザは Passkey に対応していません' })
+    expect(button).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Passkey を登録' })).not.toBeInTheDocument()
+  })
+
+  test('web-slice-account-01: WebAuthn 対応なら「Passkey を登録」ボタンは有効（非対応の対照）', async () => {
+    render(<AccountSection />)
+
+    expect(await screen.findByRole('button', { name: 'Passkey を登録' })).toBeEnabled()
   })
 })

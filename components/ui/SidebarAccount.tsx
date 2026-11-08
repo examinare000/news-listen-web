@@ -10,17 +10,17 @@ import { LogoutButton } from '@/components/ui/LogoutButton'
  * 認証済み状態のときのみ表示。未認証・ローディング中は何も描画しない。
  */
 export function SidebarAccount() {
-  const { status, user } = useAuth()
+  const { view } = useAuth()
 
   // 認証済み以外は何も描画しない
-  if (status !== 'authenticated' || !user) {
+  if (view.kind !== 'authenticated' || !view.user) {
     return null
   }
 
   return (
     <div className="sidebar-account">
       <div className="sidebar-account-label">
-        {formatAuthUserLabel(user)}
+        {formatAuthUserLabel(view.user)}
       </div>
       <LogoutButton />
     </div>

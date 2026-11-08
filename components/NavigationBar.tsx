@@ -7,6 +7,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { useAuth } from '@/contexts/AuthProvider'
+import { isAdmin } from '@/lib/account/domain/adminAccess'
 import { useStreak } from '@/contexts/StreakContext'
 
 // アイコン SVG は docs/design/app-ui.html L1392-1418 をインライン移植
@@ -116,9 +117,9 @@ const NAV_ITEMS = [
 
 export function NavigationBar() {
   const pathname = usePathname()
-  const { user } = useAuth()
+  const { view } = useAuth()
   const { streak, isPulsing } = useStreak()
-  const isAdmin = user?.role === 'admin'
+  const showAdminLinks = isAdmin(view.user)
   const isAdminLinkActive = pathname === '/admin/featured-sites'
   const isInvitesLinkActive = pathname === '/admin/invites'
 
@@ -150,7 +151,7 @@ export function NavigationBar() {
         })}
 
         {/* admin ロールのみ管理導線を表示（権限のない項目を露出させない） */}
-        {isAdmin && (
+        {showAdminLinks && (
           <>
             <div className="sidebar-divider"></div>
             <div className="nav-section-label">管理</div>

@@ -13,7 +13,7 @@ import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
-import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { createFakeWebAuthnBrowserPort } from '../helpers/fakeWebAuthnBrowserPort'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
@@ -52,13 +52,14 @@ function callsTo(method: string, path: string) {
 
 /** passkey ログインボタンをもつ Consumer。port は fake を直接注入。 */
 function PasskeyConsumer() {
-  const { status, user, loginWithPasskey } = useAuth()
-  const fakePort = createFakeWebAuthnBrowserPort()
+  const { view, loginWithPasskey } = useAuth()
+  const status = view.kind === 'authenticated' ? 'authenticated' : view.kind === 'anonymous' ? 'unauthenticated' : 'unknown'
+  const user = view.user
   const [error, setError] = React.useState<string | null>(null)
 
   async function handleClick() {
     try {
-      await loginWithPasskey(fakePort)
+      await loginWithPasskey()
     } catch {
       setError('failed')
     }
@@ -77,7 +78,7 @@ function PasskeyConsumer() {
 function renderAuth() {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <AuthProvider>
+      <AuthProvider webAuthnPort={createFakeWebAuthnBrowserPort()}>
         <PasskeyConsumer />
       </AuthProvider>
     </PreferencesProvider>

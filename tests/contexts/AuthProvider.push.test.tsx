@@ -115,7 +115,7 @@ function Consumer({ authRef }: { authRef: AuthRef }) {
   })
   return (
     <div>
-      <span data-testid="status">{auth.status}</span>
+      <span data-testid="status">{auth.view.kind === 'authenticated' ? 'authenticated' : auth.view.kind === 'anonymous' ? 'unauthenticated' : 'unknown'}</span>
       <button onClick={() => { auth.logout().catch(() => {}) }}>logout</button>
     </div>
   )

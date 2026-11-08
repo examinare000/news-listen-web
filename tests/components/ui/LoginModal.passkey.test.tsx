@@ -6,6 +6,8 @@ import { LoginModal } from '@/components/ui/LoginModal'
 
 const mockLogin = vi.fn()
 const mockLoginWithPasskey = vi.fn()
+// WebAuthn の対応判定を、テストごとに切り替える（既定は対応あり）
+const webauthn = vi.hoisted(() => ({ supported: true }))
 
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
@@ -18,17 +20,18 @@ vi.mock('@/contexts/AuthProvider', () => ({
   }),
 }))
 
-// createRealWebAuthnBrowserPort は LoginModal 内部で使用するのでモック
-vi.mock('@/lib/webauthnBrowserPort', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/webauthnBrowserPort')>()
+// createRealWebAuthnBrowserPort は usePasskeySupport 内部で使用するのでモック
+vi.mock('@/lib/platform/webauthn', async () => {
+  const { createFakeWebAuthnBrowserPort } = await import('../../helpers/fakeWebAuthnBrowserPort')
   return {
-    ...actual,
-    createRealWebAuthnBrowserPort: () => actual.createFakeWebAuthnBrowserPort(),
+    createRealWebAuthnBrowserPort: () =>
+      createFakeWebAuthnBrowserPort({ supportsWebAuthn: () => webauthn.supported }),
   }
 })
 
 beforeEach(() => {
   vi.clearAllMocks()
+  webauthn.supported = true
 })
 
 describe('LoginModal — Passkey ボタン', () => {
@@ -96,5 +99,24 @@ describe('LoginModal — Passkey ボタン', () => {
     await userEvent.click(screen.getByRole('button', { name: /^ログイン$/i }))
 
     await waitFor(() => expect(mockLogin).toHaveBeenCalledWith('alice', 'secret-pw'))
+  })
+})
+
+describe('LoginModal — web-slice-account-01 の特性テスト', () => {
+  test('web-slice-account-01: WebAuthn 非対応だと「Passkey でログイン」が disabled で、aria-label が非対応を示す', async () => {
+    webauthn.supported = false
+    render(<LoginModal />)
+
+    const button = await screen.findByRole('button', { name: 'お使いのブラウザは Passkey に対応していません' })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute('aria-label', 'お使いのブラウザは Passkey に対応していません')
+  })
+
+  test('web-slice-account-01: WebAuthn 対応なら「Passkey でログイン」は有効で aria-label を持たない（非対応の対照）', async () => {
+    render(<LoginModal />)
+
+    const button = await screen.findByRole('button', { name: /passkey でログイン/i })
+    expect(button).toBeEnabled()
+    expect(button).not.toHaveAttribute('aria-label')
   })
 })

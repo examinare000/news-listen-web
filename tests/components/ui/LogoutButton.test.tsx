@@ -25,8 +25,7 @@ async function setupUseAuth() {
   vi.mocked(useAuth).mockReturnValue({
     session: { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } },
     retry: vi.fn(),
-    status: 'authenticated',
-    user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
+    view: { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } },
     logout: mockLogout,
     login: vi.fn(),
     register: vi.fn(),

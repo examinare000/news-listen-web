@@ -21,7 +21,7 @@ export default function AdminUsersPage() {
 }
 
 function AdminUsersPanel() {
-  const { user } = useAuth()
+  const { view } = useAuth()
   const gateway = useApiClient()
 
   const [users, setUsers] = useState<UserSummary[]>([])
@@ -183,7 +183,7 @@ function AdminUsersPanel() {
                 <div style={{ display: 'flex', gap: 8 }}>
                   {/* 自分自身のロール変更・削除はさせない（自己ロックアウト防止。サーバー側でも
                       最後の admin は 409 で保護される） */}
-                  {u.username !== user?.username && (
+                  {u.username !== view.user?.username && (
                     <>
                       <button className="btn btn-ghost" onClick={() => handleToggleRole(u)} aria-label={`${u.username} のロールを変更`}>
                         {u.role === 'admin' ? 'user へ' : 'admin へ'}
