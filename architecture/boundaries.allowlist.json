@@ -22,34 +22,6 @@
   },
   {
     "rule": "web-dep-04",
-    "file": "app/(app)/admin/featured-sites/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "app/(app)/admin/invites/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "app/(app)/admin/metrics/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-04",
-    "file": "app/(app)/admin/users/page.tsx",
-    "specifier": "@/types/index",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-04",
     "file": "app/(app)/dashboard/page.tsx",
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
@@ -110,34 +82,6 @@
     "specifier": "@/types/index",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-notify-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/admin/featured-sites/page.tsx",
-    "specifier": "@/lib/admin/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/admin/invites/page.tsx",
-    "specifier": "@/lib/admin/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/admin/metrics/page.tsx",
-    "specifier": "@/lib/admin/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "app/(app)/admin/users/page.tsx",
-    "specifier": "@/lib/admin/infrastructure/api",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-dep-05",
@@ -243,13 +187,6 @@
     "specifier": "@/lib/cookie",
     "introducedBy": "web-slice-skeleton-01",
     "removeBy": "web-slice-notify-01"
-  },
-  {
-    "rule": "web-rule-account-06",
-    "file": "app/(app)/admin/users/page.tsx",
-    "specifier": "role === 'admin'",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-admin-01"
   },
   {
     "rule": "web-rule-learning-01",

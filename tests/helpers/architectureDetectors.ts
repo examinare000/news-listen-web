@@ -604,6 +604,14 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-admin-02',
+    allowed: only('lib/admin/domain/featuredOrder.ts'),
+    patterns: [
+      { label: 'Math.max(...', find: (ctx) => regexStarts(ctx.body, /Math\.max\(\s*\.\.\./) },
+      { label: 'order !==', find: (ctx) => regexStarts(ctx.body, /\border\s*!==/) },
+    ],
+  },
+  {
     rule: 'web-dep-08',
     allowed: (file) =>
       file === 'lib/api/gateway.ts' || file === 'lib/platform/cacheStore.ts' || file.startsWith('app/api/'),

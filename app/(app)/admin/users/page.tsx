@@ -3,11 +3,14 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthProvider'
+import { useAdminCommands } from '@/contexts/useAdminCommands'
+import { useAdminQueries } from '@/contexts/useAdminQueries'
+import { isAdmin } from '@/lib/account/domain/adminAccess'
 import { validatePassword } from '@/lib/account/domain/password'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { createUser, deleteUser, listUsers, updateUser } from '@/lib/admin/infrastructure/api'
+import type { UserRole } from '@/lib/account/domain/role'
+import type { AdminUserRow } from '@/lib/admin/application/readModels'
+import { canChangeRole, canDelete } from '@/lib/admin/domain/userGuard'
 import { AdminGate } from '@/components/AdminGate'
-import type { UserSummary, UserRole } from '@/types/index'
 
 // 管理者用ユーザー管理画面。一覧・作成・ロール変更・削除を行う。
 // admin ロール以外には操作 UI を出さない（バックエンドでも require_admin で 403）。
@@ -22,9 +25,10 @@ export default function AdminUsersPage() {
 
 function AdminUsersPanel() {
   const { view } = useAuth()
-  const gateway = useApiClient()
+  const commands = useAdminCommands()
+  const queries = useAdminQueries()
 
-  const [users, setUsers] = useState<UserSummary[]>([])
+  const [users, setUsers] = useState<ReadonlyArray<AdminUserRow>>([])
   const [loadError, setLoadError] = useState('')
 
   // 作成フォーム
@@ -37,16 +41,16 @@ function AdminUsersPanel() {
   const reload = useCallback(async () => {
     setLoadError('')
     try {
-      const result = await listUsers(gateway)
+      const result = await queries.listUsers()
       if (!result.ok) {
         setLoadError('ユーザー一覧の取得に失敗しました')
         return
       }
-      setUsers(result.value.users)
+      setUsers(result.value)
     } catch {
       setLoadError('ユーザー一覧の取得に失敗しました')
     }
-  }, [gateway])
+  }, [queries])
 
   // AdminGate が granted のときだけ mount するため、ロード effect は無条件でよい。
   useEffect(() => {
@@ -61,10 +65,10 @@ function AdminUsersPanel() {
       return
     }
     try {
-      const result = await createUser(gateway, {
+      const result = await commands.createUser({
         username: newUsername,
         password: newPassword,
-        display_name: newDisplayName || undefined,
+        displayName: newDisplayName || undefined,
         role: newRole,
       })
       if (!result.ok) {
@@ -83,7 +87,7 @@ function AdminUsersPanel() {
 
   async function handleDelete(username: string) {
     try {
-      const result = await deleteUser(gateway, username)
+      const result = await commands.deleteUser(username)
       if (!result.ok) {
         setLoadError(`${username} の削除に失敗しました`)
         return
@@ -94,10 +98,10 @@ function AdminUsersPanel() {
     }
   }
 
-  async function handleToggleRole(target: UserSummary) {
-    const nextRole: UserRole = target.role === 'admin' ? 'user' : 'admin'
+  async function handleToggleRole(target: AdminUserRow) {
+    const nextRole: UserRole = isAdmin(target) ? 'user' : 'admin'
     try {
-      const result = await updateUser(gateway, target.username, { role: nextRole })
+      const result = await commands.updateUser(target.username, { role: nextRole })
       if (!result.ok) {
         setLoadError(`${target.username} のロール変更に失敗しました`)
         return
@@ -176,22 +180,22 @@ function AdminUsersPanel() {
               <li key={u.username} className="settings-row">
                 <div>
                   <div className="settings-row-label">
-                    {u.display_name}（{u.username}）
+                    {u.displayName}（{u.username}）
                   </div>
                   <div className="settings-row-desc">ロール: {u.role}</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {/* 自分自身のロール変更・削除はさせない（自己ロックアウト防止。サーバー側でも
                       最後の admin は 409 で保護される） */}
-                  {u.username !== view.user?.username && (
-                    <>
-                      <button className="btn btn-ghost" onClick={() => handleToggleRole(u)} aria-label={`${u.username} のロールを変更`}>
-                        {u.role === 'admin' ? 'user へ' : 'admin へ'}
-                      </button>
-                      <button className="btn btn-ghost" onClick={() => handleDelete(u.username)} aria-label={`${u.username} を削除`}>
-                        削除
-                      </button>
-                    </>
+                  {canChangeRole(view.user, u) && (
+                    <button className="btn btn-ghost" onClick={() => handleToggleRole(u)} aria-label={`${u.username} のロールを変更`}>
+                      {isAdmin(u) ? 'user へ' : 'admin へ'}
+                    </button>
+                  )}
+                  {canDelete(view.user, u) && (
+                    <button className="btn btn-ghost" onClick={() => handleDelete(u.username)} aria-label={`${u.username} を削除`}>
+                      削除
+                    </button>
                   )}
                 </div>
               </li>
