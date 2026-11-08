@@ -3,7 +3,7 @@
 // 判定は構文だけ（型の解決はしない）。正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 web-dep-09・§7 web-check-05。
 //
 // RED 理由（実装前）: lib/shared/** と lib/playback/domain/** が無い（走査した型名が揃わない）。
-// lib/push/pushRegistration.ts の Promise<{ status: string }> 等・QueueState.items 等が readonly でない。
+// lib/notifications/application/pushRegistration.ts の Promise<{ status: string }> 等・QueueState.items 等が readonly でない。
 import { beforeAll, describe, expect, test } from 'vitest'
 import { layerOf, listScanFiles, readSource } from '../helpers/architecture'
 import { scanPublicTypes } from '../helpers/architectureDetectors'
@@ -18,7 +18,7 @@ const MUST_BE_SCANNED = [
   'AdminAccessSession',
   'ResolvePlaybackInput',
   'PasskeyClient',
-  'PushRegistrationApiClient',
+  'NotificationsGateway',
   'GenerationLimit',
   'SettingDescriptor',
 ]
@@ -40,7 +40,7 @@ describe('web-check-05 (b) DOMAIN・APP・shared の export する型は readonl
     expect(appExports, 'AudioElement が APP の走査集合に無い').toContain('AudioElement')
   })
 
-  test('走査した export の名前が 11 個（QueueState・PlayableEpisode・PlaybackState・ApiFailure・Result・AdminAccessSession・ResolvePlaybackInput・PasskeyClient・PushRegistrationApiClient・GenerationLimit・SettingDescriptor）を含む', () => {
+  test('走査した export の名前が 11 個（QueueState・PlayableEpisode・PlaybackState・ApiFailure・Result・AdminAccessSession・ResolvePlaybackInput・PasskeyClient・NotificationsGateway・GenerationLimit・SettingDescriptor）を含む', () => {
     const scanned = new Set(targetFiles.flatMap((f) => scanPublicTypes(f, readSource(f), []).exportedNames))
     expect(MUST_BE_SCANNED.filter((n) => !scanned.has(n))).toEqual([])
   })

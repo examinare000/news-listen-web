@@ -32,9 +32,6 @@ const PRES_FORBIDDEN_EXACT = new Set([
   'lib/audioCache',
   'lib/sfx',
   'lib/reportClientError',
-  'lib/pushBrowserPort',
-  'lib/webauthnBrowserPort',
-  'lib/swCacheCleanup',
   'lib/config',
 ])
 
