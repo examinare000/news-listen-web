@@ -5,7 +5,7 @@
  * fetch・Response・Headers・CSRF cookie は非公開の `exchange` に閉じ込め、公開型には現れない
  * （web-contract-15-7 leakage guard）。
  */
-import { readCookie } from '@/lib/cookie'
+import { readCookie } from '@/lib/platform/cookie'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
 

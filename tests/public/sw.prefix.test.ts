@@ -5,7 +5,7 @@ import { join } from 'path'
 /**
  * service worker が掃除・判定するキャッシュ名の prefix 集合を、2 つの実装で固定する (verifies: CI-P4-37; web-test-22)。
  *
- * `public/sw.js`（配布するプレーンスクリプト）と `lib/swCacheCleanup.ts`（ログアウト時の掃除）は
+ * `public/sw.js`（配布するプレーンスクリプト）と `lib/platform/swCacheCleanup.ts`（ログアウト時の掃除）は
  * 同じ prefix を別々に持つ。片方だけ変わると、掃除が SW の作ったキャッシュを取りこぼす。
  * ビルド時注入か SW の module 化で共有できるまでの暫定の固定（web-temp-02）。
  */
@@ -19,7 +19,7 @@ function prefixesIn(source: string): string[] {
 
 const root = join(__dirname, '../..')
 const swPrefixes = prefixesIn(readFileSync(join(root, 'public/sw.js'), 'utf-8'))
-const cleanupPrefixes = prefixesIn(readFileSync(join(root, 'lib/swCacheCleanup.ts'), 'utf-8'))
+const cleanupPrefixes = prefixesIn(readFileSync(join(root, 'lib/platform/swCacheCleanup.ts'), 'utf-8'))
 
 describe('service worker のキャッシュ名の prefix 集合', () => {
   test('sw.js と swCacheCleanup.ts の集合が等しく、api- と shell- だけ (verifies: CI-P4-37; web-test-22)', () => {

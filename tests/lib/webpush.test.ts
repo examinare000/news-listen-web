@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { urlBase64ToUint8Array } from '@/lib/webpush'
+import { urlBase64ToUint8Array } from '@/lib/platform/webpush'
 
 describe('urlBase64ToUint8Array', () => {
   test('既知のベクタを正しく変換する（padding なし）', () => {

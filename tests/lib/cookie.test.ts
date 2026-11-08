@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { readCookie } from '@/lib/cookie'
+import { readCookie } from '@/lib/platform/cookie'
 
 // ==========================================================
 // readCookie(name: string, cookieString: string): string | undefined

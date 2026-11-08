@@ -1,5 +1,5 @@
 import { describe, test, expect, afterEach } from 'vitest'
-import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
+import { createRealPushBrowserPort } from '@/lib/platform/pushBrowser'
 
 /**
  * 実 port（createRealPushBrowserPort）の getExistingSubscription() テスト。

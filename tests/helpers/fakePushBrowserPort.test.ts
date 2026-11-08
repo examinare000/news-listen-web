@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest'
-import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
+import { createFakePushBrowserPort } from './fakePushBrowserPort'
+import type { PushBrowserPort } from '@/lib/notifications/application/ports'
 
 // fake ポートが PushBrowserPort インターフェースを満たすことを型レベルでも保証する
 describe('createFakePushBrowserPort', () => {
