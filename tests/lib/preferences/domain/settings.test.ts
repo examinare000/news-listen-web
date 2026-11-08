@@ -6,6 +6,7 @@
 // RED 理由（実装前）: `@/lib/preferences/domain/settings` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import {
+  DEFAULT_WEEKLY_GOAL,
   SETTING_CLASSIFICATION,
   WEEKLY_GOALS,
   defaultPlaybackSpeed,
@@ -198,5 +199,12 @@ describe('web-contract-20: 主体依存の分類（共有仕様 §6.5 の web �
 describe('web-contract-20: WEEKLY_GOALS', () => {
   test('3・5・7・10 をこの順で持つ', () => {
     expect([...WEEKLY_GOALS]).toEqual([3, 5, 7, 10])
+  })
+})
+
+describe('DEFAULT_WEEKLY_GOAL', () => {
+  test('DEFAULT_WEEKLY_GOAL は 3 で、WEEKLY_GOALS に含まれる', () => {
+    expect(DEFAULT_WEEKLY_GOAL).toBe(3)
+    expect(WEEKLY_GOALS).toContain(DEFAULT_WEEKLY_GOAL)
   })
 })
