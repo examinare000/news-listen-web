@@ -17,7 +17,8 @@ import { loginWithPasskey as passkeyLogin } from '@/lib/account/application/pass
 import type { AccountGateway, RegisterForm, WebAuthnPort } from '@/lib/account/application/ports'
 import { createAccountGateway } from '@/lib/account/infrastructure/accountGateway'
 import { createGateway } from '@/lib/api/gateway'
-import { subscribePush, unsubscribePush, getVapidPublicKey } from '@/lib/notifications/infrastructure/api'
+import { createNotificationsCommands } from '@/lib/notifications/application/commands'
+import { createNotificationsGateway } from '@/lib/notifications/infrastructure/notificationsGateway'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { createPreferencesQueries } from '@/lib/preferences/application/queries'
@@ -28,9 +29,8 @@ import { deleteSubjectAudio, reclaimAudioCaches } from '@/lib/playback/infrastru
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
 import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
 import { createRealWebAuthnBrowserPort } from '@/lib/platform/webauthn'
-import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
-import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
-import { createPushRegistration } from '@/lib/push/pushRegistration'
+import { createRealPushBrowserPort } from '@/lib/platform/pushBrowser'
+import { clearManagedServiceWorkerCaches } from '@/lib/platform/swCacheCleanup'
 
 // サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
@@ -287,13 +287,9 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
 
   const logout = useCallback(async () => {
     try {
-      await createPushRegistration({
-        port: createRealPushBrowserPort(),
-        client: {
-          getVapidPublicKey: () => getVapidPublicKey(gateway),
-          subscribePush: (subscription) => subscribePush(gateway, subscription),
-          unsubscribePush: (endpoint) => unsubscribePush(gateway, endpoint),
-        },
+      await createNotificationsCommands({
+        gateway: createNotificationsGateway(gateway),
+        browser: createRealPushBrowserPort(),
       }).detachFromSubject()
     } catch {
       // 購読行の削除はベストエフォート（決定 23）。失敗した行は次のログイン時の再送で上書きされる。

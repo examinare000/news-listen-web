@@ -3,7 +3,8 @@ import { renderHook as rtlRenderHook, act } from '@testing-library/react'
 import type { RenderHookOptions } from '@testing-library/react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
-import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
+import { createFakePushBrowserPort } from '../helpers/fakePushBrowserPort'
+import type { PushBrowserPort } from '@/lib/notifications/application/ports'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 
@@ -13,8 +14,11 @@ const renderHook = <Result, Props>(
 ) => rtlRenderHook(callback, { wrapper: ApiClientProvider, ...options })
 
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+const portHolder = vi.hoisted(() => ({ port: undefined as PushBrowserPort | undefined }))
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+vi.mock('@/lib/platform/pushBrowser', () => ({ createRealPushBrowserPort: () => portHolder.port }))
 
 const VAPID_PATH = '/api/backend/notifications/vapid-public-key'
 const SUBSCRIPTIONS_PATH = '/api/backend/notifications/subscriptions'
@@ -37,14 +41,16 @@ beforeEach(() => {
 describe('useWebPushSubscription — 初期化', () => {
   test('serviceWorker 非対応の場合 unsupported 状態になる', async () => {
     const port = createFakePushBrowserPort({ isSupported: () => false })
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('unsupported')
   })
 
   test('通知許可が denied の場合 denied 状態になる', async () => {
     const port = createFakePushBrowserPort({ getPermission: () => 'denied' })
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('denied')
   })
@@ -52,14 +58,16 @@ describe('useWebPushSubscription — 初期化', () => {
   test('既存購読がある場合 subscribed 状態になる（冪等）', async () => {
     const existing = { endpoint: 'https://fcm.example.com/existing', keys: { p256dh: 'p256dh-val', auth: 'auth-val' } }
     const port = createFakePushBrowserPort({ getExistingSubscription: async () => existing })
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('subscribed')
   })
 
   test('既存購読なし・許可 default の場合 unsubscribed 状態になる', async () => {
     const port = createFakePushBrowserPort()
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('unsubscribed')
   })
@@ -68,7 +76,8 @@ describe('useWebPushSubscription — 初期化', () => {
 describe('useWebPushSubscription — subscribe 遷移', () => {
   test('subscribe() 呼び出しで subscribing → subscribed に遷移する', async () => {
     const port = createFakePushBrowserPort()
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('unsubscribed')
     await act(async () => { await result.current.subscribe() })
@@ -78,7 +87,8 @@ describe('useWebPushSubscription — subscribe 遷移', () => {
   test('VAPID 公開鍵取得失敗時に error 状態になる', async () => {
     gw.respondWith('GET', VAPID_PATH, () => Promise.reject(new Error('Network error')))
     const port = createFakePushBrowserPort()
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     await act(async () => { await result.current.subscribe() })
     expect(result.current.state).toBe('error')
@@ -86,7 +96,8 @@ describe('useWebPushSubscription — subscribe 遷移', () => {
 
   test('subscribe() で許可が denied の場合 denied 状態になる', async () => {
     const port = createFakePushBrowserPort({ requestPermission: async () => 'denied' })
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     await act(async () => { await result.current.subscribe() })
     expect(result.current.state).toBe('denied')
@@ -100,7 +111,8 @@ describe('useWebPushSubscription — unsubscribe 遷移', () => {
       getExistingSubscription: async () => existing,
       unsubscribe: async () => true,
     })
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    portHolder.port = port
+    const { result } = renderHook(() => useWebPushSubscription())
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)) })
     expect(result.current.state).toBe('subscribed')
     await act(async () => { await result.current.unsubscribe() })

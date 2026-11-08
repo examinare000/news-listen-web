@@ -28,7 +28,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 // web-contract-18（部分）: 失効経路（refreshMe の getMe 失敗）でも SW 管理キャッシュ（shell-*/api-*）を
 // 消す。音声は主体別 audio-v1-{user_id}（ADR-104 決定 27 / web-dec-83）: 実行中の 401 では消さず（次回起動の回収が消す）、
 // mount 後の最初の確定事象が 401 のとき（起動時の 401）は回収が audio-v1* を全削除する。
-// C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
+// C4: 既存 tests/contexts/AuthProvider.test.tsx は @/lib/platform/swCacheCleanup・@/lib/playback/infrastructure/offlineLibrary を
 // モジュールごと mock しているため実 cleanup を観測できない。本ファイルは @/lib/api/gateway の
 // createGateway だけを gateway double に差し替え、実 clearManagedServiceWorkerCaches を通す。
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
