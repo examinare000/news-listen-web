@@ -412,14 +412,8 @@ export interface VapidPublicKeyResponse {
   public_key: string
 }
 
-/** Web Push 購読状態機械 */
-export type PushSubscriptionState =
-  | 'unsupported' // serviceWorker/PushManager 非対応
-  | 'denied'      // Notification.permission === 'denied'
-  | 'unsubscribed' // 購読なし
-  | 'subscribing'  // 購読処理中
-  | 'subscribed'   // 購読済み
-  | 'error'        // エラー発生
+/** Web Push 購読状態機械（持ち主は notifications の domain。移行中の再 export） */
+export type { PushSubscriptionState } from '@/lib/notifications/domain/pushSubscriptionState'
 
 // ── リテンション計測（ADR-075・backend api/schemas.py 確定契約） ─────────────
 /** D_N コホート継続率 1 点分。eligible=0（評価適格ユーザーがいない）は rate が null（ゼロ除算回避・ADR-075 §2）。 */
