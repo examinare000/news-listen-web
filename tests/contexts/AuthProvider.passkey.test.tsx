@@ -10,7 +10,8 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React from 'react'
-import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { createFakeWebAuthnBrowserPort } from '../helpers/fakeWebAuthnBrowserPort'
@@ -170,5 +171,42 @@ describe('AuthProvider — 未確定の後の passkey 成功で回収 (verifies:
     await expect(cacheStorage.has('audio-v1-u-a')).resolves.toBe(false)
     await expect(cacheStorage.has('audio-v1-u-b')).resolves.toBe(true)
     await expect(cacheStorage.has('shell-pages-v1')).resolves.toBe(true)
+  })
+})
+
+// web-dec-12: passkey の成功も establish を通り、サーバーの既定速度を端末（registry）へ写す。
+// registry は設定画面を介さず、この小さな consumer が束縛の記述子で読む。
+const PREFS_PATH = '/api/backend/settings/preferences'
+
+function SpeedProbe() {
+  const { get } = usePreferences()
+  return <span data-testid="speed">{String(get(LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting))}</span>
+}
+
+describe('AuthProvider — loginWithPasskey でサーバーの既定速度を写す (web-dec-12)', () => {
+  test('web-dec-12: passkey の成功で GET /settings/preferences が 1 回出て、端末の 1.0 がサーバーの 1.75 になる。PUT は出ない', async () => {
+    gw.respond('POST', OPTIONS_PATH, { ok: true, value: FAKE_OPTIONS })
+    gw.respond('POST', VERIFY_PATH, { ok: true, value: { token: 'tok', user: FAKE_USER } })
+    gw.respond('GET', PREFS_PATH, {
+      ok: true,
+      value: { default_difficulty: 'toeic_600', default_playback_speed: 1.75, digest_enabled: true, digest_article_count: 10 },
+    })
+    render(
+      <PreferencesProvider store={memoryStore()}>
+        <AuthProvider webAuthnPort={createFakeWebAuthnBrowserPort()}>
+          <PasskeyConsumer />
+          <SpeedProbe />
+        </AuthProvider>
+      </PreferencesProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    expect(screen.getByTestId('speed').textContent).toBe('1')
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+
+    await userEvent.click(screen.getByText('passkey-login'))
+
+    await waitFor(() => expect(screen.getByTestId('speed').textContent).toBe('1.75'))
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(1)
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(0)
   })
 })

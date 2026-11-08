@@ -15,6 +15,7 @@ export function createPreferencesGateway(gateway: ApiGateway): PreferencesGatewa
         value: {
           defaultDifficulty: dto.default_difficulty,
           weeklyGoal: dto.weekly_goal_episodes ?? null,
+          defaultPlaybackSpeed: dto.default_playback_speed,
           digest: { enabled: dto.digest_enabled, articleCount: dto.digest_article_count },
         },
       }
@@ -23,7 +24,9 @@ export function createPreferencesGateway(gateway: ApiGateway): PreferencesGatewa
       const body =
         patch.kind === 'defaultDifficulty'
           ? { default_difficulty: patch.value }
-          : { weekly_goal_episodes: patch.value }
+          : patch.kind === 'defaultPlaybackSpeed'
+            ? { default_playback_speed: patch.value }
+            : { weekly_goal_episodes: patch.value }
       const result = await updatePreferences(gateway, body)
       return result.ok ? { ok: true, value: undefined } : result
     },

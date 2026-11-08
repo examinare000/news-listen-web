@@ -20,6 +20,9 @@ import { createGateway } from '@/lib/api/gateway'
 import { subscribePush, unsubscribePush, getVapidPublicKey } from '@/lib/notifications/infrastructure/api'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { usePreferences } from '@/contexts/PreferencesProvider'
+import { createPreferencesQueries } from '@/lib/preferences/application/queries'
+import { defaultPlaybackSpeed } from '@/lib/preferences/domain/settings'
+import { createPreferencesGateway } from '@/lib/preferences/infrastructure/preferencesGateway'
 import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
 import { deleteSubjectAudio, reclaimAudioCaches } from '@/lib/playback/infrastructure/offlineLibrary'
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
@@ -98,10 +101,12 @@ async function resolveMe(account: AccountGateway): Promise<Result<AuthSessionUse
 }
 
 export function AuthProvider({ children, initialSession, webAuthnPort }: AuthProviderProps) {
-  const { ready, clearSubjectScoped } = usePreferences()
+  const { ready, clearSubjectScoped, get, set } = usePreferences()
   // この gateway を自身の呼出と ApiClientProvider の両方で使う（AuthProvider の内側の Provider は自分から読めない）。
   const [gateway] = useState(() => createGateway())
   const [accountGateway] = useState(() => createAccountGateway(gateway))
+  // 内側の Provider の hook は使えないので、accountGateway と同じく直接組み立てる（web-dec-130）。
+  const [preferencesQueries] = useState(() => createPreferencesQueries({ gateway: createPreferencesGateway(gateway) }))
   const [webAuthn] = useState(() => webAuthnPort ?? createRealWebAuthnBrowserPort())
   const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
   // 直前の状態を同期に読むため、state の値を ref にも持つ。dispatch の中で更新するので、再描画を待たずに同時の 2 件目が最新の値を見る。
@@ -118,6 +123,9 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
   )
   // 起動時の回収は mount につき最初の確定事象で 1 回だけ（shared-leave-08・09）。
   const reclaimedRef = useRef(false)
+  // 写しが書いた主体の userId（値は持たない）。主体の切替・logout・expiry で外す。
+  // 主体離脱の後始末が写しの後に走ったとき、現在の主体の値を消さないための印。
+  const copiedForRef = useRef<string | null>(null)
   const leaveStepRef = useRef<(() => void | Promise<void>) | null>(null)
 
   const currentUserId = useCallback(() => lastSubjectRef.current?.userId ?? null, [])
@@ -138,13 +146,36 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
         stopPlayback: () => leaveStepRef.current?.(),
         clearServiceWorkerCaches: () => clearManagedServiceWorkerCaches(),
         clearSubjectSettings: () => {
+          // B の写しが A の後始末より先に書いていたら、clear が B の値まで消す。直前の現在値を読んでおき、直後に戻す。
+          // 写しが保持した値でなく現在値を使うのは、その後に B が変えた値を古い値で上書きしないため。
+          const current = get(defaultPlaybackSpeed)
           clearSubjectScoped()
+          const now = lastSubjectRef.current?.userId ?? null
+          if (now !== subject.userId && copiedForRef.current !== null && copiedForRef.current === now) {
+            set(defaultPlaybackSpeed, current)
+          }
           localPositions.clearAll()
         },
       })(subject, options)
     },
-    [clearSubjectScoped],
+    [clearSubjectScoped, get, set],
   )
+
+  // authenticated に確定した主体のサーバーの既定速度を端末へ写す。結果は捨て、呼び手は待たない。
+  // 失敗は握る（端末の値のまま。次の契機で再び写す）。書く直前に主体を照合し、別の主体の遅れた結果は書かない。
+  const copyServerPlaybackSpeed = useCallback(async (): Promise<void> => {
+    const startedFor = lastSubjectRef.current?.userId ?? null
+    try {
+      const result = await preferencesQueries.getServerPreferences()
+      if (!result.ok) return
+      const current = lastSubjectRef.current
+      if (current === null || current.userId !== startedFor) return
+      set(defaultPlaybackSpeed, result.value.defaultPlaybackSpeed)
+      copiedForRef.current = startedFor
+    } catch {
+      // 端末の値のまま。次の契機で再び写す。
+    }
+  }, [preferencesQueries, set])
 
   // 最初の確定事象でだけ回収を始める。フラグは事象の処理の中で同期に立てる（effect と手動の refreshMe が並行しても 2 回走らない）。
   // 失敗は無視する: 回収は次回起動でも収束し、状態遷移と RefreshMeResult に影響しない。
@@ -164,6 +195,7 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
   const cleanupAfterExpiry = useCallback(async (): Promise<RefreshMeResult> => {
     const previous = lastSubjectRef.current
     lastSubjectRef.current = null
+    copiedForRef.current = null
     const reclaiming = reclaimOnce()
     let result: RefreshMeResult
     if (previous !== null) {
@@ -194,11 +226,13 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
       return cleanupAfterExpiry()
     }
     const me = resolved.value
+    if (lastSubjectRef.current?.userId !== me.userId) copiedForRef.current = null
     lastSubjectRef.current = subjectOf(me.userId)
     dispatch({ type: 'resolved', user: me })
+    void copyServerPlaybackSpeed()
     await reclaimOnce()
     return { cleanup: 'skipped' }
-  }, [accountGateway, dispatch, reclaimOnce, cleanupAfterExpiry])
+  }, [accountGateway, dispatch, reclaimOnce, cleanupAfterExpiry, copyServerPlaybackSpeed])
 
   // Provider 経由の任意 API の unauthorized（ApiClientProvider）。authenticated のときだけ未認証へ移り、後始末を 1 回走らせる。
   // それ以外の状態では何も動かさない（ログイン失敗の 401 など。shared-leave-05）。結果は捨てる。
@@ -218,13 +252,15 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
     (user: AuthSessionUser) => {
       const previous = lastSubjectRef.current
       const next = subjectOf(user.userId)
+      if (previous?.userId !== next.userId) copiedForRef.current = null
       lastSubjectRef.current = next
       dispatch({ type: 'signedIn', user })
+      void copyServerPlaybackSpeed()
       const sameSubject = previous !== null && previous.userId !== null && previous.userId === next.userId
       if (previous !== null && !sameSubject) void subjectCleanup(previous, { audio: true })
       void reclaimOnce()
     },
-    [dispatch, reclaimOnce, subjectCleanup],
+    [dispatch, reclaimOnce, subjectCleanup, copyServerPlaybackSpeed],
   )
 
   const login = useCallback(
@@ -269,6 +305,7 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
     }
     const previous = lastSubjectRef.current ?? { userId: null }
     lastSubjectRef.current = null
+    copiedForRef.current = null
     dispatch({ type: 'loggedOut' })
     // 後始末の完了は待たず、結果（CleanupIncomplete）も捨てる。端末全体の音声消去は残さない（§6.3 性質 1）。
     void subjectCleanup(previous, { audio: true })

@@ -2,7 +2,9 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import React, { useEffect } from 'react'
-import { PreferencesProvider } from '@/contexts/PreferencesProvider'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
+import type { PreferencesContextValue } from '@/contexts/PreferencesProvider'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
@@ -837,5 +839,313 @@ describe('session.user の写し (verifies: web-slice-account-01)', () => {
     await waitFor(() => expect(auth.session.kind).toBe('authenticated'))
 
     expect(auth.session.kind === 'authenticated' && auth.session.user).toEqual({ ...MAPPED, userId: null })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// サーバーの既定速度を端末へ写す（web-dec-12・web-dec-14 の 2・web-dec-130）
+// 記述子は infrastructure の束縛から取る（integration のテストは domain を値で import しない）。
+// ---------------------------------------------------------------------------
+const PREFS_PATH = '/api/backend/settings/preferences'
+const SPEED = LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting
+const prefsDto = (speed: number) => ({
+  default_difficulty: 'toeic_600',
+  default_playback_speed: speed,
+  digest_enabled: true,
+  digest_article_count: 10,
+})
+const respondPrefs = (speed: number) => gw.respond('GET', PREFS_PATH, { ok: true, value: prefsDto(speed) })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((r) => {
+    resolve = r
+  })
+  return { promise, resolve }
+}
+
+// registry の既定速度を Consumer と同じ木の中で読む（設定画面を介さない）。set は遷移④の「B が後から変える」操作に使う。
+let prefs: PreferencesContextValue
+function SpeedProbe() {
+  const current = usePreferences()
+  useEffect(() => {
+    prefs = current
+  })
+  return <span data-testid="speed">{String(current.get(SPEED))}</span>
+}
+
+function renderAuthWithSpeed(store: KeyValueStore = memoryStore()) {
+  return render(
+    <PreferencesProvider store={store}>
+      <AuthProvider>
+        <Consumer />
+        <SpeedProbe />
+      </AuthProvider>
+    </PreferencesProvider>,
+  )
+}
+
+const flush = () =>
+  act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0))
+  })
+const speedIs = (expected: string) => waitFor(() => expect(screen.getByTestId('speed').textContent).toBe(expected))
+const SEEDED_1_5 = () => memoryStore({ default_playback_speed: '1.5' })
+
+describe('認証の確定でサーバーの既定速度を端末へ写す (verifies: web-dec-12, web-dec-14, web-dec-130)', () => {
+  test('web-dec-12 web-dec-14: getMe 成功で GET /settings/preferences が 1 回出て、端末の 1.5 がサーバーの 1.0 に置き換わる。PUT は出ない', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    respondPrefs(1.0)
+    renderAuthWithSpeed(SEEDED_1_5())
+
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    await speedIs('1')
+    expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(0)
+  })
+
+  test('web-dec-12: login の成功で GET /settings/preferences が 1 回出て、registry がサーバーの 1.75 になる。PUT は出ない', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: AUTH_B('u-b') })
+    respondPrefs(1.75)
+    renderAuthWithSpeed()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+
+    await userEvent.click(screen.getByText('login'))
+
+    await speedIs('1.75')
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(1)
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(0)
+  })
+
+  test('web-dec-12: register の成功で GET /settings/preferences が 1 回出て、registry がサーバーの 2 になる。PUT は出ない', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('POST', REGISTER_PATH, { ok: true, value: AUTH_B('u-b') })
+    respondPrefs(2.0)
+    renderAuthWithSpeed()
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+
+    await userEvent.click(screen.getByText('register'))
+
+    await speedIs('2')
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(1)
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(0)
+  })
+
+  test('web-dec-12: unavailable から retry で getMe が成功すると、GET /settings/preferences が 1 回出てサーバーの 1.25 になる', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'network' } })
+    respondPrefs(1.25)
+    renderAuthWithSpeed()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('unavailable'))
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+
+    await userEvent.click(screen.getByText('retry'))
+
+    await speedIs('1.25')
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(1)
+  })
+
+  test.each([
+    ['getMe の通信断（unavailable）', 'network'],
+    ['getMe の 401（anonymous）', 'unauthorized'],
+  ] as const)('web-dec-130: %s では GET /settings/preferences を出さず、端末の 1.5 のまま', async (_label, kind) => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind } })
+    respondPrefs(1.0)
+    renderAuthWithSpeed(SEEDED_1_5())
+
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).not.toBe('resolving'))
+    await flush()
+
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+    expect(screen.getByTestId('speed').textContent).toBe('1.5')
+  })
+
+  test('web-dec-130: 失敗した login では GET /settings/preferences を出さず、端末の 1.5 のまま', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('POST', LOGIN_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    respondPrefs(1.0)
+    renderAuthWithSpeed(SEEDED_1_5())
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+
+    await userEvent.click(screen.getByText('login'))
+    await flush()
+
+    expect(callsTo('POST', LOGIN_PATH)).toHaveLength(1)
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(0)
+    expect(screen.getByTestId('speed').textContent).toBe('1.5')
+  })
+
+  test('web-dec-130: logout では GET /settings/preferences を出さない（logout の前後で件数の差が 0）', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    gw.respond('POST', LOGOUT_PATH, { ok: true, value: { status: 'ok' } })
+    respondPrefs(1.0)
+    renderAuthWithSpeed()
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    const before = callsTo('GET', PREFS_PATH).length
+
+    await userEvent.click(screen.getByText('logout'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('unauthenticated'))
+    await flush()
+
+    expect(callsTo('GET', PREFS_PATH).length - before).toBe(0)
+  })
+
+  test('web-dec-130: initialSession の固定状態では GET /settings/preferences を 1 回も出さない', async () => {
+    respondPrefs(1.0)
+    render(
+      <PreferencesProvider store={SEEDED_1_5()}>
+        <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-a' } }}>
+          <SpeedProbe />
+        </AuthProvider>
+      </PreferencesProvider>,
+    )
+    await flush()
+
+    expect(gw.calls).toEqual([])
+    expect(screen.getByTestId('speed').textContent).toBe('1.5')
+  })
+
+  test.each([
+    ['ok: false の応答', () => gw.respond('GET', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })],
+    ['reject', () => gw.respondWith('GET', PREFS_PATH, () => Promise.reject(new Error('boom')))],
+  ] as const)('web-dec-130: 写す取得が %s でも、端末の 1.5 は 1.0 に書き換わらず、authenticated のまま', async (_label, arrange) => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    arrange()
+    renderAuthWithSpeed(SEEDED_1_5())
+
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    await flush()
+
+    expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    expect(screen.getByTestId('speed').textContent).toBe('1.5')
+  })
+
+  test('web-dec-130: 取得が未解決のままでも authenticated になり、login の Promise は決着し、起動時の回収も始まる（写しを await しない）', async () => {
+    const pending = deferred<Result<unknown, ApiFailure>>()
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: AUTH_B('u-b') })
+    gw.respondWith('GET', PREFS_PATH, () => pending.promise)
+    renderAuthWithSpeed()
+
+    // 起動時（refreshMe）: 取得が保留でも authenticated になり、回収が始まる。
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    await waitFor(() => expect(reclaimAudioCaches).toHaveBeenCalledTimes(1))
+    expect(callsTo('GET', PREFS_PATH)).toHaveLength(1)
+
+    // login（establish）: 取得が保留のままでも login の Promise が { ok: true } で決着する。
+    let settled: Result<void, ApiFailure> | undefined
+    await act(async () => {
+      void auth.login('bob', 'pw').then((result) => {
+        settled = result
+      })
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    })
+    expect(settled).toEqual({ ok: true, value: undefined })
+    expect(screen.getByTestId('user')).toHaveTextContent('bob')
+
+    await act(async () => {
+      pending.resolve({ ok: true, value: prefsDto(1.0) })
+    })
+  })
+})
+
+describe('遷移④: 主体の交代と写しの順序 (verifies: web-dec-130)', () => {
+  async function signInAWithServerSpeed(store: KeyValueStore, serverSpeedForA: number, expectedText: string) {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: AUTH_B('u-b') })
+    respondPrefs(serverSpeedForA)
+    renderAuthWithSpeed(store)
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    await speedIs(expectedText)
+    await flush()
+  }
+
+  test('web-dec-130: A の後始末（手順 (c)）が B の写しの後に走っても、registry は B の 1.75 のまま', async () => {
+    await signInAWithServerSpeed(SEEDED_1_5(), 1.25, '1.25')
+    const stopPlayback = deferred<void>()
+    act(() => {
+      auth.registerSubjectLeaveStep(() => stopPlayback.promise)
+    })
+    respondPrefs(1.75)
+
+    await userEvent.click(screen.getByText('login'))
+    await speedIs('1.75')
+    expect(clearManagedServiceWorkerCaches).not.toHaveBeenCalled()
+
+    await act(async () => {
+      stopPlayback.resolve()
+    })
+    await waitFor(() => expect(clearManagedServiceWorkerCaches).toHaveBeenCalled())
+    await flush()
+
+    expect(screen.getByTestId('speed').textContent).toBe('1.75')
+  })
+
+  test('web-dec-130: A の (c) より前に B が速度を 2.0 に変えたら、A の (c) の後も 2.0（古い写しの値 1.75 に戻らない）', async () => {
+    await signInAWithServerSpeed(SEEDED_1_5(), 1.25, '1.25')
+    const stopPlayback = deferred<void>()
+    act(() => {
+      auth.registerSubjectLeaveStep(() => stopPlayback.promise)
+    })
+    respondPrefs(1.75)
+    await userEvent.click(screen.getByText('login'))
+    await speedIs('1.75')
+
+    act(() => {
+      prefs.set(SPEED, 2.0)
+    })
+    await speedIs('2')
+    await act(async () => {
+      stopPlayback.resolve()
+    })
+    await waitFor(() => expect(clearManagedServiceWorkerCaches).toHaveBeenCalled())
+    await flush()
+
+    expect(screen.getByTestId('speed').textContent).toBe('2')
+  })
+
+  test('web-dec-130: A の (c) が先に終わる通常の順序では、A の値は B へ残らず、その後の B の写し 1.75 が書かれる', async () => {
+    await signInAWithServerSpeed(SEEDED_1_5(), 1.25, '1.25')
+    const pending = deferred<Result<unknown, ApiFailure>>()
+    gw.respondWith('GET', PREFS_PATH, () => pending.promise)
+
+    await userEvent.click(screen.getByText('login'))
+    await waitFor(() => expect(clearManagedServiceWorkerCaches).toHaveBeenCalled())
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(2))
+    // B の取得が届くまでの間、A の 1.25 は B の端末に残らない。
+    await speedIs('1')
+
+    await act(async () => {
+      pending.resolve({ ok: true, value: prefsDto(1.75) })
+    })
+
+    await speedIs('1.75')
+  })
+
+  test('web-dec-130: A の取得が未解決のまま B が login し、B の写しの後に A の取得が届いても、registry は B の 1.75（A の 0.5 を書かない）', async () => {
+    const aGet = deferred<Result<unknown, ApiFailure>>()
+    let prefsCalls = 0
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: AUTH_B('u-b') })
+    gw.respondWith('GET', PREFS_PATH, () => {
+      prefsCalls += 1
+      return prefsCalls === 1 ? aGet.promise : Promise.resolve({ ok: true, value: prefsDto(1.75) })
+    })
+    renderAuthWithSpeed()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+
+    await userEvent.click(screen.getByText('login'))
+    await speedIs('1.75')
+    await act(async () => {
+      aGet.resolve({ ok: true, value: prefsDto(0.5) })
+    })
+    await flush()
+
+    expect(screen.getByTestId('speed').textContent).toBe('1.75')
   })
 })
