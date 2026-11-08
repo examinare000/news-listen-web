@@ -709,3 +709,52 @@ describe('createCatalogGateway.completeOnboarding', () => {
     expect(!result.ok && result.failure).toBe(failure)
   })
 })
+
+describe('createCatalogGateway.getGenerationQuota (web-query-catalog-08)', () => {
+  const QUOTA_PATH = '/api/backend/users/me/generation-quota'
+
+  test('GET を 1 回呼び、limit・remaining はそのまま、monthly の reset_at を resetAt に写す（used と日次の reset_at は写さない）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: {
+        limit: 10,
+        used: 5,
+        remaining: 5,
+        reset_at: '2026-07-21T00:00:00Z',
+        monthly: { limit: 100, used: 50, remaining: 50, reset_at: '2026-08-01T00:00:00Z' },
+      },
+    })
+
+    const result = await createCatalogGateway(gateway).getGenerationQuota()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: QUOTA_PATH, body: undefined }])
+    expect(result).toEqual({
+      ok: true,
+      value: { limit: 10, remaining: 5, monthly: { limit: 100, remaining: 50, resetAt: '2026-08-01T00:00:00Z' } },
+    })
+  })
+
+  test('monthly が欠落していれば null にする。無制限の remaining: null もそのまま写す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', QUOTA_PATH, {
+      ok: true,
+      value: { limit: 0, used: 0, remaining: null, reset_at: '2026-07-21T00:00:00Z' },
+    })
+
+    const result = await createCatalogGateway(gateway).getGenerationQuota()
+
+    expect(result).toEqual({ ok: true, value: { limit: 0, remaining: null, monthly: null } })
+  })
+
+  test('404 などの failure は変えずに同じ参照で返す', async () => {
+    const failure: ApiFailure = { kind: 'not_found' }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', QUOTA_PATH, { ok: false, failure })
+
+    const result = await createCatalogGateway(gateway).getGenerationQuota()
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.failure).toBe(failure)
+  })
+})

@@ -1,6 +1,6 @@
 // Catalog のリードモデル（web-model-catalog）: EpisodeRecord から、一覧のカードと詳細の view を作る。
 // 呼ぶたびに新しく作った値で、record とその入れ子と参照を共有せず、全深さで凍結する。
-import type { EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { EpisodeRecord, QuotaRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
 import type {
   Episode,
@@ -189,4 +189,18 @@ export function toFeaturedSourceView(ref: FeaturedSourceRef): FeaturedSourceView
 
 export function toOnboardingView(status: { readonly completed: boolean }): OnboardingView {
   return seal({ completed: status.completed })
+}
+
+export interface QuotaView {
+  readonly limit: number
+  readonly remaining: number | null
+  readonly monthly: {
+    readonly limit: number
+    readonly remaining: number | null
+    readonly resetAt: string
+  } | null
+}
+
+export function toQuotaView(record: QuotaRecord): QuotaView {
+  return seal({ limit: record.limit, remaining: record.remaining, monthly: record.monthly })
 }

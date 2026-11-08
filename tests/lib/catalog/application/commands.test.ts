@@ -86,6 +86,7 @@ function harness(handlers: {
     },
     getFeaturedSources: unexpected('getFeaturedSources'),
     getOnboardingStatus: unexpected('getOnboardingStatus'),
+    getGenerationQuota: unexpected('getGenerationQuota'),
     completeOnboarding: () => {
       completeCalls.push(completeCalls.length + 1)
       return handlers.complete?.() ?? Promise.reject(new Error('completeOnboarding を想定していない'))

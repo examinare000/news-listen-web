@@ -1,4 +1,4 @@
-// Catalog の query（読み取りだけ）: web-query-catalog-01〜07（購読一覧・おすすめ・onboarding の状態を含む）。失敗は Result で返し、toast は page が出す。
+// Catalog の query（読み取りだけ）: web-query-catalog-01〜08（購読一覧・おすすめ・onboarding の状態を含む）。失敗は Result で返し、toast は page が出す。
 import type { CatalogGateway } from '@/lib/catalog/application/ports'
 import {
   toEpisodeCardView,
@@ -7,6 +7,7 @@ import {
   toFeedFailed,
   toFeedLoaded,
   toOnboardingView,
+  toQuotaView,
   toSourceView,
   toStarredOk,
   type EpisodeCardView,
@@ -15,6 +16,7 @@ import {
   type FeedOutcome,
   type FeedView,
   type OnboardingView,
+  type QuotaView,
   type SourceView,
   type StarredOutcome,
   type StarredStale,
@@ -38,6 +40,7 @@ export interface CatalogQueries {
   listSources(): Promise<Result<ReadonlyArray<SourceView>, ApiFailure>>
   getFeaturedSources(): Promise<Result<ReadonlyArray<FeaturedSourceView>, ApiFailure>>
   getOnboardingStatus(): Promise<Result<OnboardingView, ApiFailure>>
+  getGenerationQuota(): Promise<Result<QuotaView, ApiFailure>>
 }
 
 function toStale(outcome: StarredOutcome): StarredStale {
@@ -72,6 +75,10 @@ export function createCatalogQueries({ gateway }: { readonly gateway: CatalogGat
     async getOnboardingStatus() {
       const result = await gateway.getOnboardingStatus()
       return result.ok ? { ok: true, value: toOnboardingView(result.value) } : result
+    },
+    async getGenerationQuota() {
+      const result = await gateway.getGenerationQuota()
+      return result.ok ? { ok: true, value: toQuotaView(result.value) } : result
     },
     getFeed() {
       const requestId = ++latestRequest
