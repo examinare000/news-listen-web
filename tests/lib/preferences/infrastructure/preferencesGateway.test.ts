@@ -27,7 +27,7 @@ describe('createPreferencesGateway.get (web-slice-prefs-01)', () => {
     expect(gateway.calls).toEqual([{ method: 'GET', path: PREFS_PATH, body: undefined }])
     expect(result).toEqual({
       ok: true,
-      value: { defaultDifficulty: 'ielts_7', weeklyGoal: 5, digest: { enabled: true, articleCount: 8 } },
+      value: { defaultDifficulty: 'ielts_7', weeklyGoal: 5, defaultPlaybackSpeed: 1.5, digest: { enabled: true, articleCount: 8 } },
     })
   })
 
@@ -41,7 +41,7 @@ describe('createPreferencesGateway.get (web-slice-prefs-01)', () => {
 
     expect(result).toEqual({
       ok: true,
-      value: { defaultDifficulty: 'toeic_250', weeklyGoal: null, digest: { enabled: true, articleCount: 8 } },
+      value: { defaultDifficulty: 'toeic_250', weeklyGoal: null, defaultPlaybackSpeed: 1.5, digest: { enabled: true, articleCount: 8 } },
     })
   })
 
@@ -52,6 +52,24 @@ describe('createPreferencesGateway.get (web-slice-prefs-01)', () => {
     const result = await createPreferencesGateway(gateway).get()
 
     expect(result.ok && result.value.weeklyGoal).toBe(4)
+  })
+
+  test('web-dec-12: default_playback_speed: 1.5 を defaultPlaybackSpeed: 1.5 に写す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', PREFS_PATH, { ok: true, value: { ...DTO, default_playback_speed: 1.5 } })
+
+    const result = await createPreferencesGateway(gateway).get()
+
+    expect(result.ok && result.value.defaultPlaybackSpeed).toBe(1.5)
+  })
+
+  test('web-dec-12: 値域外の default_playback_speed（1.2）も検査せずそのまま写す（正規化は application の責務）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', PREFS_PATH, { ok: true, value: { ...DTO, default_playback_speed: 1.2 } })
+
+    const result = await createPreferencesGateway(gateway).get()
+
+    expect(result.ok && result.value.defaultPlaybackSpeed).toBe(1.2)
   })
 
   test('web-slice-prefs-01: API 失敗は変えずに同じ参照で ok: false にする', async () => {
@@ -110,5 +128,28 @@ describe('createPreferencesGateway.patch (web-slice-prefs-01)', () => {
     gateway.respondWith('PUT', PREFS_PATH, () => Promise.reject(new Error('boom')))
 
     await expect(createPreferencesGateway(gateway).patch({ kind: 'weeklyGoal', value: 3 })).rejects.toThrow('boom')
+  })
+})
+
+describe('createPreferencesGateway.patch: 既定の再生速度 (web-dec-12)', () => {
+  test('web-dec-12: defaultPlaybackSpeed は PUT で { default_playback_speed } の 1 field だけを送り、成功は void', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('PUT', PREFS_PATH, { ok: true, value: DTO })
+
+    const result = await createPreferencesGateway(gateway).patch({ kind: 'defaultPlaybackSpeed', value: 1.5 })
+
+    expect(gateway.calls).toEqual([{ method: 'PUT', path: PREFS_PATH, body: { default_playback_speed: 1.5 } }])
+    expect(result).toEqual({ ok: true, value: undefined })
+  })
+
+  test('web-dec-12: 速度の保存の API 失敗は変えずに同じ参照で ok: false にする', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const gateway = createGatewayDouble()
+    gateway.respond('PUT', PREFS_PATH, { ok: false, failure })
+
+    const result = await createPreferencesGateway(gateway).patch({ kind: 'defaultPlaybackSpeed', value: 1.5 })
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.failure).toBe(failure)
   })
 })

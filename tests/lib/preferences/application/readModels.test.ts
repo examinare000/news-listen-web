@@ -11,6 +11,7 @@ function record(overrides: Partial<ServerPreferencesRecord> = {}): ServerPrefere
   return {
     defaultDifficulty: 'ielts_7',
     weeklyGoal: 5,
+    defaultPlaybackSpeed: 1.0,
     digest: { enabled: true, articleCount: 10 },
     ...overrides,
   }
@@ -27,7 +28,7 @@ describe('toServerPreferencesView (web-model-prefs)', () => {
       record({ defaultDifficulty: 'toeic_250', weeklyGoal: null, digest: { enabled: false, articleCount: 4 } }),
     )
 
-    expect(view).toEqual({ defaultDifficulty: 'toeic_600', weeklyGoal: 3, digest: { enabled: false, articleCount: 4 } })
+    expect(view).toEqual({ defaultDifficulty: 'toeic_600', weeklyGoal: 3, defaultPlaybackSpeed: 1.0, digest: { enabled: false, articleCount: 4 } })
   })
 
   test.each(['toeic_600', 'toeic_900', 'ielts_55', 'ielts_7', 'eiken_2', 'eiken_p1'])(
@@ -62,7 +63,7 @@ describe('toServerPreferencesView (web-model-prefs)', () => {
   })
 
   test('web-model-prefs: record を後から書き換えても、すでに返した値は変わらない。record 自体も書き換えない', () => {
-    const raw = { defaultDifficulty: 'eiken_2', weeklyGoal: 7 as const, digest: { enabled: true, articleCount: 10 } }
+    const raw = { defaultDifficulty: 'eiken_2', weeklyGoal: 7 as const, defaultPlaybackSpeed: 1.0, digest: { enabled: true, articleCount: 10 } }
     const before = structuredClone(raw)
 
     const view = toServerPreferencesView(raw)
@@ -70,6 +71,30 @@ describe('toServerPreferencesView (web-model-prefs)', () => {
 
     raw.defaultDifficulty = 'toeic_900'
     raw.digest.articleCount = 1
-    expect(view).toEqual({ defaultDifficulty: 'eiken_2', weeklyGoal: 7, digest: { enabled: true, articleCount: 10 } })
+    expect(view).toEqual({ defaultDifficulty: 'eiken_2', weeklyGoal: 7, defaultPlaybackSpeed: 1.0, digest: { enabled: true, articleCount: 10 } })
+  })
+})
+
+describe('toServerPreferencesView: 既定の再生速度 (web-contract-20)', () => {
+  test('web-contract-20: 8 段の外の値（1.2）と型違い（文字列）は 1.0 に倒す', () => {
+    expect(toServerPreferencesView(record({ defaultPlaybackSpeed: 1.2 })).defaultPlaybackSpeed).toBe(1.0)
+    const wrongType = '1.5' as unknown as number
+    expect(toServerPreferencesView(record({ defaultPlaybackSpeed: wrongType })).defaultPlaybackSpeed).toBe(1.0)
+  })
+
+  test('web-contract-20: 8 段の値（1.75）はそのまま写す', () => {
+    expect(toServerPreferencesView(record({ defaultPlaybackSpeed: 1.75 })).defaultPlaybackSpeed).toBe(1.75)
+  })
+
+  test('web-contract-20: 速度を含めても呼ぶたびに別の凍結した値を返し、record と参照を共有しない', () => {
+    const raw = record({ defaultPlaybackSpeed: 1.5 })
+
+    const first = toServerPreferencesView(raw)
+    const second = toServerPreferencesView(raw)
+
+    expect(isDeepFrozen(first)).toBe(true)
+    expect(first).not.toBe(raw)
+    expect(first).not.toBe(second)
+    expect(first.defaultPlaybackSpeed).toBe(1.5)
   })
 })

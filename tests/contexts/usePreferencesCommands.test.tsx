@@ -7,9 +7,13 @@
 import React from 'react'
 import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
+import { act } from '@testing-library/react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
+import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
 import { usePreferencesCommands } from '@/contexts/usePreferencesCommands'
 import type { ApiGateway } from '@/lib/api/gateway'
+import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 
 const override = vi.hoisted(() => ({ gateway: undefined as ApiGateway | undefined }))
@@ -31,12 +35,39 @@ beforeEach(() => {
 })
 
 const PREFS_PATH = '/api/backend/settings/preferences'
+// 記述子は infrastructure の束縛から取る（domain を値で import しない）。
+const SPEED = LOCAL_SETTING_BINDINGS.defaultPlaybackSpeed.setting
+
+// localStorage に値を残さない in-memory の KeyValueStore。
+const memoryStore = (): KeyValueStore => {
+  const data = new Map<string, string>()
+  return {
+    get: (key) => data.get(key) ?? null,
+    set: (key, value) => {
+      data.set(key, value)
+      return true
+    },
+    remove: (key) => {
+      data.delete(key)
+    },
+  }
+}
+
+// hook は usePreferences() を読むので PreferencesProvider の内側で呼ぶ。
+const wrapperFor = (gateway: ApiGateway) => {
+  const store = memoryStore()
+  return ({ children }: { children: React.ReactNode }) => (
+    <PreferencesProvider store={store}>
+      <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>
+    </PreferencesProvider>
+  )
+}
 
 describe('usePreferencesCommands (composition root)', () => {
   test('再描画しても同じ object を返す（gateway が同じ間は作り直さず、連番の closure を保つ）', () => {
     const gateway = createGatewayDouble()
     const { result, rerender } = renderHook(() => usePreferencesCommands(), {
-      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+      wrapper: wrapperFor(gateway),
     })
     const first = result.current
 
@@ -51,7 +82,7 @@ describe('usePreferencesCommands (composition root)', () => {
     const second = createGatewayDouble()
     override.gateway = first
     const { result, rerender } = renderHook(() => usePreferencesCommands(), {
-      wrapper: ({ children }) => <ApiClientProvider gateway={first}>{children}</ApiClientProvider>,
+      wrapper: wrapperFor(first),
     })
     const before = result.current
 
@@ -67,7 +98,7 @@ describe('usePreferencesCommands (composition root)', () => {
     const gateway = createGatewayDouble()
     gateway.respond('PUT', PREFS_PATH, { ok: true, value: {} })
     const { result } = renderHook(() => usePreferencesCommands(), {
-      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+      wrapper: wrapperFor(gateway),
     })
 
     const saved = await result.current.setDefaultDifficulty('eiken_p1')
@@ -81,7 +112,7 @@ describe('usePreferencesCommands (composition root)', () => {
     const settle: Array<() => void> = []
     gateway.respondWith('PUT', PREFS_PATH, () => new Promise((resolve) => settle.push(() => resolve({ ok: true, value: {} }))))
     const { result, rerender } = renderHook(() => usePreferencesCommands(), {
-      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+      wrapper: wrapperFor(gateway),
     })
 
     const before = result.current.setDefaultDifficulty('eiken_p1')
@@ -92,5 +123,74 @@ describe('usePreferencesCommands (composition root)', () => {
 
     expect(await before).toEqual({ ok: true, value: { stale: true } })
     expect(await after).toEqual({ ok: true, value: { stale: false } })
+  })
+})
+
+describe('usePreferencesCommands: registry の get・set を渡す (web-dec-129)', () => {
+  test('web-dec-129: registry の set を呼んだ後も同じ object を返す（value 全体を deps にして連番を切らない）', () => {
+    const gateway = createGatewayDouble()
+    const { result } = renderHook(() => ({ commands: usePreferencesCommands(), prefs: usePreferences() }), {
+      wrapper: wrapperFor(gateway),
+    })
+    const before = result.current.commands
+    const valueBefore = result.current.prefs
+
+    act(() => result.current.prefs.set(SPEED, 1.5))
+
+    // 前提の確認: set で registry の value は作り直される。それでも command は同じ object。
+    expect(result.current.prefs).not.toBe(valueBefore)
+    expect(result.current.commands).toBe(before)
+  })
+
+  test('web-dec-129: setDefaultPlaybackSpeed(1.5) が実物の registry の既定速度を 1.5 にし、PUT { default_playback_speed: 1.5 } を出す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    const { result } = renderHook(() => ({ commands: usePreferencesCommands(), prefs: usePreferences() }), {
+      wrapper: wrapperFor(gateway),
+    })
+    expect(result.current.prefs.get(SPEED)).toBe(1)
+
+    let saved: Awaited<ReturnType<typeof result.current.commands.setDefaultPlaybackSpeed>> | undefined
+    await act(async () => {
+      saved = await result.current.commands.setDefaultPlaybackSpeed(1.5)
+    })
+
+    expect(result.current.prefs.get(SPEED)).toBe(1.5)
+    expect(gateway.calls).toEqual([{ method: 'PUT', path: PREFS_PATH, body: { default_playback_speed: 1.5 } }])
+    expect(saved).toEqual({ ok: true, value: { stale: false } })
+  })
+
+  test('web-dec-129: 難易度と速度を交互に出し逆順に決着しても、hook 経由で stale 判定が保たれる（後の要求が最新、先の要求は stale）', async () => {
+    const gateway = createGatewayDouble()
+    const settle: Array<() => void> = []
+    gateway.respondWith('PUT', PREFS_PATH, () => new Promise((resolve) => settle.push(() => resolve({ ok: true, value: {} }))))
+    const { result } = renderHook(() => ({ commands: usePreferencesCommands(), prefs: usePreferences() }), {
+      wrapper: wrapperFor(gateway),
+    })
+
+    let d1!: ReturnType<typeof result.current.commands.setDefaultDifficulty>
+    let s1!: ReturnType<typeof result.current.commands.setDefaultPlaybackSpeed>
+    let d2!: ReturnType<typeof result.current.commands.setDefaultDifficulty>
+    let s2!: ReturnType<typeof result.current.commands.setDefaultPlaybackSpeed>
+    act(() => {
+      d1 = result.current.commands.setDefaultDifficulty('eiken_p1')
+      s1 = result.current.commands.setDefaultPlaybackSpeed(1.25)
+    })
+    // registry の set で value が変わって再描画された後も、連番は切れない。
+    act(() => {
+      d2 = result.current.commands.setDefaultDifficulty('ielts_7')
+      s2 = result.current.commands.setDefaultPlaybackSpeed(1.75)
+    })
+    await act(async () => {
+      settle[3]()
+      settle[2]()
+      settle[1]()
+      settle[0]()
+    })
+
+    expect(await s2).toEqual({ ok: true, value: { stale: false } })
+    expect(await d2).toEqual({ ok: true, value: { stale: false } })
+    expect(await s1).toEqual({ ok: true, value: { stale: true } })
+    expect(await d1).toEqual({ ok: true, value: { stale: true } })
   })
 })

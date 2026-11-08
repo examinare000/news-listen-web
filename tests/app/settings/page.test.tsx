@@ -124,6 +124,7 @@ describe('SettingsPage — save settings', () => {
   })
 
   test('Given speed changed, updates localStorage', async () => {
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
     renderSettingsPage()
     const speedSelect = screen.getByRole('combobox', { name: /速度|speed/i })
 
@@ -150,6 +151,7 @@ describe('SettingsPage — save settings', () => {
   })
 
   test('速度を変えると、既定速度が Preferences の consumer へ即座に届く', async () => {
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
     // Wrap SettingsPage with PreferencesProvider and read back the value to verify the single set
     let capturedSpeed: number | null = null
 
@@ -1219,5 +1221,138 @@ describe('SettingsPage — 未知の難易度の前方互換 (web-slice-prefs-01
     expect(diffSelect.value).toBe('toeic_600')
     expect(screen.queryByText(/設定の読み込みに失敗しました/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /設定を再読み込み/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('SettingsPage — 既定の再生速度をサーバーへ保存する (web-dec-12・web-dec-14・web-dec-132)', () => {
+  const SPEED_FAILED = /再生速度の保存に失敗しました/
+  const speedSelect = () => screen.getByRole<HTMLSelectElement>('combobox', { name: /速度|speed/i })
+  const prefsWithSpeed = (speed: number) => ({ ...PREFS_TOEIC_600, default_playback_speed: speed })
+
+  function registerBaseline() {
+    gw.respond('GET', QUOTA_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', SUGGESTION_PATH, { ok: false, failure: { kind: 'not_found' } })
+  }
+
+  /** 画面の取得が済む（サーバーの値が registry へ写る）のを待ってから操作する。 */
+  async function renderLoaded(serverSpeed: number) {
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: true, value: prefsWithSpeed(serverSpeed) })
+    renderSettingsPage()
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    await waitFor(() => expect(speedSelect().value).toBe(String(serverSpeed)))
+  }
+
+  test('web-dec-12: 速度を変えると PUT の body が { default_playback_speed: 1.5 } の 1 field で 1 件出る', async () => {
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+    await renderLoaded(1.0)
+
+    await userEvent.selectOptions(speedSelect(), '1.5')
+
+    await waitFor(() => expect(callsTo('PUT', PREFS_PATH)).toHaveLength(1))
+    expect(callsTo('PUT', PREFS_PATH)[0].body).toEqual({ default_playback_speed: 1.5 })
+    expect(speedSelect().value).toBe('1.5')
+    expect(screen.queryByText(SPEED_FAILED)).not.toBeInTheDocument()
+  })
+
+  test('web-dec-14 web-dec-132: PUT が API 失敗なら、選択と localStorage は変更前（サーバーの 1.25）へ戻り、toast が error で 1 回出る', async () => {
+    gw.respond('PUT', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+    await renderLoaded(1.25)
+
+    await userEvent.selectOptions(speedSelect(), '1.5')
+
+    expect(await screen.findByText(SPEED_FAILED)).toBeInTheDocument()
+    expect(screen.getAllByText(SPEED_FAILED)).toHaveLength(1)
+    await waitFor(() => expect(speedSelect().value).toBe('1.25'))
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.25))
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(1)
+  })
+
+  test('web-dec-14 web-dec-132: 最新の PUT が reject しても、同じ戻しと toast が 1 回出る', async () => {
+    gw.respondWith('PUT', PREFS_PATH, () => Promise.reject(new Error('network down')))
+    await renderLoaded(1.25)
+
+    await userEvent.selectOptions(speedSelect(), '1.5')
+
+    expect(await screen.findByText(SPEED_FAILED)).toBeInTheDocument()
+    expect(screen.getAllByText(SPEED_FAILED)).toHaveLength(1)
+    await waitFor(() => expect(speedSelect().value).toBe('1.25'))
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.25))
+  })
+
+  test('web-dec-14: 先の PUT の失敗が後の PUT の成功の後に届いても、値は戻らず toast も出ない', async () => {
+    let failFirst: () => void = () => {}
+    gw.respondWith('PUT', PREFS_PATH, (call) => {
+      const body = call.body as { default_playback_speed: number }
+      if (body.default_playback_speed === 1.25) {
+        return new Promise<GatewayResult>((resolve) => {
+          failFirst = () => resolve({ ok: false, failure: { kind: 'server', status: 500 } })
+        })
+      }
+      return Promise.resolve({ ok: true, value: {} })
+    })
+    await renderLoaded(1.0)
+
+    await userEvent.selectOptions(speedSelect(), '1.25')
+    await userEvent.selectOptions(speedSelect(), '1.75')
+    await waitFor(() => expect(callsTo('PUT', PREFS_PATH)).toHaveLength(2))
+    failFirst()
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(speedSelect().value).toBe('1.75')
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.75))
+    expect(screen.queryByText(SPEED_FAILED)).not.toBeInTheDocument()
+  })
+
+  test('web-dec-12 web-dec-14: 設定の取得が成功したら、端末の 1.0 がサーバーの 1.5 に置き換わる', async () => {
+    await renderLoaded(1.5)
+
+    expect(speedSelect().value).toBe('1.5')
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.5))
+  })
+
+  test('web-dec-14: 端末に残っていた 1.5 は、取得が成功したらサーバーの 1.0 に捨てられる', async () => {
+    localStorage.setItem('default_playback_speed', JSON.stringify(1.5))
+
+    await renderLoaded(1.0)
+
+    expect(speedSelect().value).toBe('1')
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1))
+  })
+
+  test('web-dec-14 web-dec-132: 取得が失敗したら、速度は端末の 1.5 のまま。再試行ボタンは 1 個で、読み込み失敗の toast は 1 回', async () => {
+    localStorage.setItem('default_playback_speed', JSON.stringify(1.5))
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+
+    renderSettingsPage()
+
+    // getByRole は複数一致で throw する（速度専用の再試行ボタンを足していれば落ちる）。
+    const retry = await screen.findByRole('button', { name: /設定を再読み込み/ })
+    expect(retry).toBeInTheDocument()
+    expect(speedSelect().value).toBe('1.5')
+    // 文言は toast 1 + インラインの表示 1 の 2 つだけ（速度専用の toast・文言を足していれば増える）。
+    expect(screen.getAllByText(/設定の読み込みに失敗しました/)).toHaveLength(2)
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(1.5))
+  })
+
+  test('web-dec-14 web-dec-132: 再試行が成功すると、表示が消え、速度がサーバーの 2.0 になる', async () => {
+    localStorage.setItem('default_playback_speed', JSON.stringify(1.5))
+    registerBaseline()
+    gw.respondWith('GET', PREFS_PATH, () =>
+      Promise.resolve(
+        callsTo('GET', PREFS_PATH).length === 1
+          ? { ok: false, failure: { kind: 'server', status: 500 } }
+          : { ok: true, value: prefsWithSpeed(2.0) },
+      ),
+    )
+    renderSettingsPage()
+    await userEvent.click(await screen.findByRole('button', { name: /設定を再読み込み/ }))
+
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(2))
+    await waitFor(() => expect(screen.queryByRole('button', { name: /設定を再読み込み/ })).not.toBeInTheDocument())
+    expect(speedSelect().value).toBe('2')
+    expect(localStorage.getItem('default_playback_speed')).toBe(JSON.stringify(2))
   })
 })

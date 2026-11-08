@@ -82,7 +82,7 @@ describe('usePreferencesQueries (composition root)', () => {
     expect(gateway.calls).toEqual([{ method: 'GET', path: PREFS_PATH, body: undefined }])
     expect(loaded).toEqual({
       ok: true,
-      value: { defaultDifficulty: 'toeic_600', weeklyGoal: 3, digest: { enabled: true, articleCount: 10 } },
+      value: { defaultDifficulty: 'toeic_600', weeklyGoal: 3, defaultPlaybackSpeed: 1, digest: { enabled: true, articleCount: 10 } },
     })
   })
 })

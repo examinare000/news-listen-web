@@ -5,6 +5,7 @@ import { usePreferences } from '@/contexts/PreferencesProvider'
 import { useStreak } from '@/contexts/StreakContext'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
+import type { PlaybackSpeed } from '@/lib/playback/domain/session'
 import { useToast } from '@/components/ui/Toast'
 import { useApiClient } from '@/contexts/ApiClientProvider'
 import { usePreferencesCommands } from '@/contexts/usePreferencesCommands'
@@ -56,6 +57,8 @@ export default function SettingsPage() {
       const view = result.value
       setDefaultDifficulty(view.defaultDifficulty)
       setWeeklyGoal(view.weeklyGoal)
+      // サーバーが正本（web-dec-12）。端末に残る値は捨てる。読み込み失敗では触れない。
+      set(defaultPlaybackSpeed, view.defaultPlaybackSpeed)
       setPreferencesLoadError(false)
     } catch {
       // Fallback to DEFAULT_DIFFICULTY if fetch fails
@@ -63,7 +66,7 @@ export default function SettingsPage() {
       setPreferencesLoadError(true)
       showToast('設定の読み込みに失敗しました', 'error')
     }
-  }, [queries, showToast])
+  }, [queries, set, showToast])
 
   useEffect(() => {
     void loadPreferences()
@@ -175,6 +178,21 @@ export default function SettingsPage() {
     } catch {
       setDefaultDifficulty(previousDifficulty)
       showToast('難易度設定の保存に失敗しました', 'error')
+    }
+  }
+
+  // 端末へは command が即時に書く。保存に失敗したら registry を変更前の値へ戻す（stale な結果は何もしない）。
+  async function handleSpeedChange(newSpeed: PlaybackSpeed) {
+    const previousSpeed = get(defaultPlaybackSpeed)
+    try {
+      const result = await commands.setDefaultPlaybackSpeed(newSpeed)
+      if (!result.ok) {
+        set(defaultPlaybackSpeed, previousSpeed)
+        showToast('再生速度の保存に失敗しました', 'error')
+      }
+    } catch {
+      set(defaultPlaybackSpeed, previousSpeed)
+      showToast('再生速度の保存に失敗しました', 'error')
     }
   }
 
@@ -360,7 +378,7 @@ export default function SettingsPage() {
               id="default-speed"
               className="select-input"
               value={get(defaultPlaybackSpeed)}
-              onChange={(e) => set(defaultPlaybackSpeed, defaultPlaybackSpeed.normalize(Number(e.target.value)))}
+              onChange={(e) => void handleSpeedChange(defaultPlaybackSpeed.normalize(Number(e.target.value)))}
             >
               {PLAYBACK_SPEEDS.map((s) => (
                 <option key={s} value={s}>

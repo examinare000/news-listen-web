@@ -31,6 +31,7 @@ function fake(get: () => Promise<Result<ServerPreferencesRecord, ApiFailure>>): 
 const record = (overrides: Partial<ServerPreferencesRecord> = {}): ServerPreferencesRecord => ({
   defaultDifficulty: 'ielts_7',
   weeklyGoal: 5,
+  defaultPlaybackSpeed: 1.0,
   digest: { enabled: true, articleCount: 10 },
   ...overrides,
 })
@@ -59,8 +60,19 @@ describe('getServerPreferences (web-query-prefs-02)', () => {
     expect(gateway.calls).toEqual(['get'])
     expect(result).toEqual({
       ok: true,
-      value: { defaultDifficulty: 'eiken_p1', weeklyGoal: 5, digest: { enabled: true, articleCount: 10 } },
+      value: { defaultDifficulty: 'eiken_p1', weeklyGoal: 5, defaultPlaybackSpeed: 1.0, digest: { enabled: true, articleCount: 10 } },
     })
+  })
+
+  test('web-contract-20: gateway の既定速度が 8 段の外（1.2）でも ok のまま 1.0 に倒す。8 段の値（1.75）はそのまま', async () => {
+    const outside = fake(() => Promise.resolve({ ok: true, value: record({ defaultPlaybackSpeed: 1.2 }) }))
+    const inside = fake(() => Promise.resolve({ ok: true, value: record({ defaultPlaybackSpeed: 1.75 }) }))
+
+    const normalized = await createPreferencesQueries({ gateway: outside }).getServerPreferences()
+    const passed = await createPreferencesQueries({ gateway: inside }).getServerPreferences()
+
+    expect(normalized.ok && normalized.value.defaultPlaybackSpeed).toBe(1.0)
+    expect(passed.ok && passed.value.defaultPlaybackSpeed).toBe(1.75)
   })
 
   test.each([
@@ -113,7 +125,7 @@ describe('getServerPreferences の値 (web-check-06)', () => {
   })
 
   test('web-check-06: gateway の値を後から書き換えても、すでに返した値は変わらない', async () => {
-    const raw = { defaultDifficulty: 'ielts_7', weeklyGoal: 5 as const, digest: { enabled: true, articleCount: 10 } }
+    const raw = { defaultDifficulty: 'ielts_7', weeklyGoal: 5 as const, defaultPlaybackSpeed: 1.0, digest: { enabled: true, articleCount: 10 } }
     const queries = createPreferencesQueries({ gateway: fake(() => Promise.resolve({ ok: true, value: raw })) })
     const result = await queries.getServerPreferences()
     if (!result.ok) throw new Error('成功を期待した')
