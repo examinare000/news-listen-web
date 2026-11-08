@@ -5,12 +5,15 @@
 // RED 理由（実装前）: `@/lib/catalog/application/commands` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { createCatalogCommands, UNSTAR_IGNORED } from '@/lib/catalog/application/commands'
-import type { CatalogGateway } from '@/lib/catalog/application/ports'
+import type { AddSourceGatewayFailure, CatalogGateway } from '@/lib/catalog/application/ports'
+import type { SourceRef } from '@/lib/catalog/domain/source'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
 
 type StarResult = Result<{ readonly remaining: number | null }, ApiFailure>
 type VoidResult = Result<void, ApiFailure>
+type AddResult = Result<ReadonlyArray<SourceRef>, AddSourceGatewayFailure>
+type SourcesResult = Result<ReadonlyArray<SourceRef>, ApiFailure>
 
 interface Deferred<T> {
   readonly promise: Promise<T>
@@ -33,16 +36,26 @@ interface Harness {
   readonly starCalls: Array<readonly unknown[]>
   readonly unstarCalls: string[]
   readonly dismissCalls: string[]
+  /** addSource の引数（name, url）を呼出順に記録する */
+  readonly addCalls: Array<readonly unknown[]>
+  readonly deleteCalls: string[]
+  readonly completeCalls: number[]
 }
 
 function harness(handlers: {
   star?: (id: string, difficulty?: string) => Promise<StarResult>
   dismiss?: (id: string) => Promise<VoidResult>
   unstar?: (id: string, n: number) => Promise<VoidResult>
+  add?: (name: string, url: string) => Promise<AddResult>
+  remove?: (url: string) => Promise<SourcesResult>
+  complete?: () => Promise<VoidResult>
 }): Harness {
   const starCalls: Array<readonly unknown[]> = []
   const unstarCalls: string[] = []
   const dismissCalls: string[] = []
+  const addCalls: Array<readonly unknown[]> = []
+  const deleteCalls: string[] = []
+  const completeCalls: number[] = []
   const unexpected = (name: string) => () => Promise.reject(new Error(`${name} を想定していない`))
   const gateway: CatalogGateway = {
     listEpisodes: unexpected('listEpisodes'),
@@ -62,8 +75,23 @@ function harness(handlers: {
       unstarCalls.push(id)
       return handlers.unstar?.(id, unstarCalls.length) ?? Promise.reject(new Error('unstarArticle を想定していない'))
     },
+    getSources: unexpected('getSources'),
+    addSource: (name, url) => {
+      addCalls.push([name, url])
+      return handlers.add?.(name, url) ?? Promise.reject(new Error('addSource を想定していない'))
+    },
+    deleteSource: (url) => {
+      deleteCalls.push(url)
+      return handlers.remove?.(url) ?? Promise.reject(new Error('deleteSource を想定していない'))
+    },
+    getFeaturedSources: unexpected('getFeaturedSources'),
+    getOnboardingStatus: unexpected('getOnboardingStatus'),
+    completeOnboarding: () => {
+      completeCalls.push(completeCalls.length + 1)
+      return handlers.complete?.() ?? Promise.reject(new Error('completeOnboarding を想定していない'))
+    },
   }
-  return { gateway, starCalls, unstarCalls, dismissCalls }
+  return { gateway, starCalls, unstarCalls, dismissCalls, addCalls, deleteCalls, completeCalls }
 }
 
 const starOk = (remaining: number | null = null): StarResult => ({ ok: true, value: { remaining } })
@@ -319,5 +347,189 @@ describe('戻り値の凍結', () => {
     expect(starred.ok && Object.isFrozen(starred.value)).toBe(true)
     expect(Object.isFrozen(limited)).toBe(true)
     expect(!limited.ok && Object.isFrozen(limited.failure)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// addSource・subscribeFeatured・removeSource・completeOnboarding
+// ---------------------------------------------------------------------------
+const SOURCES: ReadonlyArray<SourceRef> = [
+  { name: 'A', url: 'https://a.example/rss' },
+  { name: 'B', url: 'https://b.example/rss' },
+]
+const addOk = (sources: ReadonlyArray<SourceRef> = SOURCES): AddResult => ({ ok: true, value: sources })
+
+describe('addSource (web-cmd-catalog-05)', () => {
+  test.each(['ftp://x', 'HTTP://x', ' https://x', '', '//x', 'example.com/rss'])(
+    'web-cmd-catalog-05 — 形式が不正な URL %j は gateway を呼ばず invalid_url を返す',
+    async (url) => {
+      const { gateway, addCalls } = harness({ add: () => Promise.resolve(addOk()) })
+
+      const result = await createCatalogCommands({ gateway }).addSource('n', url)
+
+      expect(addCalls).toHaveLength(0)
+      expect(result).toEqual({ ok: false, failure: { kind: 'invalid_url' } })
+    },
+  )
+
+  test('web-cmd-catalog-05 — 正しい URL は (name, url) をそのまま gateway へ 1 回渡し、購読一覧を返す。正方向対照: 同じ経路で不正 URL は 0 回', async () => {
+    const { gateway, addCalls } = harness({ add: () => Promise.resolve(addOk()) })
+    const commands = createCatalogCommands({ gateway })
+
+    const result = await commands.addSource('Feed', 'https://example.com/rss')
+
+    expect(addCalls).toEqual([['Feed', 'https://example.com/rss']])
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { name: 'A', url: 'https://a.example/rss' },
+        { name: 'B', url: 'https://b.example/rss' },
+      ],
+    })
+    await commands.addSource('Feed', 'ftp://example.com/rss')
+    expect(addCalls).toHaveLength(1)
+  })
+
+  test('web-cmd-catalog-05 — 成功の値は凍結した複製で、gateway の配列・要素と参照を共有せず、name・url だけを持つ', async () => {
+    const raw = [{ name: 'A', url: 'https://a.example/rss', extra: 'x' }] as unknown as ReadonlyArray<SourceRef>
+    const { gateway } = harness({ add: () => Promise.resolve(addOk(raw)) })
+
+    const result = await createCatalogCommands({ gateway }).addSource('n', 'https://a.example/rss')
+
+    if (!result.ok) throw new Error('成功のはず')
+    expect(result.value).not.toBe(raw)
+    expect(result.value[0]).not.toBe(raw[0])
+    expect(Object.isFrozen(result)).toBe(true)
+    expect(Object.isFrozen(result.value)).toBe(true)
+    expect(Object.isFrozen(result.value[0])).toBe(true)
+    expect(Object.keys(result.value[0])).toEqual(['name', 'url'])
+  })
+
+  test.each<[string, AddSourceGatewayFailure]>([
+    ['already_registered', { kind: 'already_registered' }],
+    ['invalid_feed', { kind: 'invalid_feed' }],
+    ['failed', { kind: 'failed', failure: { kind: 'server', status: 500 } }],
+  ])('web-cmd-catalog-05 — gateway の %s は変えずにそのまま返す（同じ参照）', async (_label, failure) => {
+    const { gateway } = harness({ add: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogCommands({ gateway }).addSource('n', 'https://example.com/rss')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+  })
+
+  test('web-cmd-catalog-05 — gateway の reject を握りつぶさずそのまま reject する', async () => {
+    const { gateway } = harness({ add: () => Promise.reject(new Error('boom add')) })
+    await expect(createCatalogCommands({ gateway }).addSource('n', 'https://example.com/rss')).rejects.toThrow('boom add')
+  })
+})
+
+describe('subscribeFeatured (web-cmd-catalog-05)', () => {
+  test('web-cmd-catalog-05 — URL を検査せず、ftp:// でも gateway を 1 回呼ぶ。正方向対照: 同じ値を addSource に渡すと呼ばない', async () => {
+    const { gateway, addCalls } = harness({ add: () => Promise.resolve(addOk()) })
+    const commands = createCatalogCommands({ gateway })
+
+    const subscribed = await commands.subscribeFeatured('n', 'ftp://x')
+    expect(addCalls).toEqual([['n', 'ftp://x']])
+    expect(subscribed.ok).toBe(true)
+
+    const added = await commands.addSource('n', 'ftp://x')
+    expect(addCalls).toHaveLength(1)
+    expect(added).toEqual({ ok: false, failure: { kind: 'invalid_url' } })
+  })
+
+  test.each<[string, AddSourceGatewayFailure]>([
+    ['already_registered', { kind: 'already_registered' }],
+    ['invalid_feed', { kind: 'invalid_feed' }],
+    ['failed', { kind: 'failed', failure: { kind: 'network' } }],
+  ])('web-cmd-catalog-05 — gateway の %s は変えずにそのまま返す（同じ参照。invalid_url に変えない）', async (_label, failure) => {
+    const { gateway } = harness({ add: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogCommands({ gateway }).subscribeFeatured('n', 'https://example.com/rss')
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+  })
+
+  test('web-cmd-catalog-05 — 成功の値は凍結した複製で、gateway の配列・要素と参照を共有しない', async () => {
+    const raw: ReadonlyArray<SourceRef> = [{ name: 'A', url: 'https://a.example/rss' }]
+    const { gateway } = harness({ add: () => Promise.resolve(addOk(raw)) })
+
+    const result = await createCatalogCommands({ gateway }).subscribeFeatured('A', 'https://a.example/rss')
+
+    if (!result.ok) throw new Error('成功のはず')
+    expect(result.value).toEqual([{ name: 'A', url: 'https://a.example/rss' }])
+    expect(result.value).not.toBe(raw)
+    expect(result.value[0]).not.toBe(raw[0])
+    expect(Object.isFrozen(result.value)).toBe(true)
+    expect(Object.isFrozen(result.value[0])).toBe(true)
+  })
+
+  test('web-cmd-catalog-05 — gateway の reject を握りつぶさずそのまま reject する', async () => {
+    const { gateway } = harness({ add: () => Promise.reject(new Error('boom subscribe')) })
+    await expect(createCatalogCommands({ gateway }).subscribeFeatured('n', 'https://x')).rejects.toThrow('boom subscribe')
+  })
+})
+
+describe('removeSource (web-cmd-catalog-06)', () => {
+  test('web-cmd-catalog-06 — url を deleteSource へそのまま 1 回渡し、凍結した複製の購読一覧を返す', async () => {
+    const { gateway, deleteCalls } = harness({ remove: () => Promise.resolve({ ok: true, value: SOURCES }) })
+
+    const result = await createCatalogCommands({ gateway }).removeSource('https://a.example/rss?x=1')
+
+    expect(deleteCalls).toEqual(['https://a.example/rss?x=1'])
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        { name: 'A', url: 'https://a.example/rss' },
+        { name: 'B', url: 'https://b.example/rss' },
+      ],
+    })
+    if (!result.ok) return
+    expect(result.value).not.toBe(SOURCES)
+    expect(result.value[0]).not.toBe(SOURCES[0])
+    expect(Object.isFrozen(result.value)).toBe(true)
+    expect(Object.isFrozen(result.value[0])).toBe(true)
+  })
+
+  test('web-cmd-catalog-06 — 空になった一覧も ok で返す', async () => {
+    const { gateway } = harness({ remove: () => Promise.resolve({ ok: true, value: [] }) })
+    expect(await createCatalogCommands({ gateway }).removeSource('https://a.example/rss')).toEqual({ ok: true, value: [] })
+  })
+
+  test('web-cmd-catalog-06 — 失敗は ApiFailure を同じ参照のまま返し、reject は握りつぶさず伝える', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 502 }
+    const failing = harness({ remove: () => Promise.resolve({ ok: false, failure }) })
+    const rejecting = harness({ remove: () => Promise.reject(new Error('boom remove')) })
+
+    const result = await createCatalogCommands({ gateway: failing.gateway }).removeSource('https://a.example/rss')
+
+    expect(result.ok).toBe(false)
+    expect(!result.ok && result.failure).toBe(failure)
+    await expect(createCatalogCommands({ gateway: rejecting.gateway }).removeSource('https://a.example/rss')).rejects.toThrow('boom remove')
+  })
+})
+
+describe('completeOnboarding (web-cmd-catalog-07)', () => {
+  test('web-cmd-catalog-07 — gateway を 1 回呼び、成功の Result をそのまま返す', async () => {
+    const { gateway, completeCalls } = harness({ complete: () => Promise.resolve({ ok: true, value: undefined }) })
+
+    const result = await createCatalogCommands({ gateway }).completeOnboarding()
+
+    expect(completeCalls).toHaveLength(1)
+    expect(result).toEqual({ ok: true, value: undefined })
+  })
+
+  test('web-cmd-catalog-07 — 失敗は同じ参照のまま返し、reject は握りつぶさず伝える', async () => {
+    const failure: ApiFailure = { kind: 'server', status: 500 }
+    const failing = harness({ complete: () => Promise.resolve({ ok: false, failure }) })
+    const rejecting = harness({ complete: () => Promise.reject(new Error('boom complete')) })
+
+    const result = await createCatalogCommands({ gateway: failing.gateway }).completeOnboarding()
+
+    expect(!result.ok && result.failure).toBe(failure)
+    await expect(createCatalogCommands({ gateway: rejecting.gateway }).completeOnboarding()).rejects.toThrow('boom complete')
   })
 })

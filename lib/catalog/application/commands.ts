@@ -1,8 +1,9 @@
-// Catalog の command（web-cmd-catalog-01〜04・web-rule-catalog-05）: Feed の Star・一括 Star・Dismiss・Unstar。
+// Catalog の command（web-cmd-catalog-01〜07・web-rule-catalog-05）: Feed の Star・一括 Star・Dismiss・Unstar と、購読の追加・おすすめの購読・削除・onboarding の完了。
 // 失敗は Result で返す。gateway の reject は握りつぶさず伝える（page が「予期しないエラー」にする）。
 // 例外は bulkStar の rejected だけで、failed に数える。
-import type { CatalogGateway } from '@/lib/catalog/application/ports'
+import type { AddSourceGatewayFailure, CatalogGateway } from '@/lib/catalog/application/ports'
 import { classifyGenerationLimit, type GenerationLimit } from '@/lib/catalog/domain/generationLimit'
+import { validateSourceUrl, type SourceRef } from '@/lib/catalog/domain/source'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 import type { Result } from '@/lib/shared/result'
@@ -19,6 +20,8 @@ export interface BulkStarReceipt {
   readonly limit: GenerationLimit | null
 }
 
+export type AddSourceFailure = { readonly kind: 'invalid_url' } | AddSourceGatewayFailure
+
 export type UnstarIgnored = { readonly kind: 'ignored' }
 
 /**
@@ -33,6 +36,17 @@ export interface CatalogCommands {
   bulkStar(ids: ReadonlyArray<string>): Promise<BulkStarReceipt>
   dismissArticle(id: string): Promise<Result<void, ApiFailure>>
   unstarArticle(id: string): Promise<Result<void, ApiFailure> | UnstarIgnored>
+  /** 手入力の追加。URL の形式を検査する。 */
+  addSource(name: string, url: string): Promise<Result<ReadonlyArray<SourceRef>, AddSourceFailure>>
+  /** おすすめの購読。検査済みの値なので URL を検査しない。 */
+  subscribeFeatured(name: string, url: string): Promise<Result<ReadonlyArray<SourceRef>, AddSourceGatewayFailure>>
+  removeSource(url: string): Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
+  completeOnboarding(): Promise<Result<void, ApiFailure>>
+}
+
+/** gateway の購読一覧を `{ name, url }` だけの凍結した複製にする（readModels の型にはしない）。 */
+function copySources(sources: ReadonlyArray<SourceRef>): ReadonlyArray<SourceRef> {
+  return Object.freeze(sources.map(({ name, url }) => Object.freeze({ name, url })))
 }
 
 function toLimit(failure: Extract<ApiFailure, { kind: 'rate_limited' }>): GenerationLimit {
@@ -64,6 +78,11 @@ export function createCatalogCommands({ gateway }: { readonly gateway: CatalogGa
     }
   }
 
+  async function subscribe(name: string, url: string): Promise<Result<ReadonlyArray<SourceRef>, AddSourceGatewayFailure>> {
+    const result = await gateway.addSource(name, url)
+    return result.ok ? Object.freeze({ ok: true, value: copySources(result.value) }) : result
+  }
+
   return {
     async starArticle(id, difficulty) {
       // difficulty が無いときは引数を渡さない（backend の既定の難易度を使う）。
@@ -92,6 +111,20 @@ export function createCatalogCommands({ gateway }: { readonly gateway: CatalogGa
     },
     dismissArticle(id) {
       return gateway.dismissArticle(id)
+    },
+    async addSource(name, url) {
+      if (validateSourceUrl(url) === 'invalid_url') return Object.freeze({ ok: false, failure: Object.freeze({ kind: 'invalid_url' }) })
+      return subscribe(name, url)
+    },
+    subscribeFeatured(name, url) {
+      return subscribe(name, url)
+    },
+    async removeSource(url) {
+      const result = await gateway.deleteSource(url)
+      return result.ok ? Object.freeze({ ok: true, value: copySources(result.value) }) : result
+    },
+    completeOnboarding() {
+      return gateway.completeOnboarding()
     },
     unstarArticle(id) {
       if (unstarInFlight.has(id)) return UNSTAR_IGNORED

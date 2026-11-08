@@ -12,6 +12,7 @@ import type {
   SourceCredit,
   TranscriptLine,
 } from '@/lib/catalog/domain/episode'
+import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import type { GenerationSnapshot } from '@/lib/catalog/domain/generationWatch'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
@@ -150,4 +151,42 @@ export function toFeedFailed(failure: ApiFailure): FeedFailed {
 
 export function toStarredOk(articles: ReadonlyArray<ArticleRef>): { readonly articles: ReadonlyArray<ArticleCardView> } {
   return seal({ articles: articles.map(toArticleCardView) })
+}
+
+/** 購読の view。`SourceRef` と同形。 */
+export interface SourceView {
+  readonly name: string
+  readonly url: string
+}
+
+export interface FeaturedSourceView {
+  readonly id: string
+  readonly name: string
+  readonly url: string
+  readonly category: FeaturedSourceRef['category']
+  readonly thumbnailUrl: string | null
+  readonly description: string | null
+}
+
+export interface OnboardingView {
+  readonly completed: boolean
+}
+
+export function toSourceView(ref: SourceRef): SourceView {
+  return seal({ name: ref.name, url: ref.url })
+}
+
+export function toFeaturedSourceView(ref: FeaturedSourceRef): FeaturedSourceView {
+  return seal({
+    id: ref.id,
+    name: ref.name,
+    url: ref.url,
+    category: ref.category,
+    thumbnailUrl: ref.thumbnailUrl,
+    description: ref.description,
+  })
+}
+
+export function toOnboardingView(status: { readonly completed: boolean }): OnboardingView {
+  return seal({ completed: status.completed })
 }
