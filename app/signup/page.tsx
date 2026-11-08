@@ -7,17 +7,12 @@ import { useAuth } from '@/contexts/AuthProvider'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { validatePassword } from '@/lib/account/domain/password'
+import { normalizeUsername, validateUsername } from '@/lib/account/domain/username'
 
-// WHY: backend の shared/username_policy 相当（招待コード新規登録）。normalize（trim+lowercase）
-// してから検証する — サーバー側の正規化と一致させ、表示前チェックと 409/422 の整合を取る。
-const USERNAME_REGEX = /^[a-z0-9][a-z0-9_-]{2,31}$/
-
-function validateUsername(raw: string): string | null {
-  const normalized = raw.trim().toLowerCase()
-  if (!USERNAME_REGEX.test(normalized)) {
-    return 'ユーザーIDは半角英数字・ハイフン・アンダースコアのみ使用可能で、3〜32文字（先頭は英数字）で入力してください'
-  }
-  return null
+function usernameErrorMessage(raw: string): string | null {
+  return validateUsername(raw) === 'ok'
+    ? null
+    : 'ユーザーIDは半角英数字・ハイフン・アンダースコアのみ使用可能で、3〜32文字（先頭は英数字）で入力してください'
 }
 
 function passwordErrorMessage(password: string): string | null {
@@ -50,7 +45,7 @@ function mapRegisterError(failure: ApiFailure): string {
 }
 
 function SignupForm() {
-  const { register, status } = useAuth()
+  const { register, view } = useAuth()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -64,7 +59,7 @@ function SignupForm() {
   const [submitError, setSubmitError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  // WHY: register() 成功時にも status が 'authenticated' へ変わり、下の「既にログイン済み」
+  // WHY: register() 成功時にも認証状態が 'authenticated' へ変わり、下の「既にログイン済み」
   // 効果と競合するレースがあった（実ブラウザで発現・単体テストでは再現しなかった）。
   // register 経由の遷移は handleSubmit 内で明示的に '/'（root gate 経由）へ replace するため、
   // このフラグでその瞬間だけ下の効果の自動 /feed 遷移を抑止する。
@@ -78,18 +73,18 @@ function SignupForm() {
 
   // 既にログイン済み（＝このフォーム経由ではなく元から有効なセッション）ならフィード側へ。
   useEffect(() => {
-    if (status === 'authenticated' && !justRegisteredRef.current) {
+    if (view.kind === 'authenticated' && !justRegisteredRef.current) {
       router.replace('/feed')
     }
-  }, [status, router])
+  }, [view.kind, router])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setFieldError('')
     setSubmitError('')
 
-    const normalizedUsername = username.trim().toLowerCase()
-    const usernameError = validateUsername(normalizedUsername)
+    const normalizedUsername = normalizeUsername(username)
+    const usernameError = usernameErrorMessage(normalizedUsername)
     if (usernameError) {
       setFieldError(usernameError)
       return
@@ -127,7 +122,7 @@ function SignupForm() {
     }
   }
 
-  if (status === 'authenticated') {
+  if (view.kind === 'authenticated') {
     // /feed への replace 待ち。フォームの二重表示・二重送信を避けるため何も描画しない。
     return null
   }

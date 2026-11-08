@@ -64,7 +64,9 @@ function Consumer() {
   useEffect(() => {
     auth = current
   })
-  const { status, user, session, retry, login: doLogin, logout: doLogout, register: doRegister } = useAuth()
+  const { view, session, retry, login: doLogin, logout: doLogout, register: doRegister } = useAuth()
+  const status = view.kind === 'authenticated' ? 'authenticated' : view.kind === 'anonymous' ? 'unauthenticated' : 'unknown'
+  const user = view.user
   return (
     <div>
       <span data-testid="status">{status}</span>
@@ -788,5 +790,52 @@ describe('遷移④ 主体の交代の後始末 (verifies: web-dec-77, shared-le
     await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
     expect(deleteSubjectAudio).not.toHaveBeenCalled()
     expect(clearManagedServiceWorkerCaches).not.toHaveBeenCalled()
+  })
+})
+
+describe('session.user の写し (verifies: web-slice-account-01)', () => {
+  const DTO = { user_id: 'u-alice', username: 'alice', role: 'admin', display_name: 'Alice' }
+  const MAPPED = { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' }
+
+  test('web-slice-account-01: GET /auth/me の成功で session.user が { username, role, display_name, userId } に全 field で一致する（応答の user_id が userId）', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: DTO })
+    renderAuth()
+
+    await waitFor(() => expect(auth.session.kind).toBe('authenticated'))
+
+    expect(auth.session.kind === 'authenticated' && auth.session.user).toEqual(MAPPED)
+  })
+
+  test('web-slice-account-01: login の成功で session.user が同じ写しになる', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: { token: 't', user: DTO } })
+    renderAuth()
+    await waitFor(() => expect(auth.session.kind).toBe('anonymous'))
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(auth.session.kind).toBe('authenticated'))
+    expect(auth.session.kind === 'authenticated' && auth.session.user).toEqual(MAPPED)
+  })
+
+  test('web-slice-account-01: register の成功で session.user が同じ写しになる', async () => {
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    gw.respond('POST', REGISTER_PATH, { ok: true, value: { token: 't', user: DTO } })
+    renderAuth()
+    await waitFor(() => expect(auth.session.kind).toBe('anonymous'))
+
+    await userEvent.click(screen.getByText('register'))
+
+    await waitFor(() => expect(auth.session.kind).toBe('authenticated'))
+    expect(auth.session.kind === 'authenticated' && auth.session.user).toEqual(MAPPED)
+  })
+
+  test('web-slice-account-01: user_id が形式不正の応答では userId が null の写しになる（主体別の資産を使わない）', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: { ...DTO, user_id: 'bad id' } })
+    renderAuth()
+
+    await waitFor(() => expect(auth.session.kind).toBe('authenticated'))
+
+    expect(auth.session.kind === 'authenticated' && auth.session.user).toEqual({ ...MAPPED, userId: null })
   })
 })

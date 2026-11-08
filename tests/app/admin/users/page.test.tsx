@@ -46,7 +46,7 @@ const authOverride = vi.hoisted(() => ({
   current: { username: 'admin', role: 'admin', display_name: 'Admin' },
 }))
 vi.mock('@/contexts/AuthProvider', () => ({
-  useAuth: () => ({ status: 'authenticated', user: authOverride.current, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
+  useAuth: () => ({ view: { kind: 'authenticated', user: authOverride.current }, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
 }))
 
 function renderPage() {

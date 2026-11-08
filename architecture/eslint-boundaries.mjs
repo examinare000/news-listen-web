@@ -21,7 +21,6 @@ const ALLOWED_CROSS_CONTEXT = [
 
 // application 層のディレクトリがまだ無い間の APP の現状の対応ファイル（context つき）。
 const LEGACY_APP_FILES = [
-  { file: 'lib/passkey.ts', context: 'account' },
   { file: 'lib/push/pushRegistration.ts', context: 'notifications' },
 ]
 
@@ -164,7 +163,7 @@ const platformSpec = {
   files: ['lib/platform/**/*.{ts,tsx}'],
   importPatterns: (exempt) => [
     regexPattern(
-      `@/lib/[^/]+/${LAYER}(?:/|$)|@/lib/(?:passkey|push/pushRegistration)$`,
+      `@/lib/[^/]+/${LAYER}(?:/|$)|@/lib/(?:push/pushRegistration)$`,
       exempt,
       'adapter は domain・application の値を import しない（型だけ）（web-dep-07）',
       { allowTypeImports: true },

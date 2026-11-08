@@ -24,7 +24,9 @@ type AuthStatus = 'unknown' | 'authenticated' | 'unauthenticated'
 
 const { authState, mockUseAuth, fakePortHolder } = vi.hoisted(() => {
   const authState: { status: AuthStatus } = { status: 'unknown' }
-  const mockUseAuth = vi.fn(() => ({ status: authState.status }))
+  const mockUseAuth = vi.fn(() => ({
+    view: { kind: authState.status === 'authenticated' ? 'authenticated' : authState.status === 'unauthenticated' ? 'anonymous' : 'resolving', user: null },
+  }))
   const fakePortHolder: { port: PushBrowserPort | null } = { port: null }
   return { authState, mockUseAuth, fakePortHolder }
 })

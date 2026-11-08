@@ -4,27 +4,14 @@ import React, { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthProvider'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import {
-  changePassword,
-  deleteAccount,
-  deletePasskeyCredential,
-  getPasskeyCredentials,
-  getPasskeyLoginOptions,
-  getPasskeyRegisterOptions,
-  getSessions,
-  revokeOtherSessions,
-  revokeSession,
-  updateProfile,
-  verifyPasskeyLogin,
-  verifyPasskeyRegistration,
-} from '@/lib/account/infrastructure/api'
+import { useAccountCommands } from '@/contexts/useAccountCommands'
+import { useAccountQueries } from '@/contexts/useAccountQueries'
+import { usePasskeySupport } from '@/contexts/usePasskeySupport'
 import { validatePassword } from '@/lib/account/domain/password'
-import { registerPasskey } from '@/lib/passkey'
-import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { isAdmin } from '@/lib/account/domain/adminAccess'
+import type { PasskeyRow, SessionRow } from '@/lib/account/application/readModels'
 import { formatAuthUserLabel } from '@/lib/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
-import type { PasskeyCredential, Session } from '@/types/index'
 
 function validateNewPassword(password: string) {
   const check = validatePassword(password)
@@ -58,11 +45,13 @@ function translatePasswordPolicyDetail(detail: string) {
 // ログアウト、および管理者にはユーザー管理画面への導線を提供する。
 // Passkey（WebAuthn）の登録・一覧・削除も担う。
 export function AccountSection() {
-  const { user, refreshMe, logout } = useAuth()
-  const gateway = useApiClient()
+  const { view, refreshMe, logout } = useAuth()
+  const commands = useAccountCommands()
+  const queries = useAccountQueries()
+  const supportsPasskey = usePasskeySupport()
   const router = useRouter()
 
-  const [displayName, setDisplayName] = useState(user?.display_name ?? '')
+  const [displayName, setDisplayName] = useState(view.user?.display_name ?? '')
   const [profileMsg, setProfileMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   const [currentPassword, setCurrentPassword] = useState('')
@@ -70,17 +59,16 @@ export function AccountSection() {
   const [pwMsg, setPwMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   // Passkey state
-  const [passkeyCredentials, setPasskeyCredentials] = useState<PasskeyCredential[]>([])
+  const [passkeyCredentials, setPasskeyCredentials] = useState<ReadonlyArray<PasskeyRow>>([])
   const [passkeyMsg, setPasskeyMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   // issue #164: 初回一覧取得の失敗をサイレントにせず、専用のエラー状態で再試行導線を出す。
   const [credentialsLoadError, setCredentialsLoadError] = useState(false)
   const [registeringPasskey, setRegisteringPasskey] = useState(false)
   const [deletingCredentialId, setDeletingCredentialId] = useState<string | null>(null)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
-  const [supportsPasskey, setSupportsPasskey] = useState(true)
 
   // ログイン中のデバイス（セッション）state — issue #84。
-  const [sessions, setSessions] = useState<Session[]>([])
+  const [sessions, setSessions] = useState<ReadonlyArray<SessionRow>>([])
   const [sessionsMsg, setSessionsMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
   // issue #164: 初回一覧取得の失敗をサイレントにせず、専用のエラー状態で再試行できるようにする。
   const [sessionsLoadError, setSessionsLoadError] = useState(false)
@@ -97,33 +85,33 @@ export function AccountSection() {
 
   const loadCredentials = useCallback(async () => {
     try {
-      const res = await getPasskeyCredentials(gateway)
+      const res = await queries.listPasskeys()
       if (!res.ok) {
         setCredentialsLoadError(true)
         return
       }
-      setPasskeyCredentials(res.value.credentials)
+      setPasskeyCredentials(res.value)
       setCredentialsLoadError(false)
     } catch {
       // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
       setCredentialsLoadError(true)
     }
-  }, [gateway])
+  }, [queries])
 
   const loadSessions = useCallback(async () => {
     try {
-      const res = await getSessions(gateway)
+      const res = await queries.listSessions()
       if (!res.ok) {
         setSessionsLoadError(true)
         return
       }
-      setSessions(res.value.sessions)
+      setSessions(res.value)
       setSessionsLoadError(false)
     } catch {
       // issue #164: サイレント失敗を廃止し、専用エラー状態から再試行できるようにする
       setSessionsLoadError(true)
     }
-  }, [gateway])
+  }, [queries])
 
   useEffect(() => {
     loadCredentials()
@@ -133,16 +121,10 @@ export function AccountSection() {
     loadSessions()
   }, [loadSessions])
 
-  // WHY: WebAuthn 非対応環境では Passkey 登録ボタンを disabled にする。port 経由で判定を集約。
-  useEffect(() => {
-    const port = createRealWebAuthnBrowserPort()
-    setSupportsPasskey(port.supportsWebAuthn())
-  }, [])
-
   async function handleProfileSave() {
     setProfileMsg(null)
     try {
-      const res = await updateProfile(gateway, displayName)
+      const res = await commands.updateProfile(displayName)
       if (!res.ok) {
         setProfileMsg({ kind: 'error', text: '表示名の更新に失敗しました' })
         return
@@ -166,7 +148,7 @@ export function AccountSection() {
       return
     }
     try {
-      const res = await changePassword(gateway, currentPassword, newPassword)
+      const res = await commands.changePassword(currentPassword, newPassword)
       if (!res.ok) {
         let text = 'パスワード変更に失敗しました'
         if (res.failure.kind === 'validation') {
@@ -190,16 +172,7 @@ export function AccountSection() {
     setRegisteringPasskey(true)
     setPasskeyMsg(null)
     try {
-      const res = await registerPasskey(
-        {
-          getPasskeyRegisterOptions: () => getPasskeyRegisterOptions(gateway),
-          verifyPasskeyRegistration: (challengeId, credential) =>
-            verifyPasskeyRegistration(gateway, challengeId, credential),
-          getPasskeyLoginOptions: () => getPasskeyLoginOptions(gateway),
-          verifyPasskeyLogin: (challengeId, credential) => verifyPasskeyLogin(gateway, challengeId, credential),
-        },
-        createRealWebAuthnBrowserPort(),
-      )
+      const res = await commands.registerPasskey()
       if (!res.ok) {
         setPasskeyMsg({ kind: 'error', text: 'Passkey の登録に失敗しました' })
         return
@@ -236,7 +209,7 @@ export function AccountSection() {
     setDeletingCredentialId(credentialId)
     setPasskeyMsg(null)
     try {
-      const res = await deletePasskeyCredential(gateway, credentialId)
+      const res = await commands.deletePasskey(credentialId)
       if (!res.ok) {
         setPasskeyMsg({ kind: 'error', text: 'Passkey の削除に失敗しました' })
         return
@@ -264,7 +237,7 @@ export function AccountSection() {
     setRevokingSessionId(sessionId)
     setSessionsMsg(null)
     try {
-      const res = await revokeSession(gateway, sessionId)
+      const res = await commands.revokeSession(sessionId)
       if (!res.ok) {
         setSessionsMsg({ kind: 'error', text: 'ログアウトに失敗しました' })
         return
@@ -283,13 +256,13 @@ export function AccountSection() {
     setRevokingOthers(true)
     setSessionsMsg(null)
     try {
-      const res = await revokeOtherSessions(gateway)
+      const res = await commands.revokeOtherSessions()
       if (!res.ok) {
         setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
         return
       }
       await loadSessions()
-      setSessionsMsg({ kind: 'ok', text: `他の ${res.value.revoked_count} 台のデバイスからログアウトしました` })
+      setSessionsMsg({ kind: 'ok', text: `他の ${res.value.revoked} 台のデバイスからログアウトしました` })
     } catch {
       setSessionsMsg({ kind: 'error', text: '一括ログアウトに失敗しました' })
     } finally {
@@ -313,7 +286,7 @@ export function AccountSection() {
     setDeletingAccount(true)
     setDeleteAccountError(null)
     try {
-      const res = await deleteAccount(gateway, deleteAccountPassword)
+      const res = await commands.deleteAccount(deleteAccountPassword)
       if (!res.ok) {
         const text =
           res.failure.kind === 'forbidden'
@@ -348,7 +321,7 @@ export function AccountSection() {
         <div>
           <div className="settings-row-label">ログイン中</div>
           <div className="settings-row-desc">
-            {formatAuthUserLabel(user)}
+            {formatAuthUserLabel(view.user)}
           </div>
         </div>
         <LogoutButton />
@@ -458,8 +431,8 @@ export function AccountSection() {
         </div>
       ) : (
         passkeyCredentials.map((cred) => (
-          <div key={cred.credential_id}>
-            {confirmingDeleteId === cred.credential_id ? (
+          <div key={cred.credentialId}>
+            {confirmingDeleteId === cred.credentialId ? (
               // 削除確認状態
               <div className="settings-row">
                 <div>
@@ -467,7 +440,7 @@ export function AccountSection() {
                     削除しますか？
                   </div>
                   <div className="settings-row-desc">
-                    {cred.name ?? cred.credential_id.slice(0, 16)} を削除すると、この Passkey でログインできなくなります。
+                    {cred.name ?? cred.credentialId.slice(0, 16)} を削除すると、この Passkey でログインできなくなります。
                   </div>
                 </div>
               </div>
@@ -476,20 +449,20 @@ export function AccountSection() {
               <div className="settings-row">
                 <div>
                   <div className="settings-row-label">
-                    {cred.name ?? cred.credential_id.slice(0, 16)}
+                    {cred.name ?? cred.credentialId.slice(0, 16)}
                   </div>
                   <div className="settings-row-desc">
-                    登録日: {new Date(cred.created_at).toLocaleDateString('ja-JP')}
-                    {cred.last_used_at && (
-                      <>　最終使用: {new Date(cred.last_used_at).toLocaleDateString('ja-JP')}</>
+                    登録日: {new Date(cred.createdAt).toLocaleDateString('ja-JP')}
+                    {cred.lastUsedAt && (
+                      <>　最終使用: {new Date(cred.lastUsedAt).toLocaleDateString('ja-JP')}</>
                     )}
                   </div>
                 </div>
                 <button
                   className="btn btn-ghost"
-                  onClick={() => handlePasskeyDeleteClick(cred.credential_id)}
+                  onClick={() => handlePasskeyDeleteClick(cred.credentialId)}
                   disabled={deletingCredentialId !== null}
-                  aria-label={`Passkey を削除: ${cred.name ?? cred.credential_id.slice(0, 16)}`}
+                  aria-label={`Passkey を削除: ${cred.name ?? cred.credentialId.slice(0, 16)}`}
                 >
                   削除
                 </button>
@@ -497,23 +470,23 @@ export function AccountSection() {
             )}
 
             {/* 削除確認時のアクションボタン */}
-            {confirmingDeleteId === cred.credential_id && (
+            {confirmingDeleteId === cred.credentialId && (
               <div style={{ padding: '0 20px 12px', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <button
                   className="btn btn-ghost"
                   onClick={handlePasskeyDeleteCancel}
-                  disabled={deletingCredentialId === cred.credential_id}
+                  disabled={deletingCredentialId === cred.credentialId}
                   aria-label="キャンセル"
                 >
                   キャンセル
                 </button>
                 <button
                   className="btn btn-primary"
-                  onClick={() => handlePasskeyDeleteConfirm(cred.credential_id)}
-                  disabled={deletingCredentialId === cred.credential_id}
-                  aria-label={`${cred.name ?? cred.credential_id.slice(0, 16)} を削除`}
+                  onClick={() => handlePasskeyDeleteConfirm(cred.credentialId)}
+                  disabled={deletingCredentialId === cred.credentialId}
+                  aria-label={`${cred.name ?? cred.credentialId.slice(0, 16)} を削除`}
                 >
-                  {deletingCredentialId === cred.credential_id ? '削除中…' : '削除する'}
+                  {deletingCredentialId === cred.credentialId ? '削除中…' : '削除する'}
                 </button>
               </div>
             )}
@@ -541,7 +514,7 @@ export function AccountSection() {
         <button
           className="btn btn-ghost"
           onClick={() => setConfirmingRevokeOthers(true)}
-          disabled={revokingOthers || sessions.filter((s) => !s.current).length === 0}
+          disabled={revokingOthers || sessions.filter((s) => !s.isCurrent).length === 0}
           aria-label="他のデバイスからログアウト"
         >
           {revokingOthers ? '処理中…' : '他のデバイスからログアウト'}
@@ -601,7 +574,7 @@ export function AccountSection() {
                     ログアウトしますか？
                   </div>
                   <div className="settings-row-desc">
-                    {s.device_label ?? '不明なデバイス'} をログアウトすると、その端末では再ログインが必要になります。
+                    {s.deviceLabel ?? '不明なデバイス'} をログアウトすると、その端末では再ログインが必要になります。
                   </div>
                 </div>
               </div>
@@ -609,27 +582,27 @@ export function AccountSection() {
               <div className="settings-row">
                 <div>
                   <div className="settings-row-label">
-                    {s.device_label ?? '不明なデバイス'}
-                    {s.current && (
+                    {s.deviceLabel ?? '不明なデバイス'}
+                    {s.isCurrent && (
                       <span className="badge" style={{ marginLeft: 8 }}>
                         現在のデバイス
                       </span>
                     )}
                   </div>
                   <div className="settings-row-desc">
-                    ログイン: {new Date(s.created_at).toLocaleDateString('ja-JP')}
-                    {s.last_used_at && (
-                      <>　最終利用: {new Date(s.last_used_at).toLocaleDateString('ja-JP')}</>
+                    ログイン: {new Date(s.createdAt).toLocaleDateString('ja-JP')}
+                    {s.lastUsedAt && (
+                      <>　最終利用: {new Date(s.lastUsedAt).toLocaleDateString('ja-JP')}</>
                     )}
                   </div>
                 </div>
                 {/* 現在のデバイスはこのUIから失効しない（＝ログアウト操作）。他デバイスのみ個別失効可能。 */}
-                {!s.current && (
+                {!s.isCurrent && (
                   <button
                     className="btn btn-ghost"
                     onClick={() => handleRevokeClick(s.id)}
                     disabled={revokingSessionId !== null}
-                    aria-label={`デバイスをログアウト: ${s.device_label ?? '不明なデバイス'}`}
+                    aria-label={`デバイスをログアウト: ${s.deviceLabel ?? '不明なデバイス'}`}
                   >
                     ログアウト
                   </button>
@@ -651,7 +624,7 @@ export function AccountSection() {
                   className="btn btn-primary"
                   onClick={() => handleRevokeConfirm(s.id)}
                   disabled={revokingSessionId === s.id}
-                  aria-label={`${s.device_label ?? '不明なデバイス'} をログアウト`}
+                  aria-label={`${s.deviceLabel ?? '不明なデバイス'} をログアウト`}
                 >
                   {revokingSessionId === s.id ? '処理中…' : 'ログアウトする'}
                 </button>
@@ -671,7 +644,7 @@ export function AccountSection() {
       )}
 
       {/* 管理者導線 */}
-      {user?.role === 'admin' && (
+      {isAdmin(view.user) && (
         <>
           <div className="settings-row">
             <div>

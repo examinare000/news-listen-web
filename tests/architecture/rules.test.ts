@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（16 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（17 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -19,6 +19,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-10',
   'web-rule-catalog-11',
   'web-rule-account-03',
+  'web-rule-account-04',
   'web-rule-account-06',
   'web-rule-playback-02',
   'web-rule-prefs-01',
@@ -35,7 +36,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 16 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 17 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -72,6 +73,17 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
       `web-rule-account-03 | ${F} | PASSWORD_MIN_LENGTH`,
       `web-rule-account-03 | ${F} | countPasswordCharacterClasses`,
     ])
+  })
+
+  test('web-rule-account-04: {2,31}・username.length・USERNAME_MIN_LENGTH は 1 行ずつ拾い、コメントの中と出てよい username.ts は拾わない', () => {
+    expect(rows(F, 'const re = /^[a-z0-9][a-z0-9_-]{2,31}$/')).toEqual([`web-rule-account-04 | ${F} | {2,31}`])
+    expect(rows(F, 'if (username.length < 3) {}')).toEqual([`web-rule-account-04 | ${F} | username.length`])
+    expect(rows(F, 'const m = USERNAME_MIN_LENGTH')).toEqual([`web-rule-account-04 | ${F} | USERNAME_MIN_LENGTH`])
+    // 負例: コメントの中・出てよいファイル
+    expect(rows(F, '// /^[a-z0-9][a-z0-9_-]{2,31}$/ は書かない\nconst a = 1')).toEqual([])
+    expect(rows('lib/account/domain/username.ts', 'const re = /^[a-z0-9][a-z0-9_-]{2,31}$/')).toEqual([])
+    // 正方向対照: 同じ入力を出てよいファイルの外に置くと拾う
+    expect(rows('lib/account/domain/other.ts', 'const re = /^[a-z0-9][a-z0-9_-]{2,31}$/')).toHaveLength(1)
   })
 
   test('web-rule-catalog-01 と web-rule-catalog-06: 同じ行が両方に当たるときは web-rule-catalog-06 だけに数える。web-rule-catalog-01 は別の行・左右反転・空判定を拾う', () => {

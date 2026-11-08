@@ -8,7 +8,7 @@ import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
  * 端末の既存購読をサーバへ再送する、何も描画しない部品。
  */
 export function PushReregistration() {
-  const { status } = useAuth()
-  useWebPushSubscription({ authStatus: status })
+  const { view } = useAuth()
+  useWebPushSubscription({ authStatus: view.kind === 'authenticated' ? 'authenticated' : 'unknown' })
   return null
 }

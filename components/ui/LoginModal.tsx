@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthProvider'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
 import { BrandLogo } from '@/components/ui/BrandLogo'
-import { createRealWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { usePasskeySupport } from '@/contexts/usePasskeySupport'
 
 interface LoginModalProps {
   /**
@@ -24,7 +24,8 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submittingPasskey, setSubmittingPasskey] = useState(false)
-  const [supportsPasskey, setSupportsPasskey] = useState(true)
+  // WHY: WebAuthn 非対応環境（古いブラウザ等）では Passkey ボタンを disabled にし、試行できない状態にする。
+  const supportsPasskey = usePasskeySupport()
   const dialogRef = useFocusTrap<HTMLDivElement>()
 
   // onClose 指定時のみ Escape で閉じる（useFocusTrap は Tab トラップのみを扱い、
@@ -37,13 +38,6 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [onClose])
-
-  // WHY: WebAuthn 非対応環境（古いブラウザ等）では Passkey ボタンを disabled にし、
-  //      ユーザーが試行できない状態にする。port 経由で判定を集約。
-  useEffect(() => {
-    const port = createRealWebAuthnBrowserPort()
-    setSupportsPasskey(port.supportsWebAuthn())
-  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -74,7 +68,7 @@ export function LoginModal({ onClose }: LoginModalProps = {}) {
     setSubmittingPasskey(true)
     setError('')
     try {
-      const result = await loginWithPasskey(createRealWebAuthnBrowserPort())
+      const result = await loginWithPasskey()
       if (!result.ok) {
         setError('Passkey ログインに失敗しました')
         setSubmittingPasskey(false)

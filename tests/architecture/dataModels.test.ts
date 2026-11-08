@@ -80,7 +80,7 @@ describe('web-check-03 検出器の自己点検: web-dep-04 (a)（INFRA・DOMAIN
   test('負例: INFRA・DOMAIN・APP（web-dep-01・web-dep-02 の行に載せる）・@/types でない import・コメント', () => {
     expect(rows('lib/api/gateway.ts', "import type { Podcast } from '@/types/index'")).toEqual([])
     expect(rows('lib/playback/domain/session.ts', "import type { Podcast } from '@/types'")).toEqual([])
-    expect(rows('lib/passkey.ts', "import type { LoginResponse } from '@/types/index'")).toEqual([])
+    expect(rows('lib/account/application/passkey.ts', "import type { LoginResponse } from '@/types/index'")).toEqual([])
     expect(rows('components/X.tsx', "import { a } from '@/lib/shared/result'")).toEqual([])
     expect(rows('components/X.tsx', "// import type { Podcast } from '@/types'")).toEqual([])
   })
@@ -106,8 +106,8 @@ describe('web-check-03 検出器の自己点検: web-dep-04 (b)（DOMAIN・APP �
   test('正例: export する interface・type alias・関数の署名・indexed access の中の型参照', () => {
     expect(rows('lib/playback/domain/s.ts', "export interface E { readonly s: Podcast['segments'] }")).toEqual(['web-dep-04 | lib/playback/domain/s.ts | Podcast'])
     expect(rows('lib/playback/domain/s.ts', 'export type T = ReadonlyArray<Podcast>')).toEqual(['web-dep-04 | lib/playback/domain/s.ts | Podcast'])
-    expect(rows('lib/passkey.ts', 'export function f(p: Podcast): void {}')).toEqual(['web-dep-04 | lib/passkey.ts | Podcast'])
-    expect(rows('lib/passkey.ts', 'export interface C { get(): Promise<LoginResponse> }')).toEqual(['web-dep-04 | lib/passkey.ts | LoginResponse'])
+    expect(rows('lib/account/application/passkey.ts', 'export function f(p: Podcast): void {}')).toEqual(['web-dep-04 | lib/account/application/passkey.ts | Podcast'])
+    expect(rows('lib/account/application/passkey.ts', 'export interface C { get(): Promise<LoginResponse> }')).toEqual(['web-dep-04 | lib/account/application/passkey.ts | LoginResponse'])
   })
 
   test('負例: export しない宣言・関数の本体の中・DOMAIN と APP 以外のファイル・DTO でない型名', () => {

@@ -17,7 +17,7 @@ const mockLogout = vi.fn()
 const mockRefreshMe = vi.fn()
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
-    user: { username: 'alice', role: 'user' as const, display_name: 'Alice' },
+    view: { kind: 'authenticated', user: { username: 'alice', role: 'user' as const, display_name: 'Alice' } },
     logout: mockLogout,
     refreshMe: mockRefreshMe,
     loginWithPasskey: vi.fn(),
@@ -25,18 +25,15 @@ vi.mock('@/contexts/AuthProvider', () => ({
 }))
 
 // passkey.ts mock
-vi.mock('@/lib/passkey', () => ({
+vi.mock('@/lib/account/application/passkey', () => ({
   registerPasskey: vi.fn(),
   loginWithPasskey: vi.fn(),
 }))
 
 // createRealWebAuthnBrowserPort mock
-vi.mock('@/lib/webauthnBrowserPort', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/webauthnBrowserPort')>()
-  return {
-    ...actual,
-    createRealWebAuthnBrowserPort: () => actual.createFakeWebAuthnBrowserPort(),
-  }
+vi.mock('@/lib/platform/webauthn', async () => {
+  const { createFakeWebAuthnBrowserPort } = await import('../helpers/fakeWebAuthnBrowserPort')
+  return { createRealWebAuthnBrowserPort: () => createFakeWebAuthnBrowserPort() }
 })
 
 // next/link mock

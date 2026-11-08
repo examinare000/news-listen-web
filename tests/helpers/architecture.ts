@@ -56,7 +56,6 @@ export type Layer = 'DOMAIN' | 'APP' | 'SHARED' | 'INFRA' | 'PRES' | 'ROOT' | 'O
  * その移動先の context（新 Spec §3.2）。
  */
 const LEGACY_APP_FILES: Readonly<Record<string, string>> = {
-  'lib/passkey.ts': 'account',
   'lib/push/pushRegistration.ts': 'notifications',
 }
 

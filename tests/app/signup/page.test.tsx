@@ -10,8 +10,7 @@ const authStatusOverride = vi.hoisted(() => ({ current: 'unauthenticated' }))
 
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
-    status: authStatusOverride.current,
-    user: null,
+    view: { kind: authStatusOverride.current === 'authenticated' ? 'authenticated' : 'anonymous', user: null },
     login: vi.fn(),
     logout: vi.fn(),
     register,
@@ -232,5 +231,43 @@ describe('SignupPage — already authenticated', () => {
     render(<SignupPage />)
 
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/feed'))
+  })
+})
+
+describe('SignupPage — web-slice-account-01 の特性テスト', () => {
+  async function submitWithUsername(raw: string) {
+    const user = userEvent.setup()
+    render(<SignupPage />)
+    // user.type は先頭・末尾の空白もそのまま入力する
+    await user.type(screen.getByLabelText('ユーザーID'), raw)
+    await user.type(screen.getByLabelText('パスワード'), VALID_PASSWORD)
+    await user.type(screen.getByLabelText('パスワード（確認）'), VALID_PASSWORD)
+    await user.click(screen.getByRole('button', { name: '登録する' }))
+  }
+
+  test('web-slice-account-01: 大文字と前後の空白を含む ID は trim + lowercase されて register に渡る', async () => {
+    register.mockResolvedValue({ ok: true, value: undefined })
+
+    await submitWithUsername('  Alice_01 ')
+
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1))
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ username: 'alice_01' }))
+  })
+
+  test.each([['3 文字', 'abc'], ['32 文字', 'a'.repeat(32)]])('web-slice-account-01: ID が %s なら境界内なので register に渡る', async (_label, username) => {
+    register.mockResolvedValue({ ok: true, value: undefined })
+
+    await submitWithUsername(username)
+
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1))
+    expect(register).toHaveBeenCalledWith(expect.objectContaining({ username }))
+    expect(screen.queryByText(/ユーザーIDは/)).not.toBeInTheDocument()
+  })
+
+  test.each([['2 文字', 'ab'], ['33 文字', 'a'.repeat(33)], ['先頭が -', '-abc']])('web-slice-account-01: ID が %s なら「ユーザーIDは…」で拒否され、register は呼ばれない', async (_label, username) => {
+    await submitWithUsername(username)
+
+    expect(await screen.findByText(/ユーザーIDは/)).toBeInTheDocument()
+    expect(register).not.toHaveBeenCalled()
   })
 })

@@ -10,6 +10,9 @@
 import { describe, expect, test } from 'vitest'
 import { RESOLVING_SESSION, reduce, type AuthSession } from '@/lib/account/domain/authSession'
 import { validatePassword } from '@/lib/account/domain/password'
+import { authView } from '@/lib/account/application/readModels'
+import { createAccountQueries } from '@/lib/account/application/queries'
+import type { AccountGateway } from '@/lib/account/application/ports'
 
 // ---------------------------------------------------------------------------
 // 深い凍結の検査 helper: plain object と配列をすべての深さで辿る（関数は辿らない）。
@@ -167,5 +170,44 @@ describe('validatePassword の戻り値は凍結済み (verifies: ADR-101)', () 
 
     expect(validatePassword('Abcdefgh1234')).toEqual({ ok: true })
     expect(validatePassword('short')).toEqual({ ok: false, reason: 'too_short' })
+  })
+})
+
+describe('authView は呼ぶたびに別の凍結済みの値で、入力と参照を共有しない (verifies: web-check-06, web-query-account-01)', () => {
+  test('web-check-06 — authenticated・anonymous・unavailable の値が全深さで凍結され、session.user と参照を共有しない', () => {
+    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
+    const authenticated = authView({ kind: 'authenticated', user })
+
+    expectDeeplyFrozen('authenticated', authenticated)
+    expectDeeplyFrozen('anonymous', authView({ kind: 'anonymous' }))
+    expectDeeplyFrozen('unavailable', authView({ kind: 'unavailable', failure: { reason: 'network' } }))
+    expect(authenticated.user).not.toBe(user)
+    expect(authView({ kind: 'authenticated', user })).not.toBe(authenticated)
+  })
+})
+
+describe('listSessions・listPasskeys の値は全深さで凍結され、gateway の値と参照を共有しない (verifies: web-check-06, web-query-account-03, web-query-account-04)', () => {
+  const sessions = [{ id: 's1', deviceLabel: 'Chrome', createdAt: '2026-01-01T00:00:00Z', lastUsedAt: null, isCurrent: true }]
+  const passkeys = [{ credentialId: 'c1', name: null, createdAt: '2026-02-01T00:00:00Z', lastUsedAt: null }]
+  const gateway = {
+    listSessions: () => Promise.resolve({ ok: true, value: sessions }),
+    listPasskeys: () => Promise.resolve({ ok: true, value: passkeys }),
+  } as unknown as AccountGateway
+  const queries = createAccountQueries({ gateway })
+
+  test('web-query-account-03 — listSessions の値は凍結され、gateway の配列・row と参照を共有しない', async () => {
+    const result = await queries.listSessions()
+    if (!result.ok) throw new Error('成功を期待')
+    expectDeeplyFrozen('listSessions', result.value)
+    expect(result.value).not.toBe(sessions)
+    expect(result.value[0]).not.toBe(sessions[0])
+  })
+
+  test('web-query-account-04 — listPasskeys の値は凍結され、gateway の配列・row と参照を共有しない', async () => {
+    const result = await queries.listPasskeys()
+    if (!result.ok) throw new Error('成功を期待')
+    expectDeeplyFrozen('listPasskeys', result.value)
+    expect(result.value).not.toBe(passkeys)
+    expect(result.value[0]).not.toBe(passkeys[0])
   })
 })

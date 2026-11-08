@@ -48,7 +48,8 @@ function callsTo(method: string, path: string) {
 // 候補 (a)/(c) は再提案しない（棄却済み）。T-T15b/T-T15c/T-T15f は (b) の期待値で固定する。
 
 function Consumer() {
-  const { status, refreshMe } = useAuth()
+  const { view, refreshMe } = useAuth()
+  const status = view.kind === 'authenticated' ? 'authenticated' : view.kind === 'anonymous' ? 'unauthenticated' : 'unknown'
   const [cleanup, setCleanup] = useState('')
   return (
     <div>
@@ -218,7 +219,8 @@ describe('AuthProvider expire via ApiClientProvider (verifies: web-contract-18, 
   const LOGIN_PATH = '/api/backend/auth/login'
 
   function Prober() {
-    const { status, login } = useAuth()
+    const { view, login } = useAuth()
+    const status = view.kind === 'authenticated' ? 'authenticated' : view.kind === 'anonymous' ? 'unauthenticated' : 'unknown'
     const client = useApiClient()
     const [loginFailure, setLoginFailure] = useState('')
     return (

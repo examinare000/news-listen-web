@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest'
-import { adminAccess, type AdminAccessSession } from '@/lib/account/domain/adminAccess'
+import { adminAccess, isAdmin, type AdminAccessSession } from '@/lib/account/domain/adminAccess'
 
 // web-contract-19: admin 4 ページの重複 gating を集約する単一 policy。純関数（副作用なし・全入力に
 // 対して total）。入力は AuthSession（判別共用体）。session はリテラルで組み、@/contexts/AuthProvider を
@@ -38,5 +38,20 @@ describe('adminAccess (verifies: web-contract-19)', () => {
   test('is a pure function: identical input yields identical output across repeated calls (verifies: web-contract-19-2)', () => {
     const input = authenticated('admin')
     expect(adminAccess(input)).toBe(adminAccess(input))
+  })
+})
+
+// web-rule-account-06: admin の判定は述語 isAdmin に一本化する（画面に `role === 'admin'` を書かない）。
+describe('isAdmin (verifies: web-rule-account-06)', () => {
+  test('web-rule-account-06 — role が admin の user は真', () => {
+    expect(isAdmin({ role: 'admin' })).toBe(true)
+  })
+
+  test('web-rule-account-06 — role が user の user は偽', () => {
+    expect(isAdmin({ role: 'user' })).toBe(false)
+  })
+
+  test('web-rule-account-06 — null（未ログイン）は偽', () => {
+    expect(isAdmin(null)).toBe(false)
   })
 })

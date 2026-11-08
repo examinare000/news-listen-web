@@ -27,8 +27,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 // NavigationBar.test.tsx と同様にモックして分離する。
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
-    status: 'authenticated',
-    user: { username: 'test', role: 'user', display_name: 'Test User' },
+    view: { kind: 'authenticated', user: { username: 'test', role: 'user', display_name: 'Test User' } },
     logout: vi.fn(),
     login: vi.fn(),
     refreshMe: vi.fn(),

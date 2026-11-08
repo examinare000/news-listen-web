@@ -3,7 +3,7 @@
 // 判定は構文だけ（型の解決はしない）。正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §4 web-dep-09・§7 web-check-05。
 //
 // RED 理由（実装前）: lib/shared/** と lib/playback/domain/** が無い（走査した型名が揃わない）。
-// lib/passkey.ts・lib/push/pushRegistration.ts の Promise<{ status: string }> 等・QueueState.items 等が readonly でない。
+// lib/push/pushRegistration.ts の Promise<{ status: string }> 等・QueueState.items 等が readonly でない。
 import { beforeAll, describe, expect, test } from 'vitest'
 import { layerOf, listScanFiles, readSource } from '../helpers/architecture'
 import { scanPublicTypes } from '../helpers/architectureDetectors'
