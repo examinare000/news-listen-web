@@ -1,8 +1,8 @@
 import { describe, test, expect, vi } from 'vitest'
-import { registerPasskey, loginWithPasskey } from '@/lib/passkey'
-import { createFakeWebAuthnBrowserPort } from '@/lib/webauthnBrowserPort'
+import { registerPasskey, loginWithPasskey } from '@/lib/account/application/passkey'
+import { createFakeWebAuthnBrowserPort } from '../../../helpers/fakeWebAuthnBrowserPort'
 
-// fake 用の options JSON（バックエンドが返す JSON 文字列形式）
+// fake 用の options JSON（gateway が parse して application に渡すので、client の既定値は parse 済みの object にする）
 const FAKE_OPTIONS_STR = JSON.stringify({ challenge: 'test-challenge', rp: { name: 'test' } })
 const FAKE_CHALLENGE_ID = 'challenge-abc-123'
 const FAKE_CREDENTIAL = { id: 'cred-id', rawId: 'cred-id', type: 'public-key', response: {} }
@@ -14,12 +14,12 @@ function makeFakeClient(overrides: Record<string, unknown> = {}) {
   return {
     getPasskeyRegisterOptions: vi.fn().mockResolvedValue({
       ok: true,
-      value: { challenge_id: FAKE_CHALLENGE_ID, options: FAKE_OPTIONS_STR },
+      value: { challenge_id: FAKE_CHALLENGE_ID, options: JSON.parse(FAKE_OPTIONS_STR) },
     }),
     verifyPasskeyRegistration: vi.fn().mockResolvedValue({ ok: true, value: { status: 'ok' } }),
     getPasskeyLoginOptions: vi.fn().mockResolvedValue({
       ok: true,
-      value: { challenge_id: FAKE_CHALLENGE_ID, options: FAKE_OPTIONS_STR },
+      value: { challenge_id: FAKE_CHALLENGE_ID, options: JSON.parse(FAKE_OPTIONS_STR) },
     }),
     verifyPasskeyLogin: vi.fn().mockResolvedValue({ ok: true, value: FAKE_LOGIN_RESPONSE }),
     ...overrides,
@@ -82,7 +82,7 @@ describe('registerPasskey', () => {
     const client = makeFakeClient({
       getPasskeyRegisterOptions: vi.fn().mockResolvedValue({
         ok: true,
-        value: { challenge_id: 'cid', options: JSON.stringify(innerOptions) },
+        value: { challenge_id: 'cid', options: innerOptions },
       }),
     })
     const port = createFakeWebAuthnBrowserPort({ startRegistration: startReg })
