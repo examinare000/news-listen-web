@@ -5,8 +5,8 @@ import React from 'react'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
-import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
+import { createFakePushBrowserPort } from '../helpers/fakePushBrowserPort'
+import type { PushBrowserPort } from '@/lib/notifications/application/ports'
 import type { PushSubscriptionJSON } from '@/types/index'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
@@ -70,13 +70,13 @@ vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ reclaimAudioCac
 const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
   clearManagedServiceWorkerCaches: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
+vi.mock('@/lib/platform/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
 
 const { fakePortHolder } = vi.hoisted(() => ({
   fakePortHolder: { port: null as PushBrowserPort | null },
 }))
-vi.mock('@/lib/pushBrowserPort', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/pushBrowserPort')>()
+vi.mock('@/lib/platform/pushBrowser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/platform/pushBrowser')>()
   return {
     ...actual,
     createRealPushBrowserPort: () => fakePortHolder.port as PushBrowserPort,

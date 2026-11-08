@@ -1,20 +1,8 @@
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
-import { urlBase64ToUint8Array } from '@/lib/webpush'
+import type { NotificationsGateway, PushBrowserPort } from './ports'
+import type { PushResolveResult } from './readModels'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
-import type { PushSubscriptionJSON } from '@/types/index'
 
-/**
- * pushRegistration が依存する API クライアントの最小形。各メソッドは throw せず Result を返す。
- * 呼び出し側は必要な 3 メソッドだけを gateway に束縛して渡す。
- */
-export interface PushRegistrationApiClient {
-  getVapidPublicKey(): Promise<Result<{ readonly public_key: string }, ApiFailure>>
-  subscribePush(subscription: PushSubscriptionJSON): Promise<Result<unknown, ApiFailure>>
-  unsubscribePush(endpoint: string): Promise<Result<unknown, ApiFailure>>
-}
-
-export type PushResolveResult = 'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | 'error'
 export type PushSubscribeResult = 'subscribed' | 'denied' | 'unsubscribed' | 'error'
 export type PushUnsubscribeResult = 'unsubscribed' | 'error'
 
@@ -33,7 +21,7 @@ export interface PushRegistration {
 
 interface CreatePushRegistrationDeps {
   port: PushBrowserPort
-  client: PushRegistrationApiClient
+  client: NotificationsGateway
 }
 
 /**
@@ -62,7 +50,7 @@ export function createPushRegistration({ port, client }: CreatePushRegistrationD
 
       const vapid = await client.getVapidPublicKey()
       if (!vapid.ok) return 'error'
-      const applicationServerKey = urlBase64ToUint8Array(vapid.value.public_key)
+      const { applicationServerKey } = vapid.value
 
       const subscription = await port.subscribe({ applicationServerKey })
       const subscribed = await client.subscribePush(subscription)

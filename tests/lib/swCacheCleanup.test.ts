@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
-import { clearManagedServiceWorkerCaches } from '@/lib/swCacheCleanup'
+import { clearManagedServiceWorkerCaches } from '@/lib/platform/swCacheCleanup'
 import { setupMockCaches } from '../helpers/mockCaches'
 
 /**

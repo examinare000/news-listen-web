@@ -35,6 +35,12 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/admin/domain/featuredOrder.test.ts',
   'tests/lib/admin/domain/inviteInput.test.ts',
   'tests/lib/admin/domain/userGuard.test.ts',
+  'tests/helpers/fakePushBrowserPort.test.ts',
+  'tests/lib/notifications/application/commands.test.ts',
+  'tests/lib/notifications/application/queries.test.ts',
+  'tests/lib/notifications/application/readModels.test.ts',
+  'tests/architecture/cqrs.notifications.test.ts',
+  'tests/architecture/immutability.notifications.test.ts',
   'tests/lib/catalog/domain/article.test.ts',
   'tests/lib/catalog/domain/episode.test.ts',
   'tests/lib/catalog/domain/featuredCategory.test.ts',
@@ -70,7 +76,6 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/push/pushRegistration.test.ts',
   'tests/lib/relativeTime.conformance.test.ts',
   'tests/helpers/fakeWebAuthnBrowserPort.test.ts',
-  'tests/lib/webpush.test.ts',
   'tests/next.config.test.ts',
   'tests/types/index.test.ts',
   'tests/types/jest-dom-matchers.test.ts',
@@ -102,10 +107,10 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/platform/adapters.test.ts',
       'tests/lib/platform/playbackBrowserAdapters.test.ts',
       'tests/lib/pushBrowserPort.real.test.ts',
-      'tests/lib/pushBrowserPort.test.ts',
       'tests/lib/reportClientError.test.ts',
       'tests/lib/sfx.test.ts',
       'tests/lib/swCacheCleanup.test.ts',
+      'tests/lib/webpush.test.ts',
       'tests/lib/platform/webauthn.test.ts',
     ],
   },
@@ -117,6 +122,7 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/catalog/infrastructure/episodeGateway.test.ts',
       'tests/lib/catalog/infrastructure/catalogGateway.test.ts',
       'tests/lib/catalog/infrastructure/episodeMapper.test.ts',
+      'tests/lib/notifications/infrastructure/notificationsGateway.test.ts',
       'tests/lib/preferences/infrastructure/preferencesGateway.test.ts',
     ],
   },
@@ -225,6 +231,8 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/usePasskeySupport.test.tsx',
       'tests/contexts/useCatalogCommands.test.tsx',
       'tests/contexts/useCatalogQueries.test.tsx',
+      'tests/contexts/useNotificationsCommands.test.tsx',
+      'tests/contexts/useNotificationsQueries.test.tsx',
       'tests/contexts/usePreferencesCommands.test.tsx',
       'tests/contexts/usePreferencesQueries.test.tsx',
       'tests/contexts/StreakContext.test.tsx',
@@ -369,7 +377,19 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   ],
   'lib/preferences/application/readModels.ts': ['tests/lib/preferences/application/readModels.test.ts'],
   'lib/preferences/domain/settings.ts': ['tests/lib/preferences/domain/settings.test.ts'],
-  'lib/push/pushRegistration.ts': ['tests/lib/push/pushRegistration.test.ts'],
+  'lib/notifications/application/commands.ts': [
+    'tests/architecture/cqrs.notifications.test.ts',
+    'tests/lib/notifications/application/commands.test.ts',
+  ],
+  'lib/notifications/application/ports.ts': [],
+  'lib/notifications/application/pushRegistration.ts': ['tests/lib/push/pushRegistration.test.ts'],
+  'lib/notifications/application/queries.ts': [
+    'tests/architecture/cqrs.notifications.test.ts',
+    'tests/architecture/immutability.notifications.test.ts',
+    'tests/lib/notifications/application/queries.test.ts',
+  ],
+  'lib/notifications/application/readModels.ts': ['tests/lib/notifications/application/readModels.test.ts'],
+  'lib/notifications/domain/pushSubscriptionState.ts': [],
 }
 
 /**
@@ -377,21 +397,4 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
  * 増やしてよいのは、新しく検出した違反を既存の責務 task に接続するときだけ。違反を避けるために足さない。
  * 最終 task（web-slice-closure-01）で 0 件にする。
  */
-export const MIGRATION_ALLOWANCES: readonly MigrationAllowance[] = [
-  {
-    file: 'tests/lib/push/pushRegistration.test.ts',
-    specifier: '@/lib/pushBrowserPort',
-    owner: 'user',
-    reason: 'fake が adapter の module に同居している。fake は tests/helpers/ に置き、port の型を import type で実装する',
-    removeBy: 'web-slice-notify-01',
-    task: 'web-slice-notify-01',
-  },
-  {
-    file: 'tests/lib/push/pushRegistration.test.ts',
-    specifier: '@/lib/webpush',
-    owner: 'user',
-    reason: '鍵の変換を旧 module から取っている。変換は adapter の内側に移し、port の引数を文字列にする',
-    removeBy: 'web-slice-notify-01',
-    task: 'web-slice-notify-01',
-  },
-]
+export const MIGRATION_ALLOWANCES: readonly MigrationAllowance[] = []

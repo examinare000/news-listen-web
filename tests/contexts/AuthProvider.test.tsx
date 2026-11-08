@@ -57,7 +57,7 @@ vi.mock('@/lib/playback/infrastructure/offlineLibrary', () => ({ reclaimAudioCac
 const { clearManagedServiceWorkerCaches } = vi.hoisted(() => ({
   clearManagedServiceWorkerCaches: vi.fn().mockResolvedValue(undefined),
 }))
-vi.mock('@/lib/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
+vi.mock('@/lib/platform/swCacheCleanup', () => ({ clearManagedServiceWorkerCaches }))
 
 let auth: ReturnType<typeof useAuth>
 

@@ -1,22 +1,18 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getVapidPublicKey, subscribePush, unsubscribePush } from '@/lib/notifications/infrastructure/api'
-import { createRealPushBrowserPort } from '@/lib/pushBrowserPort'
-import { createPushRegistration } from '@/lib/push/pushRegistration'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
-import type { PushSubscriptionState } from '@/types/index'
+import { useNotificationsCommands } from '@/contexts/useNotificationsCommands'
+import { useNotificationsQueries } from '@/contexts/useNotificationsQueries'
+import { toPushSubscriptionView } from '@/lib/notifications/application/readModels'
+import type { PushSubscriptionView } from '@/lib/notifications/application/readModels'
 
 interface UseWebPushSubscriptionOptions {
-  /** テスト時に差し替えるポート（省略時は実ブラウザポートを使用）*/
-  port?: PushBrowserPort
   /** 呼び出し側の認証状態。'authenticated' に変わるたびに再送する。省略時は再送しない */
   authStatus?: 'unknown' | 'authenticated' | 'unauthenticated'
 }
 
 interface UseWebPushSubscriptionResult {
-  state: PushSubscriptionState
+  state: PushSubscriptionView['state']
   subscribe: () => Promise<void>
   unsubscribe: () => Promise<void>
 }
@@ -24,57 +20,42 @@ interface UseWebPushSubscriptionResult {
 /**
  * Web Push 購読の状態機械を管理するフック。
  *
- * ブラウザ Push API へのアクセスは PushBrowserPort ポートに委譲し、
- * フック自身は状態遷移ロジックのみを担当する。
- * ポート注入により、jsdom 環境（navigator なし）でも状態機械を完全にテストできる。
+ * 購読の問い合わせと操作は、注入済みの query・command に委譲し、
+ * フック自身は契機（mount・認証状態の変化）と状態遷移だけを担当する。
  */
-export function useWebPushSubscription({
-  port: portProp,
-  authStatus,
-}: UseWebPushSubscriptionOptions = {}): UseWebPushSubscriptionResult {
-  const [pushState, setPushState] = useState<PushSubscriptionState>('unsubscribed')
-  // ポートと登録協調オブジェクトはレンダリングをまたいで同一インスタンスを保持
-  const [port] = useState<PushBrowserPort>(() => portProp ?? createRealPushBrowserPort())
-  const gateway = useApiClient()
-  const [registration] = useState(() =>
-    createPushRegistration({
-      port,
-      client: {
-        getVapidPublicKey: () => getVapidPublicKey(gateway),
-        subscribePush: (subscription) => subscribePush(gateway, subscription),
-        unsubscribePush: (endpoint) => unsubscribePush(gateway, endpoint),
-      },
-    }),
-  )
+export function useWebPushSubscription({ authStatus }: UseWebPushSubscriptionOptions = {}): UseWebPushSubscriptionResult {
+  const [view, setView] = useState<PushSubscriptionView>(() => toPushSubscriptionView('unsubscribed'))
+  const commands = useNotificationsCommands()
+  const queries = useNotificationsQueries()
 
   // 初期化: 機能検出 → 権限確認 → 既存購読確認
   useEffect(() => {
     let cancelled = false
 
     async function init() {
-      const result = await registration.resolve()
-      if (!cancelled) setPushState(result)
+      const result = await queries.subscription()
+      if (!cancelled) setView(result)
     }
 
     void init()
     return () => { cancelled = true }
-  }, [registration])
+  }, [queries])
 
   // 認証状態が 'authenticated' に変わるたび（mount 時点で既に 'authenticated' の場合を含む）に再送する
   useEffect(() => {
-    if (authStatus === 'authenticated') void registration.reregister()
-  }, [authStatus, registration])
+    if (authStatus === 'authenticated') void commands.reregister()
+  }, [authStatus, commands])
 
   const subscribe = useCallback(async () => {
-    setPushState('subscribing')
-    const result = await registration.subscribe()
-    setPushState(result)
-  }, [registration])
+    setView(toPushSubscriptionView('subscribing'))
+    const result = await commands.subscribe()
+    setView(toPushSubscriptionView(result))
+  }, [commands])
 
   const unsubscribe = useCallback(async () => {
-    const result = await registration.unsubscribe()
-    setPushState(result)
-  }, [registration])
+    const result = await commands.unsubscribe()
+    setView(toPushSubscriptionView(result))
+  }, [commands])
 
-  return { state: pushState, subscribe, unsubscribe }
+  return { state: view.state, subscribe, unsubscribe }
 }

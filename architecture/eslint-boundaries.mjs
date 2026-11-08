@@ -21,7 +21,6 @@ const ALLOWED_CROSS_CONTEXT = [
 
 // application 層のディレクトリがまだ無い間の APP の現状の対応ファイル（context つき）。
 const LEGACY_APP_FILES = [
-  { file: 'lib/push/pushRegistration.ts', context: 'notifications' },
 ]
 
 const FRAMEWORK_GROUP = ['react', 'react-dom', 'next', 'next/*']
@@ -125,7 +124,7 @@ const presSpec = {
   ignores: ['app/api/**', 'app/layout.tsx', 'app/(app)/layout.tsx'],
   importPatterns: (exempt) => [
     regexPattern(
-      '@/lib/(?:api|platform)(?:/|$)|@/lib/(?:audioCache|sfx|reportClientError|pushBrowserPort|webauthnBrowserPort|swCacheCleanup|config)$|@/lib/[^/]+/infrastructure(?:/|$)',
+      '@/lib/(?:api|platform)(?:/|$)|@/lib/(?:audioCache|sfx|reportClientError|config)$|@/lib/[^/]+/infrastructure(?:/|$)',
       exempt,
       'PRES は adapter・infrastructure を直接 import しない（web-dep-05）',
     ),
@@ -163,7 +162,7 @@ const platformSpec = {
   files: ['lib/platform/**/*.{ts,tsx}'],
   importPatterns: (exempt) => [
     regexPattern(
-      `@/lib/[^/]+/${LAYER}(?:/|$)|@/lib/(?:push/pushRegistration)$`,
+      `@/lib/[^/]+/${LAYER}(?:/|$)`,
       exempt,
       'adapter は domain・application の値を import しない（型だけ）（web-dep-07）',
       { allowTypeImports: true },

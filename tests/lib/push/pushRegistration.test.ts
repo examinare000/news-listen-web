@@ -1,12 +1,11 @@
 import { describe, test, expect, vi, afterEach } from 'vitest'
-import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
-import { urlBase64ToUint8Array } from '@/lib/webpush'
-import { createPushRegistration } from '@/lib/push/pushRegistration'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
+import { createFakePushBrowserPort } from '../../helpers/fakePushBrowserPort'
+import { createPushRegistration } from '@/lib/notifications/application/pushRegistration'
+import type { PushBrowserPort } from '@/lib/notifications/application/ports'
 import type { PushSubscriptionJSON } from '@/types/index'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
-import * as pushRegistrationModule from '@/lib/push/pushRegistration'
+import * as pushRegistrationModule from '@/lib/notifications/application/pushRegistration'
 
 // spec.md §3.2 の公開インターフェースを、テスト側で実装から独立して書く。
 // createPushRegistration をこの型へ代入することで、実装が spec の形を満たすことを
@@ -14,9 +13,9 @@ import * as pushRegistrationModule from '@/lib/push/pushRegistration'
 // しまい、spec との不一致を検出できないため）。
 type ApiResult<T> = Result<T, ApiFailure>
 interface PushRegistrationApi {
-  getVapidPublicKey(): Promise<ApiResult<{ public_key: string }>>
-  subscribePush(subscription: PushSubscriptionJSON): Promise<ApiResult<unknown>>
-  unsubscribePush(endpoint: string): Promise<ApiResult<unknown>>
+  getVapidPublicKey(): Promise<ApiResult<{ applicationServerKey: Uint8Array }>>
+  subscribePush(subscription: PushSubscriptionJSON): Promise<ApiResult<void>>
+  unsubscribePush(endpoint: string): Promise<ApiResult<void>>
 }
 interface PushRegistration {
   resolve(): Promise<'unsupported' | 'denied' | 'unsubscribed' | 'subscribed' | 'error'>
@@ -30,6 +29,9 @@ const createRegistration: (deps: {
   client: PushRegistrationApi
 }) => PushRegistration = createPushRegistration
 
+// gateway が変換済みの VAPID 鍵（変換そのものは notificationsGateway.test.ts が固定する）
+const VAPID_KEY = new Uint8Array([4, 53, 106, 156, 39, 31, 196, 67])
+
 const EXISTING: PushSubscriptionJSON = {
   endpoint: 'https://fcm.example.com/existing',
   keys: { p256dh: 'p256dh-val', auth: 'auth-val' },
@@ -37,7 +39,7 @@ const EXISTING: PushSubscriptionJSON = {
 
 function createClient(overrides: Partial<PushRegistrationApi> = {}): PushRegistrationApi {
   return {
-    getVapidPublicKey: vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } }),
+    getVapidPublicKey: vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } }),
     subscribePush: vi.fn().mockResolvedValue({ ok: true, value: {} }),
     unsubscribePush: vi.fn().mockResolvedValue({ ok: true, value: {} }),
     ...overrides,
@@ -147,7 +149,7 @@ describe('subscribe()', () => {
       subscribe: portSubscribe,
       getExistingSubscription,
     })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const client = createClient({ getVapidPublicKey, subscribePush })
     const registration = createRegistration({ port, client })
@@ -170,7 +172,7 @@ describe('subscribe()', () => {
     const callArgs = portSubscribe.mock.calls[0][0]
     expect(Object.keys(callArgs)).toEqual(['applicationServerKey'])
     expect(callArgs.applicationServerKey).toBeInstanceOf(Uint8Array)
-    const expected = urlBase64ToUint8Array('BNVa2nUfxEMGkLfDNj3test')
+    const expected = VAPID_KEY
     expect(Array.from(callArgs.applicationServerKey)).toEqual(Array.from(expected))
     expect(callArgs.applicationServerKey.length).toBeGreaterThan(0)
 
@@ -184,7 +186,7 @@ describe('subscribe()', () => {
     const registerServiceWorker = vi.fn(async () => {})
     const portSubscribe = vi.fn(async () => EXISTING)
     const port = createFakePushBrowserPort({ requestPermission, registerServiceWorker, subscribe: portSubscribe })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
 
@@ -202,7 +204,7 @@ describe('subscribe()', () => {
     const registerServiceWorker = vi.fn(async () => {})
     const portSubscribe = vi.fn(async () => EXISTING)
     const port = createFakePushBrowserPort({ requestPermission, registerServiceWorker, subscribe: portSubscribe })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
 
@@ -244,7 +246,7 @@ describe('subscribe()', () => {
     const requestPermission = vi.fn(async (): Promise<NotificationPermission> => { throw new Error('denied by user agent') })
     const registerServiceWorker = vi.fn(async () => {})
     const portSubscribe = vi.fn(async () => EXISTING)
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const port = createFakePushBrowserPort({ requestPermission, registerServiceWorker, subscribe: portSubscribe })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
@@ -262,7 +264,7 @@ describe('subscribe()', () => {
     const requestPermission = vi.fn(async (): Promise<NotificationPermission> => 'granted')
     const registerServiceWorker = vi.fn(async () => { throw new Error('sw register failed') })
     const portSubscribe = vi.fn(async () => EXISTING)
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const port = createFakePushBrowserPort({ requestPermission, registerServiceWorker, subscribe: portSubscribe })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
@@ -279,7 +281,7 @@ describe('subscribe()', () => {
   test('CI-S3: port.subscribe が reject なら error。subscribePush は呼ばれない', async () => {
     const requestPermission = vi.fn(async (): Promise<NotificationPermission> => 'granted')
     const portSubscribe = vi.fn(async () => { throw new Error('browser rejected') })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const port = createFakePushBrowserPort({ requestPermission, subscribe: portSubscribe })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
@@ -294,7 +296,7 @@ describe('subscribe()', () => {
   test('CI-S3: 変換の例外（atob）で error。後続は呼ばれない', async () => {
     const requestPermission = vi.fn(async (): Promise<NotificationPermission> => 'granted')
     const portSubscribe = vi.fn(async () => EXISTING)
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: '!!!!' } })
+    const getVapidPublicKey = vi.fn().mockRejectedValue(new Error('invalid base64url'))
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const port = createFakePushBrowserPort({ requestPermission, subscribe: portSubscribe })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
@@ -318,7 +320,7 @@ describe('subscribe()', () => {
       subscribe: portSubscribe,
       getExistingSubscription,
     })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
 
@@ -347,7 +349,7 @@ describe('subscribe()', () => {
       subscribe: portSubscribe,
       getExistingSubscription,
     })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const registration = createRegistration({ port, client: createClient({ getVapidPublicKey, subscribePush }) })
 
@@ -451,7 +453,7 @@ describe('reregister()', () => {
       subscribe: portSubscribe,
       unsubscribe: portUnsubscribe,
     })
-    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { public_key: 'BNVa2nUfxEMGkLfDNj3test' } })
+    const getVapidPublicKey = vi.fn().mockResolvedValue({ ok: true, value: { applicationServerKey: VAPID_KEY } })
     const subscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const unsubscribePush = vi.fn().mockResolvedValue({ ok: true, value: {} })
     const registration = createRegistration({

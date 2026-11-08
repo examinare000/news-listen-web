@@ -6,8 +6,8 @@ import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import React from 'react'
 import { PushReregistration } from '@/components/PushReregistration'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
-import { createFakePushBrowserPort } from '@/lib/pushBrowserPort'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
+import { createFakePushBrowserPort } from '../helpers/fakePushBrowserPort'
+import type { PushBrowserPort } from '@/lib/notifications/application/ports'
 import type { PushSubscriptionJSON } from '@/types/index'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
@@ -35,8 +35,8 @@ const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined })
 
 vi.mock('@/contexts/AuthProvider', () => ({ useAuth: mockUseAuth }))
 
-vi.mock('@/lib/pushBrowserPort', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/pushBrowserPort')>()
+vi.mock('@/lib/platform/pushBrowser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/platform/pushBrowser')>()
   return {
     ...actual,
     createRealPushBrowserPort: () => fakePortHolder.port as PushBrowserPort,
@@ -289,7 +289,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => EXISTING)
     const port = createFakePushBrowserPort({ getExistingSubscription })
 
-    renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    renderHook(() => useWebPushSubscription())
 
     await expectStableCallCount(getExistingSubscription, 1)
     expect(subscribeCalls()).toHaveLength(0)
@@ -300,7 +301,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => EXISTING)
     const port = createFakePushBrowserPort({ getExistingSubscription })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port, authStatus: 'authenticated' }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription({ authStatus: 'authenticated' }))
 
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
     await expectStableCallCount(() => subscribeCalls().length, 1)
@@ -315,8 +317,9 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const deferred = createDeferred<Result<unknown, ApiFailure>>()
     gw.respondWith('POST', SUBSCRIPTIONS_PATH, () => deferred.promise)
 
+    setComponentPort(port)
     const { result, rerender } = renderHook(
-      ({ s }: { s: AuthStatus }) => useWebPushSubscription({ port, authStatus: s }),
+      ({ s }: { s: AuthStatus }) => useWebPushSubscription({ authStatus: s }),
       { initialProps: { s: 'unknown' as AuthStatus } }
     )
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
@@ -346,7 +349,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const deferred = createDeferred<Result<unknown, ApiFailure>>()
     gw.respondWith('POST', SUBSCRIPTIONS_PATH, () => deferred.promise)
 
-    const { result } = renderHook(() => useWebPushSubscription({ port, authStatus: 'authenticated' }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription({ authStatus: 'authenticated' }))
 
     await waitFor(() => {
       expect(result.current.state).toBe('subscribed')
@@ -375,7 +379,7 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     authState.status = 'authenticated'
 
     expect(() => render(<PushReregistration />)).not.toThrow()
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    const { result } = renderHook(() => useWebPushSubscription())
 
     await expectStableCallCount(isSupported, 3)
     await waitFor(() => expect(result.current.state).toBe('error'))
@@ -393,7 +397,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const requestPermission = vi.fn(() => requestPermissionDeferred.promise)
     const port = createFakePushBrowserPort({ requestPermission })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
 
     act(() => {
@@ -416,7 +421,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(() => deferred.promise)
     const port = createFakePushBrowserPort({ getExistingSubscription })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     expect(result.current.state).toBe('unsubscribed')
 
     await act(async () => {
@@ -435,7 +441,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const port = createFakePushBrowserPort({ getExistingSubscription, unsubscribe: portUnsubscribe })
     gw.respondWith('DELETE', UNSUBSCRIBE_PATH, () => Promise.reject(new Error('server error')))
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
 
     await act(async () => {
@@ -452,7 +459,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
   test('CI-H8: 戻り値の形は { state, subscribe, unsubscribe } のまま。subscribe/unsubscribe は undefined で resolve', async () => {
     const port = createFakePushBrowserPort()
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
 
     let v1: unknown
@@ -482,7 +490,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
       getExistingSubscription,
     })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
 
     let pending: Promise<void>
@@ -519,7 +528,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
       getExistingSubscription,
     })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
 
     let pending: Promise<void>
@@ -557,7 +567,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     })
     gw.respondWith('GET', VAPID_PATH, () => Promise.reject(new Error('x')))
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
 
     let pending: Promise<void>
@@ -586,7 +597,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const portUnsubscribe = vi.fn(async () => true)
     const port = createFakePushBrowserPort({ getExistingSubscription, unsubscribe: portUnsubscribe })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
     await waitFor(() => expect(result.current.state).toBe('subscribed'))
 
     await act(async () => {
@@ -605,7 +617,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => null)
     const port = createFakePushBrowserPort({ isSupported, getExistingSubscription })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
 
     await waitFor(() => expect(result.current.state).toBe('unsupported'))
     expect(isSupported).toHaveBeenCalledTimes(1)
@@ -618,7 +631,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => null)
     const port = createFakePushBrowserPort({ getPermission, getExistingSubscription })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
 
     await waitFor(() => expect(result.current.state).toBe('denied'))
     expect(getPermission).toHaveBeenCalledTimes(1)
@@ -630,7 +644,8 @@ describe('useWebPushSubscription({ port, authStatus }) — hook 単体', () => {
     const getExistingSubscription = vi.fn(async () => null)
     const port = createFakePushBrowserPort({ getExistingSubscription })
 
-    const { result } = renderHook(() => useWebPushSubscription({ port }))
+    setComponentPort(port)
+    const { result } = renderHook(() => useWebPushSubscription())
 
     await waitFor(() => expect(result.current.state).toBe('unsubscribed'))
     expect(getExistingSubscription).toHaveBeenCalledTimes(1)

@@ -2,12 +2,6 @@
 
 import React from 'react'
 import { useWebPushSubscription } from '@/hooks/useWebPushSubscription'
-import type { PushBrowserPort } from '@/lib/pushBrowserPort'
-
-interface PushNotificationSectionProps {
-  /** テスト時に差し替えるポート（省略時は実ブラウザポートを使用）*/
-  port?: PushBrowserPort
-}
 
 /**
  * Web Push 通知の購読 ON/OFF トグルセクション。
@@ -15,8 +9,8 @@ interface PushNotificationSectionProps {
  * 設定ページのセクションとして組み込む。
  * 状態に応じてボタンラベルとメッセージを切り替える最小 UI。
  */
-export function PushNotificationSection({ port }: PushNotificationSectionProps) {
-  const { state, subscribe, unsubscribe } = useWebPushSubscription({ port })
+export function PushNotificationSection() {
+  const { state, subscribe, unsubscribe } = useWebPushSubscription()
 
   return (
     <section className="settings-section">
