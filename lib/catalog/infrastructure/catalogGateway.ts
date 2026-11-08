@@ -1,5 +1,5 @@
 // port CatalogGateway の実装。lib/api の podcasts・feed・articles・settings を呼び、DTO を EpisodeRecord・ArticleRef・SourceRef・FeaturedSourceRef に写す。
-import type { AddSourceGatewayFailure, CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { AddSourceGatewayFailure, CatalogGateway, EpisodeRecord, QuotaRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { normalizeFeaturedCategory } from '@/lib/catalog/domain/featuredCategory'
 import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
@@ -10,6 +10,7 @@ import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { getPodcast, getPodcasts } from '@/lib/api/podcasts'
 import { dismissArticle, getStarredArticles, starArticle, unstarArticle } from '@/lib/api/articles'
 import { getFeed } from '@/lib/api/feed'
+import { getGenerationQuota } from '@/lib/api/users'
 import {
   addSource,
   completeOnboarding,
@@ -18,7 +19,7 @@ import {
   getOnboardingStatus,
   getSources,
 } from '@/lib/api/settings'
-import type { Article, FeaturedSource, Podcast, Source } from '@/types'
+import type { Article, FeaturedSource, GenerationQuota, Podcast, Source } from '@/types'
 
 // 内容 4 つと表示 field は kind に依らず DTO から写す。null・欠落は空配列。
 function toRecord(dto: Podcast): EpisodeRecord {
@@ -65,6 +66,15 @@ function toAddSourceFailure(failure: ApiFailure): AddSourceGatewayFailure {
   if (failure.kind === 'conflict') return { kind: 'already_registered' }
   if (failure.kind === 'validation' && failure.reason !== 'rule') return { kind: 'invalid_feed' }
   return { kind: 'failed', failure }
+}
+
+function toQuotaRecord(dto: GenerationQuota): QuotaRecord {
+  const { limit, remaining, monthly } = dto
+  return {
+    limit,
+    remaining,
+    monthly: monthly ? { limit: monthly.limit, remaining: monthly.remaining, resetAt: monthly.reset_at } : null,
+  }
 }
 
 export function createCatalogGateway(gateway: ApiGateway): CatalogGateway {
@@ -133,6 +143,10 @@ export function createCatalogGateway(gateway: ApiGateway): CatalogGateway {
     async getOnboardingStatus() {
       const result = await getOnboardingStatus(gateway)
       return result.ok ? { ok: true, value: { completed: result.value.onboarding_completed } } : result
+    },
+    async getGenerationQuota() {
+      const result = await getGenerationQuota(gateway)
+      return result.ok ? { ok: true, value: toQuotaRecord(result.value) } : result
     },
     async completeOnboarding() {
       const result = await completeOnboarding(gateway)

@@ -4,7 +4,7 @@
 // RED 理由（実装前）: `@/lib/catalog/application/queries` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
-import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { CatalogGateway, EpisodeRecord, QuotaRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
 import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
@@ -55,6 +55,7 @@ function fake(handlers: {
   sources?: () => Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
   featured?: () => Promise<Result<ReadonlyArray<FeaturedSourceRef>, ApiFailure>>
   onboarding?: () => Promise<Result<{ readonly completed: boolean }, ApiFailure>>
+  quota?: () => Promise<Result<QuotaRecord, ApiFailure>>
 }): FakeGateway {
   const calls: string[] = []
   let feedCount = 0
@@ -102,6 +103,10 @@ function fake(handlers: {
       return handlers.onboarding?.() ?? Promise.reject(new Error('getOnboardingStatus を想定していない'))
     },
     completeOnboarding: forbidden('completeOnboarding'),
+    getGenerationQuota: () => {
+      calls.push('getGenerationQuota')
+      return handlers.quota?.() ?? Promise.reject(new Error('getGenerationQuota を想定していない'))
+    },
   }
 }
 
@@ -651,5 +656,61 @@ describe('getOnboardingStatus (web-query-catalog-07)', () => {
     expect(first.value).not.toBe(second.value)
     expect(Object.isFrozen(first.value)).toBe(true)
     expect(Object.isFrozen(second.value)).toBe(true)
+  })
+})
+
+describe('getGenerationQuota (web-query-catalog-08)', () => {
+  const MONTHLY = { limit: 100, remaining: 50, resetAt: '2026-08-01T00:00:00Z' }
+
+  test('web-query-catalog-08 — gateway を 1 回だけ呼び、limit・remaining・monthly を写した凍結した値を返す', async () => {
+    const gateway = fake({ quota: () => Promise.resolve({ ok: true, value: { limit: 10, remaining: 5, monthly: MONTHLY } }) })
+
+    const result = await createCatalogQueries({ gateway }).getGenerationQuota()
+
+    expect(gateway.calls).toEqual(['getGenerationQuota'])
+    expect(result).toEqual({ ok: true, value: { limit: 10, remaining: 5, monthly: MONTHLY } })
+    if (!result.ok) return
+    expect(isDeepFrozen(result.value)).toBe(true)
+  })
+
+  test('web-query-catalog-08 — monthly が null なら null のまま写す', async () => {
+    const gateway = fake({ quota: () => Promise.resolve({ ok: true, value: { limit: 10, remaining: null, monthly: null } }) })
+
+    const result = await createCatalogQueries({ gateway }).getGenerationQuota()
+
+    expect(result).toEqual({ ok: true, value: { limit: 10, remaining: null, monthly: null } })
+  })
+
+  test('web-query-catalog-08 — not_found を含む gateway の failure は同じ参照のまま返す', async () => {
+    const failure: ApiFailure = { kind: 'not_found' }
+    const gateway = fake({ quota: () => Promise.resolve({ ok: false, failure }) })
+
+    const result = await createCatalogQueries({ gateway }).getGenerationQuota()
+
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.failure).toBe(failure)
+  })
+
+  test('web-query-catalog-08 — gateway の reject はそのまま伝わる', async () => {
+    const gateway = fake({ quota: () => Promise.reject(new Error('boom')) })
+    await expect(createCatalogQueries({ gateway }).getGenerationQuota()).rejects.toThrow('boom')
+  })
+
+  test('web-query-catalog-08 — 呼ぶたびに別の凍結した値になり、gateway の object と参照を共有しない', async () => {
+    const raw: QuotaRecord = { limit: 10, remaining: 5, monthly: { ...MONTHLY } }
+    const gateway = fake({ quota: () => Promise.resolve({ ok: true, value: raw }) })
+    const queries = createCatalogQueries({ gateway })
+
+    const first = await queries.getGenerationQuota()
+    const second = await queries.getGenerationQuota()
+
+    if (!first.ok || !second.ok) throw new Error('成功のはず')
+    expect(first.value).not.toBe(raw)
+    expect(first.value).not.toBe(second.value)
+    expect(first.value.monthly).not.toBe(raw.monthly)
+    expect(first.value.monthly).not.toBe(second.value.monthly)
+    expect(isDeepFrozen(first.value)).toBe(true)
+    expect(isDeepFrozen(second.value)).toBe(true)
   })
 })

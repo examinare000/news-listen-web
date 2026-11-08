@@ -4,9 +4,8 @@ import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
 export type { DifficultyLevel, UserRole }
 
-// 統一デフォルト難易度（issue #163・docs/design/shared-playback-spec.md 正本）。
-// 設定画面の初期値/フォールバックと、記事単位star省略時の想定値を一箇所に集約する。
-export const DEFAULT_DIFFICULTY: DifficultyLevel = 'toeic_600'
+// 統一デフォルト難易度（issue #163・docs/design/shared-playback-spec.md 正本）。正本は lib/shared/difficulty.ts。
+export { DEFAULT_DIFFICULTY } from '@/lib/shared/difficulty'
 
 export type PodcastStatus = 'processing' | 'completed' | 'failed' | 'partial_failed'
 

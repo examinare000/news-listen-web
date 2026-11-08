@@ -7,10 +7,12 @@ import { usePlayback } from '@/contexts/PlaybackProvider'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import { useToast } from '@/components/ui/Toast'
 import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getPreferences, updatePreferences } from '@/lib/preferences/infrastructure/api'
-import { getGenerationQuota } from '@/lib/catalog/infrastructure/api'
+import { usePreferencesCommands } from '@/contexts/usePreferencesCommands'
+import { usePreferencesQueries } from '@/contexts/usePreferencesQueries'
+import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import type { QuotaView } from '@/lib/catalog/application/readModels'
 import { getDifficultySuggestion } from '@/lib/learning/infrastructure/api'
-import { DIFFICULTY_LEVELS } from '@/lib/shared/difficulty'
+import { DEFAULT_DIFFICULTY, DIFFICULTY_LEVELS } from '@/lib/shared/difficulty'
 import {
   WEEKLY_GOALS,
   defaultPlaybackSpeed,
@@ -21,8 +23,7 @@ import type { WeeklyGoal } from '@/lib/preferences/domain/settings'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
-import { DEFAULT_DIFFICULTY } from '@/types/index'
-import type { DifficultyLevel, GenerationQuota, DifficultySuggestion } from '@/types/index'
+import type { DifficultyLevel, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 
@@ -31,6 +32,9 @@ export default function SettingsPage() {
   const { streak } = useStreak()
   const { showToast } = useToast()
   const gateway = useApiClient()
+  const commands = usePreferencesCommands()
+  const queries = usePreferencesQueries()
+  const catalogQueries = useCatalogQueries()
 
   const [defaultDifficulty, setDefaultDifficulty] = useState<DifficultyLevel>(DEFAULT_DIFFICULTY)
   const [weeklyGoal, setWeeklyGoal] = useState<WeeklyGoal>(3)
@@ -41,7 +45,7 @@ export default function SettingsPage() {
   // Load preferences on mount (C群#13)
   const loadPreferences = useCallback(async () => {
     try {
-      const result = await getPreferences(gateway)
+      const result = await queries.getServerPreferences()
       if (!result.ok) {
         // Fallback to DEFAULT_DIFFICULTY if fetch fails
         setDefaultDifficulty(DEFAULT_DIFFICULTY)
@@ -49,9 +53,9 @@ export default function SettingsPage() {
         showToast('設定の読み込みに失敗しました', 'error')
         return
       }
-      const prefs = result.value
-      setDefaultDifficulty(prefs.default_difficulty)
-      setWeeklyGoal(prefs.weekly_goal_episodes ?? 3)
+      const view = result.value
+      setDefaultDifficulty(view.defaultDifficulty)
+      setWeeklyGoal(view.weeklyGoal)
       setPreferencesLoadError(false)
     } catch {
       // Fallback to DEFAULT_DIFFICULTY if fetch fails
@@ -59,19 +63,19 @@ export default function SettingsPage() {
       setPreferencesLoadError(true)
       showToast('設定の読み込みに失敗しました', 'error')
     }
-  }, [gateway, showToast])
+  }, [queries, showToast])
 
   useEffect(() => {
     void loadPreferences()
   }, [loadPreferences])
 
   // issue #164 / ADR-061: 生成残回数の可視化。
-  const [quota, setQuota] = useState<GenerationQuota | null>(null)
+  const [quota, setQuota] = useState<QuotaView | null>(null)
   const [quotaLoadError, setQuotaLoadError] = useState(false)
 
   const loadQuota = useCallback(async () => {
     try {
-      const result = await getGenerationQuota(gateway)
+      const result = await catalogQueries.getGenerationQuota()
       if (!result.ok) {
         // WHY: 404（エンドポイント未実装）時は graceful degradation — quota セクション全体を非表示。
         // 404 以外（500・ネットワーク等）はエラーバナーを表示して再試行導線を出す。
@@ -88,7 +92,7 @@ export default function SettingsPage() {
     } catch {
       setQuotaLoadError(true)
     }
-  }, [gateway])
+  }, [catalogQueries])
 
   useEffect(() => {
     void loadQuota()
@@ -154,42 +158,23 @@ export default function SettingsPage() {
     await loadOfflineCache()
   }
 
-  // WHY: 2連続変更でレスポンス順が入れ替わると、後勝ちした保存成功後に先行の失敗が
-  // サーバー保存済み値を上書きする可能性がある。リクエスト連番で最新リクエストの結果のみを
-  // UI に反映し、stale な応答は無視する。
-  const difficultyRequestIdRef = useRef(0)
-
   // Handle difficulty change (C群#13)
   async function handleDifficultyChange(newDifficulty: DifficultyLevel) {
     // issue #164: 保存失敗時にサーバー側の値へ戻せるよう、変更前の値を保持しておく。
     const previousDifficulty = defaultDifficulty
     setDefaultDifficulty(newDifficulty)
 
-    // リクエスト連番を増加
-    const requestId = ++difficultyRequestIdRef.current
-
     try {
-      const result = await updatePreferences(gateway, { default_difficulty: newDifficulty })
+      // 最新の要求だけを反映する連番は command が持つ。stale な結果は何もしない。
+      const result = await commands.setDefaultDifficulty(newDifficulty)
       if (!result.ok) {
-        // 最新リクエストの場合のみロールバック（stale な失敗は無視）
-        if (requestId === difficultyRequestIdRef.current) {
-          // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
-          setDefaultDifficulty(previousDifficulty)
-          showToast('難易度設定の保存に失敗しました', 'error')
-        }
-        return
-      }
-      // 最新リクエストの場合のみ UI に反映（stale な成功は無視）
-      if (requestId === difficultyRequestIdRef.current) {
-        // 成功時は UI をそのまま保持（既に newDifficulty に更新済み）
-      }
-    } catch {
-      // 最新リクエストの場合のみロールバック（stale な失敗は無視）
-      if (requestId === difficultyRequestIdRef.current) {
         // サイレント失敗を廃止: 保存失敗をユーザーに伝え、UI をサーバー確認済みの値へ戻す。
         setDefaultDifficulty(previousDifficulty)
         showToast('難易度設定の保存に失敗しました', 'error')
       }
+    } catch {
+      setDefaultDifficulty(previousDifficulty)
+      showToast('難易度設定の保存に失敗しました', 'error')
     }
   }
 
@@ -200,7 +185,8 @@ export default function SettingsPage() {
     if (weeklyGoalTimeoutRef.current) clearTimeout(weeklyGoalTimeoutRef.current)
 
     weeklyGoalTimeoutRef.current = setTimeout(() => {
-      updatePreferences(gateway, { weekly_goal_episodes: goal })
+      commands
+        .setWeeklyGoal(goal)
         .then((result) => {
           if (!result.ok) {
             setWeeklyGoal(previousGoal)
@@ -356,7 +342,7 @@ export default function SettingsPage() {
                 <div className="settings-row-label">今月の残り生成回数</div>
                 <div className="settings-row-desc">
                   {quota.monthly.remaining ?? 0} / {quota.monthly.limit} 回（
-                  {formatDate(quota.monthly.reset_at)}にリセット）
+                  {formatDate(quota.monthly.resetAt)}にリセット）
                 </div>
               </div>
             </div>

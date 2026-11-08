@@ -1,7 +1,7 @@
 // @vitest-environment node
-// Catalog の query の分離（web-check-07）。本 slice の分: web-query-catalog-02〜04。
-// (a) CatalogQueries の入口の名前の集合 = 7（listEpisodes・getEpisodeDetail・watchGeneration・getFeed・listSources・getFeaturedSources・getOnboardingStatus）と、CatalogCommands の入口 = 8（starArticle・bulkStar・dismissArticle・unstarArticle・addSource・subscribeFeatured・removeSource・completeOnboarding）。型の等価と実行時の両方で過不足なく一致する。
-// (b) 呼出を記録する手書きの CatalogGateway の fake を渡し、query を全部呼んでも fake への記録は読み取り 7 種類だけ（書き込み 6 つは 1 回も呼ばれない）。
+// Catalog の query の分離（web-check-07）。本 slice の分: web-query-catalog-02〜04・08。
+// (a) CatalogQueries の入口の名前の集合 = 8（listEpisodes・getEpisodeDetail・watchGeneration・getFeed・listSources・getFeaturedSources・getOnboardingStatus・getGenerationQuota）と、CatalogCommands の入口 = 8（starArticle・bulkStar・dismissArticle・unstarArticle・addSource・subscribeFeatured・removeSource・completeOnboarding）。型の等価と実行時の両方で過不足なく一致する。
+// (b) 呼出を記録する手書きの CatalogGateway の fake を渡し、query を全部呼んでも fake への記録は読み取り 8 種類だけ（書き込み 6 つは 1 回も呼ばれない）。
 // (c) 戻り値がリードモデルの型（Result の中身を含む）。command の戻り値はリードモデルでない（bulkStar の receipt は id の配列と GenerationLimit だけ。addSource・subscribeFeatured・removeSource の成功の値は name・url だけの配列、completeOnboarding は void）。
 // 型の等価は `npm run typecheck` が検査する（等価でなければ代入が TS2322 で落ちる）。実行時の検査は vitest が行う。
 // createCatalogGateway・createGatewayDouble は import しない（unit が infrastructure を値で import すると forbiddenDependency になる）。
@@ -38,6 +38,7 @@ type QueryNames =
   | 'listSources'
   | 'getFeaturedSources'
   | 'getOnboardingStatus'
+  | 'getGenerationQuota'
 type CommandNames =
   | 'starArticle'
   | 'bulkStar'
@@ -83,7 +84,7 @@ void typeProbes
 // ---------------------------------------------------------------------------
 // 呼出を記録する fake（書き込み系 6 method も記録してから返す。記録しなければ (b) に識別力が無い）
 // ---------------------------------------------------------------------------
-const READ_CALLS: ReadonlySet<string> = new Set(['listEpisodes', 'getEpisode', 'getFeed', 'getStarredArticles', 'getSources', 'getFeaturedSources', 'getOnboardingStatus'])
+const READ_CALLS: ReadonlySet<string> = new Set(['listEpisodes', 'getEpisode', 'getFeed', 'getStarredArticles', 'getSources', 'getFeaturedSources', 'getOnboardingStatus', 'getGenerationQuota'])
 
 const RECORD: EpisodeRecord = {
   episode: {
@@ -166,6 +167,10 @@ function harness() {
       calls.push('getOnboardingStatus')
       return Promise.resolve({ ok: true, value: { completed: false } })
     },
+    getGenerationQuota: () => {
+      calls.push('getGenerationQuota')
+      return Promise.resolve({ ok: true, value: { limit: 10, remaining: 5, monthly: null } })
+    },
     completeOnboarding: () => {
       calls.push('completeOnboarding')
       return Promise.resolve({ ok: true, value: undefined })
@@ -177,8 +182,8 @@ function harness() {
 // ---------------------------------------------------------------------------
 // (a) 名前の集合
 // ---------------------------------------------------------------------------
-describe('web-check-07 (a) query 7 つは過不足なく公開される', () => {
-  test('web-check-07, web-query-catalog-02 — 戻り値の key は listEpisodes・getEpisodeDetail・watchGeneration・getFeed・listSources・getFeaturedSources・getOnboardingStatus の 7 つだけで、すべて関数', () => {
+describe('web-check-07 (a) query 8 つは過不足なく公開される', () => {
+  test('web-check-07, web-query-catalog-02 — 戻り値の key は listEpisodes・getEpisodeDetail・watchGeneration・getFeed・listSources・getFeaturedSources・getOnboardingStatus・getGenerationQuota の 8 つだけで、すべて関数', () => {
     const { queries } = harness()
     const names: readonly QueryNames[] = [
       'listEpisodes',
@@ -188,9 +193,10 @@ describe('web-check-07 (a) query 7 つは過不足なく公開される', () => 
       'listSources',
       'getFeaturedSources',
       'getOnboardingStatus',
+      'getGenerationQuota',
     ]
 
-    expect(names).toHaveLength(7)
+    expect(names).toHaveLength(8)
     expect(Object.keys(queries).sort()).toEqual([...names].sort())
     for (const name of names) expect(typeof queries[name], name).toBe('function')
   })
@@ -238,7 +244,7 @@ describe('web-check-07 (b) query を全部呼んでも、gateway への呼出は
     expect([...calls].sort()).toEqual(['getFeed', 'getStarredArticles'])
   })
 
-  test('web-check-07 — 7 つの query を全部呼んでも、記録は読み取り 7 種類だけ（書き込み系 6 つは 1 回も呼ばれない。watchGeneration は gateway を呼ばない）', async () => {
+  test('web-check-07 — 8 つの query を全部呼んでも、記録は読み取り 8 種類だけ（書き込み系 6 つは 1 回も呼ばれない。watchGeneration は gateway を呼ばない）', async () => {
     const { queries, calls, gateway } = harness()
 
     await queries.listEpisodes()
@@ -249,11 +255,12 @@ describe('web-check-07 (b) query を全部呼んでも、gateway への呼出は
     await queries.listSources()
     await queries.getFeaturedSources()
     await queries.getOnboardingStatus()
+    await queries.getGenerationQuota()
 
-    expect([...calls].sort()).toEqual(['getEpisode', 'getFeaturedSources', 'getFeed', 'getOnboardingStatus', 'getSources', 'getStarredArticles', 'listEpisodes'])
+    expect([...calls].sort()).toEqual(['getEpisode', 'getFeaturedSources', 'getFeed', 'getGenerationQuota', 'getOnboardingStatus', 'getSources', 'getStarredArticles', 'listEpisodes'])
     expect(calls.every((name) => READ_CALLS.has(name))).toBe(true)
     for (const write of ['starArticle', 'dismissArticle', 'unstarArticle', 'addSource', 'deleteSource', 'completeOnboarding']) expect(calls).not.toContain(write)
-    // fake は 13 method を持ち（書き込み系も記録する形で用意している）、query が呼べば記録に残る
+    // fake は 14 method を持ち（書き込み系も記録する形で用意している）、query が呼べば記録に残る
     expect(Object.keys(gateway).sort()).toEqual([
       'addSource',
       'completeOnboarding',
@@ -262,6 +269,7 @@ describe('web-check-07 (b) query を全部呼んでも、gateway への呼出は
       'getEpisode',
       'getFeaturedSources',
       'getFeed',
+      'getGenerationQuota',
       'getOnboardingStatus',
       'getSources',
       'getStarredArticles',
@@ -343,7 +351,15 @@ describe('web-check-07 (b) 購読・onboarding の query は読み取りだけ�
     expect(calls).toEqual(['getOnboardingStatus'])
   })
 
-  test('web-check-07 — 7 つの query を全部呼ぶと読み取り 7 種類が 1 回ずつ記録され、書き込み系 6 つは 0 回', async () => {
+  test('web-query-catalog-08 — 正方向対照: getGenerationQuota() を呼べば fake に getGenerationQuota が 1 回だけ記録される（書き込み系は呼ばれない）', async () => {
+    const { queries, calls } = harness()
+
+    await queries.getGenerationQuota()
+
+    expect(calls).toEqual(['getGenerationQuota'])
+  })
+
+  test('web-check-07 — 8 つの query を全部呼ぶと読み取り 8 種類が 1 回ずつ記録され、書き込み系 6 つは 0 回', async () => {
     const { queries, calls } = harness()
 
     await queries.listEpisodes()
@@ -354,8 +370,9 @@ describe('web-check-07 (b) 購読・onboarding の query は読み取りだけ�
     await queries.listSources()
     await queries.getFeaturedSources()
     await queries.getOnboardingStatus()
+    await queries.getGenerationQuota()
 
-    expect([...calls].sort()).toEqual(['getEpisode', 'getFeaturedSources', 'getFeed', 'getOnboardingStatus', 'getSources', 'getStarredArticles', 'listEpisodes'])
+    expect([...calls].sort()).toEqual(['getEpisode', 'getFeaturedSources', 'getFeed', 'getGenerationQuota', 'getOnboardingStatus', 'getSources', 'getStarredArticles', 'listEpisodes'])
     for (const write of WRITE_CALLS) expect(calls.filter((name) => name === write)).toHaveLength(0)
   })
 

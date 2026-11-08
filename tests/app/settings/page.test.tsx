@@ -1096,3 +1096,128 @@ describe('SettingsPage — generation quota with missing monthly (issue #82 / AD
     expect(screen.getByText(/50 \/ 100 回/)).toBeInTheDocument()
   })
 })
+
+// ==========================================================
+// Settings 画面 — サーバー設定の保存・読み込みの特性テスト（web-slice-prefs-01）
+// 実装をどこへ移しても利用者に見える挙動が変わらないことを、HTTP の層の double で固定する。
+// ==========================================================
+describe('SettingsPage — server preferences behaviour (web-slice-prefs-01)', () => {
+  const PREFS_WITH_GOAL_5 = { ...PREFS_TOEIC_600, weekly_goal_episodes: 5 }
+
+  function registerBaseline() {
+    gw.respond('GET', QUOTA_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', SUGGESTION_PATH, { ok: false, failure: { kind: 'not_found' } })
+  }
+
+  async function findGoalGroup() {
+    return screen.findByRole('group', { name: '1週間の目標本数' })
+  }
+
+  test('web-slice-prefs-01: 週の目標の PUT が API 失敗なら、toast を出して元の選択に戻す', async () => {
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_WITH_GOAL_5 })
+    gw.respond('PUT', PREFS_PATH, { ok: false, failure: { kind: 'server', status: 500 } })
+
+    renderSettingsPage()
+    const goalGroup = await findGoalGroup()
+    await waitFor(() => expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked())
+
+    await userEvent.click(within(goalGroup).getByRole('radio', { name: '7 本' }))
+
+    // debounce（400ms）の後に PUT が送られ、失敗を受けて戻る
+    expect(await screen.findByText(/学習目標の保存に失敗しました/, undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(callsTo('PUT', PREFS_PATH)).toHaveLength(1)
+    expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked()
+    expect(within(goalGroup).getByRole('radio', { name: '7 本' })).not.toBeChecked()
+  })
+
+  test('web-slice-prefs-01: 週の目標の PUT が reject しても、toast を出して元の選択に戻す', async () => {
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_WITH_GOAL_5 })
+    gw.respondWith('PUT', PREFS_PATH, () => Promise.reject(new Error('network down')))
+
+    renderSettingsPage()
+    const goalGroup = await findGoalGroup()
+    await waitFor(() => expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked())
+
+    await userEvent.click(within(goalGroup).getByRole('radio', { name: '10 本' }))
+
+    expect(await screen.findByText(/学習目標の保存に失敗しました/, undefined, { timeout: 3000 })).toBeInTheDocument()
+    expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked()
+    expect(within(goalGroup).getByRole('radio', { name: '10 本' })).not.toBeChecked()
+  })
+
+  test('web-slice-prefs-01: 週の目標を 400ms 以内に 2 回変えると、PUT は最後の値で 1 回だけ送られる', async () => {
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_WITH_GOAL_5 })
+    gw.respond('PUT', PREFS_PATH, { ok: true, value: {} })
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      renderSettingsPage()
+      const goalGroup = await findGoalGroup()
+      await waitFor(() => expect(within(goalGroup).getByRole('radio', { name: '5 本' })).toBeChecked())
+
+      await user.click(within(goalGroup).getByRole('radio', { name: '7 本' }))
+      await user.click(within(goalGroup).getByRole('radio', { name: '10 本' }))
+      // debounce 中は送られない
+      expect(callsTo('PUT', PREFS_PATH)).toHaveLength(0)
+
+      await waitFor(() => expect(callsTo('PUT', PREFS_PATH).length).toBeGreaterThanOrEqual(1))
+      await vi.advanceTimersByTimeAsync(2000)
+
+      const puts = callsTo('PUT', PREFS_PATH)
+      expect(puts).toHaveLength(1)
+      expect(puts[0].body).toEqual({ weekly_goal_episodes: 10 })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  test('web-slice-prefs-01: 最新の難易度の PUT が reject したら、toast を出して元の値に戻す', async () => {
+    registerBaseline()
+    gw.respond('GET', PREFS_PATH, { ok: true, value: PREFS_TOEIC_600 })
+    gw.respondWith('PUT', PREFS_PATH, () => Promise.reject(new Error('network down')))
+
+    renderSettingsPage()
+    const diffSelect = await screen.findByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    await waitFor(() => expect(diffSelect.value).toBe('toeic_600'))
+
+    await userEvent.selectOptions(diffSelect, 'eiken_p1')
+
+    expect(await screen.findByText(/難易度設定の保存に失敗しました/)).toBeInTheDocument()
+    await waitFor(() => expect(diffSelect.value).toBe('toeic_600'))
+  })
+
+  test('web-slice-prefs-01: 設定の GET が reject したら、toast と再試行ボタンを出し、難易度は toeic_600 にする', async () => {
+    registerBaseline()
+    gw.respondWith('GET', PREFS_PATH, () => Promise.reject(new Error('network down')))
+
+    renderSettingsPage()
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/設定の読み込みに失敗しました/).length).toBeGreaterThan(0)
+    })
+    expect(screen.getByRole('button', { name: /設定を再読み込み/ })).toBeInTheDocument()
+    expect(screen.getByRole<HTMLSelectElement>('combobox', { name: /難易度/i }).value).toBe('toeic_600')
+  })
+})
+
+describe('SettingsPage — 未知の難易度の前方互換 (web-slice-prefs-01)', () => {
+  test('web-slice-prefs-01: サーバーの default_difficulty が 6 値に無くても、読み込み失敗にせず toeic_600 を選ぶ', async () => {
+    gw.respond('GET', QUOTA_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', STREAK_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', SUGGESTION_PATH, { ok: false, failure: { kind: 'not_found' } })
+    gw.respond('GET', PREFS_PATH, { ok: true, value: { ...PREFS_TOEIC_600, default_difficulty: 'toeic_250' } })
+
+    renderSettingsPage()
+
+    const diffSelect = await screen.findByRole<HTMLSelectElement>('combobox', { name: /難易度/i })
+    await waitFor(() => expect(callsTo('GET', PREFS_PATH)).toHaveLength(1))
+    expect(diffSelect.value).toBe('toeic_600')
+    expect(screen.queryByText(/設定の読み込みに失敗しました/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /設定を再読み込み/ })).not.toBeInTheDocument()
+  })
+})

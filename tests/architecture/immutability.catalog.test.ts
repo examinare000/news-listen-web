@@ -31,7 +31,7 @@ import { recommendedSources } from '@/lib/catalog/domain/source'
 import type { FeaturedSourceRef, SourceRef } from '@/lib/catalog/domain/source'
 import { createCatalogCommands } from '@/lib/catalog/application/commands'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
-import type { CatalogGateway, EpisodeRecord } from '@/lib/catalog/application/ports'
+import type { CatalogGateway, EpisodeRecord, QuotaRecord } from '@/lib/catalog/application/ports'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import type { Podcast } from '@/types'
 
@@ -392,6 +392,7 @@ function queriesOver(records: DeepMutable<EpisodeRecord>[]) {
     deleteSource: () => Promise.reject(new Error('deleteSource を想定していない')),
     getFeaturedSources: () => Promise.reject(new Error('getFeaturedSources を想定していない')),
     getOnboardingStatus: () => Promise.reject(new Error('getOnboardingStatus を想定していない')),
+    getGenerationQuota: () => Promise.reject(new Error('getGenerationQuota を想定していない')),
     completeOnboarding: () => Promise.reject(new Error('completeOnboarding を想定していない')),
   }
   return createCatalogQueries({ gateway })
@@ -625,6 +626,7 @@ function feedQueriesOver(feed: { articles: DeepMutable<ArticleRef>[]; starredIds
     deleteSource: reject('deleteSource'),
     getFeaturedSources: reject('getFeaturedSources'),
     getOnboardingStatus: reject('getOnboardingStatus'),
+    getGenerationQuota: reject('getGenerationQuota'),
     completeOnboarding: reject('completeOnboarding'),
   }
   return createCatalogQueries({ gateway })
@@ -702,6 +704,7 @@ function sourceQueriesOver(data: {
     deleteSource: reject('deleteSource'),
     getFeaturedSources: () => Promise.resolve({ ok: true, value: data.featured }),
     getOnboardingStatus: () => Promise.resolve({ ok: true, value: data.onboarding }),
+    getGenerationQuota: reject('getGenerationQuota'),
     completeOnboarding: reject('completeOnboarding'),
   }
   return createCatalogQueries({ gateway })
@@ -723,6 +726,7 @@ function sourceCommandsOver(sources: DeepMutable<SourceRef>[]) {
     deleteSource: () => Promise.resolve({ ok: true, value: sources }),
     getFeaturedSources: reject('getFeaturedSources'),
     getOnboardingStatus: reject('getOnboardingStatus'),
+    getGenerationQuota: reject('getGenerationQuota'),
     completeOnboarding: reject('completeOnboarding'),
   }
   return createCatalogCommands({ gateway })
@@ -899,5 +903,75 @@ describe('web-check-06 addSource・subscribeFeatured・removeSource の成功の
     raw.push(mutableSource('z'))
 
     expect(result.value).toEqual(before)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getGenerationQuota()（web-query-catalog-08）の値: gateway の返した値と参照を共有せず、全深さで凍結される
+// ---------------------------------------------------------------------------
+function quotaQueriesOver(quota: DeepMutable<QuotaRecord>) {
+  const reject = (name: string) => () => Promise.reject(new Error(`${name} を想定していない`))
+  const gateway: CatalogGateway = {
+    listEpisodes: reject('listEpisodes'),
+    getEpisode: reject('getEpisode'),
+    getFeed: reject('getFeed'),
+    getStarredArticles: reject('getStarredArticles'),
+    starArticle: reject('starArticle'),
+    dismissArticle: reject('dismissArticle'),
+    unstarArticle: reject('unstarArticle'),
+    getSources: reject('getSources'),
+    addSource: reject('addSource'),
+    deleteSource: reject('deleteSource'),
+    getFeaturedSources: reject('getFeaturedSources'),
+    getOnboardingStatus: reject('getOnboardingStatus'),
+    getGenerationQuota: () => Promise.resolve({ ok: true, value: quota }),
+    completeOnboarding: reject('completeOnboarding'),
+  }
+  return createCatalogQueries({ gateway })
+}
+
+describe('web-check-06 getGenerationQuota の値 (web-query-catalog-08)', () => {
+  const quota = (): DeepMutable<QuotaRecord> => ({
+    limit: 10,
+    remaining: 5,
+    monthly: { limit: 100, remaining: 50, resetAt: '2026-08-01T00:00:00Z' },
+  })
+
+  test('値は monthly も含めて全深さで凍結され、gateway の値と参照を共有しない', async () => {
+    const raw = quota()
+    const result = await quotaQueriesOver(raw).getGenerationQuota()
+
+    if (!result.ok) throw new Error('成功を期待した')
+    expectDeeplyFrozen('getGenerationQuota', result.value)
+    expect(result.value).not.toBe(raw)
+    expect(result.value.monthly).not.toBe(raw.monthly)
+  })
+
+  test('gateway の値を後から書き換えても、すでに返した値は変わらない', async () => {
+    const raw = quota()
+    const result = await quotaQueriesOver(raw).getGenerationQuota()
+    if (!result.ok) throw new Error('成功を期待した')
+    const before = structuredClone(result.value)
+
+    raw.remaining = 0
+    if (raw.monthly) raw.monthly.remaining = 0
+
+    expect(result.value).toEqual(before)
+    expect(result.value.monthly?.remaining).toBe(50)
+  })
+
+  test('strict mode の書込みは throw し、値は元のまま', async () => {
+    const result = await quotaQueriesOver(quota()).getGenerationQuota()
+    if (!result.ok) throw new Error('成功を期待した')
+    const value = result.value as DeepMutable<typeof result.value>
+
+    expect(() => {
+      value.remaining = 0
+    }).toThrow(TypeError)
+    expect(() => {
+      if (value.monthly) value.monthly.limit = 0
+    }).toThrow(TypeError)
+    expect(result.value.remaining).toBe(5)
+    expect(result.value.monthly?.limit).toBe(100)
   })
 })

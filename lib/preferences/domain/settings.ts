@@ -16,6 +16,8 @@ export type Theme = 'dark' | 'light'
 
 export const WEEKLY_GOALS = Object.freeze([3, 5, 7, 10] as const)
 export type WeeklyGoal = (typeof WEEKLY_GOALS)[number]
+/** サーバーの週の目標が欠落しているときの既定値。値域外を倒す関数は置かない。 */
+export const DEFAULT_WEEKLY_GOAL: WeeklyGoal = 3
 
 const NO_ACHIEVEMENTS: readonly string[] = Object.freeze([])
 

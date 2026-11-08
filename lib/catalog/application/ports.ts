@@ -38,6 +38,17 @@ export type AddSourceGatewayFailure =
   | { readonly kind: 'invalid_feed' }
   | { readonly kind: 'failed'; readonly failure: ApiFailure }
 
+/** 生成の残回数。使用済み回数と日次のリセット時刻は画面が読まないので持たない。 */
+export interface QuotaRecord {
+  readonly limit: number
+  readonly remaining: number | null
+  readonly monthly: {
+    readonly limit: number
+    readonly remaining: number | null
+    readonly resetAt: string
+  } | null
+}
+
 export interface CatalogGateway {
   listEpisodes(): Promise<Result<ReadonlyArray<EpisodeRecord>, ApiFailure>>
   getEpisode(id: string): Promise<Result<EpisodeRecord, ApiFailure>>
@@ -58,5 +69,6 @@ export interface CatalogGateway {
   deleteSource(url: string): Promise<Result<ReadonlyArray<SourceRef>, ApiFailure>>
   getFeaturedSources(): Promise<Result<ReadonlyArray<FeaturedSourceRef>, ApiFailure>>
   getOnboardingStatus(): Promise<Result<{ readonly completed: boolean }, ApiFailure>>
+  getGenerationQuota(): Promise<Result<QuotaRecord, ApiFailure>>
   completeOnboarding(): Promise<Result<void, ApiFailure>>
 }

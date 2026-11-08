@@ -5,7 +5,7 @@
 // RED 理由（実装前）: `@/lib/catalog/application/readModels` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { toArticleCardView, toEpisodeCardView, toEpisodeDetailView } from '@/lib/catalog/application/readModels'
-import { toFeaturedSourceView, toOnboardingView, toSourceView } from '@/lib/catalog/application/readModels'
+import { toFeaturedSourceView, toOnboardingView, toQuotaView, toSourceView } from '@/lib/catalog/application/readModels'
 import type { EpisodeRecord } from '@/lib/catalog/application/ports'
 import type { ArticleRef } from '@/lib/catalog/domain/article'
 import { sourceCredit } from '@/lib/catalog/domain/episode'
@@ -324,5 +324,41 @@ describe('toSourceView・toFeaturedSourceView・toOnboardingView (web-query-cata
     const view = toOnboardingView({ completed: true, featured: [], onboarding_completed: true } as unknown as { completed: boolean })
 
     expect(Object.keys(view)).toEqual(['completed'])
+  })
+})
+
+describe('toQuotaView (web-query-catalog-08)', () => {
+  const MONTHLY = { limit: 100, remaining: 50, resetAt: '2026-08-01T00:00:00Z' }
+
+  function isDeepFrozen(value: unknown): boolean {
+    if (typeof value !== 'object' || value === null) return true
+    return Object.isFrozen(value) && Object.values(value).every(isDeepFrozen)
+  }
+
+  test('limit・remaining・monthly を値のまま写す（used は持たない）', () => {
+    const view = toQuotaView({ limit: 10, remaining: 5, monthly: MONTHLY })
+
+    expect(view).toEqual({ limit: 10, remaining: 5, monthly: MONTHLY })
+    expect(view).not.toHaveProperty('used')
+    expect(view.monthly).not.toHaveProperty('used')
+  })
+
+  test('monthly が null なら null のまま、remaining が null（無制限）でもそのまま写す', () => {
+    expect(toQuotaView({ limit: 0, remaining: null, monthly: null })).toEqual({ limit: 0, remaining: null, monthly: null })
+  })
+
+  test('全深さで凍結した新しい object を返し、record の入れ子と参照を共有しない', () => {
+    const record = { limit: 10, remaining: 5, monthly: { ...MONTHLY } }
+
+    const first = toQuotaView(record)
+    const second = toQuotaView(record)
+
+    expect(isDeepFrozen(first)).toBe(true)
+    expect(first).not.toBe(record)
+    expect(first.monthly).not.toBe(record.monthly)
+    expect(first).not.toBe(second)
+    expect(first.monthly).not.toBe(second.monthly)
+    record.monthly.remaining = 0
+    expect(first.monthly?.remaining).toBe(50)
   })
 })
