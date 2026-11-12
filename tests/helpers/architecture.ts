@@ -79,7 +79,8 @@ export function layerOf(p: string): Layer {
   ) {
     return 'INFRA'
   }
-  if (m === 'app/layout' || m === 'app/(app)/layout') return 'ROOT'
+  if (m === 'app/layout' || m === 'app/(app)/layout' || m === 'app/global-error') return 'ROOT'
+  if (m === 'lib/composition/globalError') return 'ROOT'
   if (m === 'contexts' || m.startsWith('contexts/')) return 'ROOT'
   if (m.startsWith('app/api/')) return 'OUTSIDE'
   if (

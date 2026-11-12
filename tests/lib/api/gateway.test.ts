@@ -448,3 +448,39 @@ describe('ApiGateway 失敗オブジェクトの raw プロパティ — verifie
     expect(Object.getOwnPropertyDescriptor(r, RAW_KEY)).toBeUndefined()
   })
 })
+
+// ==========================================================
+// keepalive の加算（既存の field・失敗の形・deadline は不変）
+// ==========================================================
+describe('ApiGateway.request — keepalive', () => {
+  function fetchInit(fetchMock: ReturnType<typeof vi.fn>): RequestInit {
+    return (fetchMock.mock.calls[0] as [string, RequestInit])[1]
+  }
+
+  test('web-slice-platform-01: keepalive: true のときだけ fetch の init に keepalive: true が渡り、未指定・false では key が現れない', async () => {
+    const withTrue = vi.fn().mockResolvedValue(okResponse({ ok: 1 }))
+    vi.stubGlobal('fetch', withTrue)
+    await makeGateway().request('/api/backend/x', { method: 'POST', body: { a: 1 }, keepalive: true })
+    expect(fetchInit(withTrue).keepalive).toBe(true)
+
+    const unspecified = vi.fn().mockResolvedValue(okResponse({ ok: 1 }))
+    vi.stubGlobal('fetch', unspecified)
+    await makeGateway().request('/api/backend/x', { method: 'POST', body: { a: 1 } })
+    expect('keepalive' in fetchInit(unspecified)).toBe(false)
+
+    const withFalse = vi.fn().mockResolvedValue(okResponse({ ok: 1 }))
+    vi.stubGlobal('fetch', withFalse)
+    await makeGateway().request('/api/backend/x', { method: 'POST', body: { a: 1 }, keepalive: false })
+    expect('keepalive' in fetchInit(withFalse)).toBe(false)
+  })
+
+  test('web-slice-platform-01: noContent: true の request でも keepalive: true が fetch の init に渡る', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(okResponse(undefined, 202))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const r = await makeGateway().request('/api/backend/x', { method: 'POST', noContent: true, keepalive: true })
+
+    expect(r.ok).toBe(true)
+    expect(fetchInit(fetchMock).keepalive).toBe(true)
+  })
+})

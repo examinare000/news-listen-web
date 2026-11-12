@@ -15,8 +15,8 @@ export const REQUEST_DEADLINE_MS = 30_000
 
 type GatewayMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
-export type GatewayJsonRequest = { method?: GatewayMethod; body?: unknown; noContent?: undefined }
-export type GatewayNoContentRequest = { method?: GatewayMethod; body?: unknown; noContent: true }
+export type GatewayJsonRequest = { method?: GatewayMethod; body?: unknown; keepalive?: boolean; noContent?: undefined }
+export type GatewayNoContentRequest = { method?: GatewayMethod; body?: unknown; keepalive?: boolean; noContent: true }
 export type GatewayRequest = GatewayJsonRequest | GatewayNoContentRequest
 
 export interface ApiGateway {
@@ -91,6 +91,7 @@ async function exchange(
   path: string,
   body: unknown,
   expect: ResponseExpectation,
+  keepalive: boolean,
 ): Promise<RawExchange> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (!SAFE_METHODS.has(method.toUpperCase()) && typeof document !== 'undefined') {
@@ -118,6 +119,7 @@ async function exchange(
       method,
       headers,
       credentials: 'include',
+      ...(keepalive ? { keepalive: true } : {}),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       signal: controller.signal,
     })
@@ -216,7 +218,7 @@ export function createGateway(): ApiGateway {
   function request<T>(path: string, init?: GatewayJsonRequest): Promise<Result<T, ApiFailure>>
   async function request(path: string, init?: GatewayRequest): Promise<Result<unknown, ApiFailure>> {
     const expect: ResponseExpectation = init?.noContent === true ? 'none' : 'json'
-    return toResult(await exchange(init?.method ?? 'GET', path, init?.body, expect), expect)
+    return toResult(await exchange(init?.method ?? 'GET', path, init?.body, expect, init?.keepalive === true), expect)
   }
   return { request }
 }

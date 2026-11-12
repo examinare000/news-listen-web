@@ -98,27 +98,6 @@
     "removeBy": "web-slice-learning-03"
   },
   {
-    "rule": "web-dep-05",
-    "file": "app/global-error.tsx",
-    "specifier": "@/lib/reportClientError",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-platform-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "components/ClientErrorReporter.tsx",
-    "specifier": "@/lib/reportClientError",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-platform-01"
-  },
-  {
-    "rule": "web-dep-05",
-    "file": "components/ErrorFallback.tsx",
-    "specifier": "@/lib/reportClientError",
-    "introducedBy": "web-slice-skeleton-01",
-    "removeBy": "web-slice-platform-01"
-  },
-  {
     "rule": "web-rule-learning-01",
     "file": "contexts/StreakContext.tsx",
     "specifier": "5 * 60 * 1000",
