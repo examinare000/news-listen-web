@@ -3,11 +3,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// 監視基盤への送信はモックして呼び出しのみ検証する（tests/app/error.test.tsx と同じ方針）
-vi.mock('@/lib/reportClientError', () => ({ reportClientError: vi.fn() }))
-import { reportClientError } from '@/lib/reportClientError'
+import { ErrorReportingProvider } from '@/contexts/ErrorReportingProvider'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
+
+// 監視基盤への送信は gateway の double で受けて検証する（tests/app/error.test.tsx と同じ方針）
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
 import AppGroupError from '@/app/(app)/error'
+
+let gw: GatewayDouble
 
 // WHY this file exists (as its own segment-scoped error boundary, not just relying on
 // app/error.tsx): Next.js の error.tsx は自セグメントの children だけを覆い、同セグメントの
@@ -19,6 +25,8 @@ import AppGroupError from '@/app/(app)/error'
 // という既存挙動を保つ（e2e/offline-playback.e2e.ts で実挙動を検証）。
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
 })
 
 describe('(app) route group error boundary (app/(app)/error.tsx)', () => {
@@ -28,6 +36,7 @@ describe('(app) route group error boundary (app/(app)/error.tsx)', () => {
         error: new Error('secret-detail-xyz'),
         reset: vi.fn(),
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     expect(screen.getByText('予期しないエラーが発生しました')).toBeInTheDocument()
@@ -40,6 +49,7 @@ describe('(app) route group error boundary (app/(app)/error.tsx)', () => {
         error: new Error('secret-detail-xyz'),
         reset: vi.fn(),
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     expect(screen.queryByText(/secret-detail-xyz/)).not.toBeInTheDocument()
@@ -48,14 +58,17 @@ describe('(app) route group error boundary (app/(app)/error.tsx)', () => {
   it('reports the error to the monitoring sink without leaking to the DOM (#83 と同じ契約)', () => {
     const testError = Object.assign(new Error('secret-detail-xyz'), { digest: 'dig-1' })
 
-    render(React.createElement(AppGroupError, { error: testError, reset: vi.fn() }))
-
-    expect(reportClientError).toHaveBeenCalledWith({
-      source: 'web',
-      kind: 'render',
-      message: 'secret-detail-xyz',
-      context: { digest: 'dig-1' },
+    render(React.createElement(AppGroupError, { error: testError, reset: vi.fn() }), {
+      wrapper: ErrorReportingProvider,
     })
+
+    expect(gw.calls).toEqual([
+      {
+        method: 'POST',
+        path: '/api/backend/client-errors',
+        body: { source: 'web', kind: 'render', message: 'secret-detail-xyz', context: { digest: 'dig-1' } },
+      },
+    ])
     expect(screen.queryByText(/secret-detail-xyz/)).not.toBeInTheDocument()
   })
 
@@ -68,6 +81,7 @@ describe('(app) route group error boundary (app/(app)/error.tsx)', () => {
         error: new Error('test-error'),
         reset: resetFn,
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     await user.click(screen.getByRole('button', { name: '再試行' }))

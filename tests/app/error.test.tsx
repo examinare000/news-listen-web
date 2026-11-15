@@ -3,9 +3,17 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// 監視基盤への送信はモックして呼び出しのみ検証する（実 fetch は走らせない・issue #83）。
-vi.mock('@/lib/reportClientError', () => ({ reportClientError: vi.fn() }))
-import { reportClientError } from '@/lib/reportClientError'
+import { ErrorReportingProvider } from '@/contexts/ErrorReportingProvider'
+import { createGatewayDouble } from '../helpers/gatewayDouble'
+import type { GatewayDouble } from '../helpers/gatewayDouble'
+
+// 監視基盤への送信は gateway の double で受けて検証する（実 fetch は走らせない・issue #83）。
+const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
+vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+const CLIENT_ERRORS_PATH = '/api/backend/client-errors'
+let gw: GatewayDouble
+const clientErrorCalls = () => gw.calls.filter((c) => c.path === CLIENT_ERRORS_PATH)
 
 // Import the modules to access their default exports
 import * as ErrorModule from '@/app/error'
@@ -13,6 +21,8 @@ import * as GlobalErrorModule from '@/app/global-error'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  gw = createGatewayDouble()
+  holder.gw = gw
 })
 
 // Extract the exported functions
@@ -29,6 +39,7 @@ describe('Error boundary (app/error.tsx)', () => {
         error: testError,
         reset: resetFn,
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     // Assert fallback heading is present
@@ -49,6 +60,7 @@ describe('Error boundary (app/error.tsx)', () => {
         error: testError,
         reset: resetFn,
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     // Assert the secret message is NOT in the DOM
@@ -58,14 +70,17 @@ describe('Error boundary (app/error.tsx)', () => {
   it('reports the error to the monitoring sink without leaking to the DOM (#83)', () => {
     const testError = Object.assign(new Error('secret-detail-xyz'), { digest: 'dig-1' })
 
-    render(React.createElement(ErrorPage, { error: testError, reset: vi.fn() }))
-
-    expect(reportClientError).toHaveBeenCalledWith({
-      source: 'web',
-      kind: 'render',
-      message: 'secret-detail-xyz',
-      context: { digest: 'dig-1' },
+    render(React.createElement(ErrorPage, { error: testError, reset: vi.fn() }), {
+      wrapper: ErrorReportingProvider,
     })
+
+    expect(clientErrorCalls()).toEqual([
+      {
+        method: 'POST',
+        path: CLIENT_ERRORS_PATH,
+        body: { source: 'web', kind: 'render', message: 'secret-detail-xyz', context: { digest: 'dig-1' } },
+      },
+    ])
     // 送信しても DOM には漏らさない（no-leak 契約）。
     expect(screen.queryByText(/secret-detail-xyz/)).not.toBeInTheDocument()
   })
@@ -80,6 +95,7 @@ describe('Error boundary (app/error.tsx)', () => {
         error: testError,
         reset: resetFn,
       }),
+      { wrapper: ErrorReportingProvider },
     )
 
     const resetButton = screen.getByRole('button', { name: '再試行' })
@@ -130,12 +146,13 @@ describe('Global error boundary (app/global-error.tsx)', () => {
 
     render(React.createElement(GlobalError, { error: testError, reset: vi.fn() }))
 
-    expect(reportClientError).toHaveBeenCalledWith({
-      source: 'web',
-      kind: 'global',
-      message: 'root-layout-secret',
-      context: undefined,
-    })
+    expect(clientErrorCalls()).toEqual([
+      {
+        method: 'POST',
+        path: CLIENT_ERRORS_PATH,
+        body: { source: 'web', kind: 'global', message: 'root-layout-secret', context: undefined },
+      },
+    ])
     expect(screen.queryByText(/root-layout-secret/)).not.toBeInTheDocument()
   })
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { reportClientError } from '@/lib/reportClientError'
+import { useErrorReporting } from '@/contexts/ErrorReportingProvider'
 
 // app/error.tsx と app/(app)/error.tsx で同一のフォールバック UI・監視基盤への報告処理を共有する。
 // (app) ルートグループが独自の error.tsx を必要とする理由は app/(app)/error.tsx のコメント参照。
@@ -12,17 +12,18 @@ export function ErrorFallback({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const report = useErrorReporting()
   // WHY: the error object may contain sensitive stack traces or digests;
   // never log or render these to the UI. UI/console には出さず、監視基盤(backend /client-errors)へのみ送る。
   // backend の scrub() が PII/秘密を送出時に伏せる（no-leak 契約は UI/console が対象・issue #83）。
   useEffect(() => {
-    reportClientError({
+    report({
       source: 'web',
       kind: 'render',
       message: error.message,
       context: error.digest ? { digest: error.digest } : undefined,
     })
-  }, [error])
+  }, [error, report])
 
   // WHY: 既存の empty-state デザイントークンを再利用し、独自クラスを増やさず統一感を保つ
   return (

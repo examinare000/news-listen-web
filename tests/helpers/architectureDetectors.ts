@@ -31,7 +31,6 @@ const PRES_FORBIDDEN_EXACT = new Set([
   'lib/api',
   'lib/audioCache',
   'lib/sfx',
-  'lib/reportClientError',
   'lib/config',
 ])
 
@@ -98,7 +97,10 @@ export function detectImportRows(file: string, source: string): Row[] {
       }
       add('web-dep-01', specifier)
     } else if (layer === 'APP') {
-      if (resolved === null) continue
+      if (resolved === null) {
+        if (FORBIDDEN_FRAMEWORK_PACKAGES(specifier)) add('web-dep-02', specifier)
+        continue
+      }
       const ownContext = contextOf(file)
       const targetLayer = layerOf(resolved)
       if (targetLayer === 'SHARED') continue

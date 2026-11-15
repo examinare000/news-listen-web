@@ -441,6 +441,43 @@ const importCases: readonly ImportCase[] = [
     ].join('\n'),
     expected: ['web-dep-07 | lib/api/gateway.ts | @/lib/cookie', 'web-dep-07 | lib/api/gateway.ts | @/lib/format'],
   },
+  // web-slice-platform-01: 通報の内側 APP・adapter・2 つの root
+  {
+    name: 'web-dec-145 正例: 通報の内側 APP が gateway と framework（react）を import する',
+    file: 'lib/platform/application/errorReporting.ts',
+    source: ["import { createGateway } from '@/lib/api/gateway'", "import { useEffect } from 'react'"].join('\n'),
+    expected: [
+      'web-dep-02 | lib/platform/application/errorReporting.ts | @/lib/api/gateway',
+      'web-dep-02 | lib/platform/application/errorReporting.ts | react',
+    ],
+  },
+  {
+    name: 'web-dec-149 正例: 表示 component が内側 APP を import する（contexts 経由の型 import は対象外）',
+    file: 'components/ErrorFallback.tsx',
+    source: [
+      "import type { ReportClientError } from '@/lib/platform/application/errorReporting'",
+      "import type { ReportClientError } from '@/contexts/ErrorReportingProvider'",
+    ].join('\n'),
+    expected: ['web-dep-05 | components/ErrorFallback.tsx | @/lib/platform/application/errorReporting'],
+  },
+  {
+    name: 'web-dec-146 負例: 専用 root（app/global-error.tsx）は ROOT で、gateway と component の import は対象外',
+    file: 'app/global-error.tsx',
+    source: [
+      "import { GlobalErrorFallback } from '@/components/GlobalErrorFallback'",
+      "import { createGateway } from '@/lib/api/gateway'",
+    ].join('\n'),
+    expected: [],
+  },
+  {
+    name: 'web-dec-145 正例: adapter が内側 APP の値を import する（型 import は対象外）',
+    file: 'lib/platform/errorReporter.ts',
+    source: [
+      "import { x } from '@/lib/platform/application/errorReporting'",
+      "import type { ReportClientError } from '@/lib/platform/application/errorReporting'",
+    ].join('\n'),
+    expected: ['web-dep-07 | lib/platform/errorReporter.ts | @/lib/platform/application/errorReporting'],
+  },
 ]
 
 describe('web-check-02 検出器の自己点検: import の向き（正例を拾い、負例を拾わない）', () => {
@@ -522,6 +559,11 @@ describe('web-check-02 層の判定（helper）', () => {
     ['app/layout.tsx', 'ROOT'],
     ['app/(app)/layout.tsx', 'ROOT'],
     ['app/api/x/route.ts', 'OUTSIDE'],
+    ['app/global-error.tsx', 'ROOT'],
+    ['lib/composition/globalError.ts', 'ROOT'],
+    ['lib/platform/application/errorReporting.ts', 'APP'],
+    ['lib/platform/errorReporter.ts', 'INFRA'],
+    ['components/GlobalErrorFallback.tsx', 'PRES'],
   ])('%s は %s', (file, layer) => {
     expect(layerOf(file)).toBe(layer)
   })
@@ -644,6 +686,15 @@ const lintExamples: readonly LintExample[] = [
   { name: 'web-dep-05 負例: PLAYBACK_SPEEDS と型', filePath: 'hooks/useFocusTrap.ts', source: `import { PLAYBACK_SPEEDS, type PlaybackState } from '${SESSION}'`, flagged: false },
   { name: 'web-dep-05 負例: 対象外（account の純関数）', filePath: 'components/AdminGate.tsx', source: "import { adminAccess } from '@/lib/account/domain/adminAccess'", flagged: false },
   { name: 'web-dep-05 負例: ROOT（contexts）は対象外', filePath: 'contexts/PreferencesProvider.tsx', source: `import { start } from '${QUEUE}'`, flagged: false },
+  { name: 'web-dec-145 正例: 通報の内側 APP が gateway を import する', filePath: 'lib/platform/application/errorReporting.ts', source: "import { createGateway } from '@/lib/api/gateway'", flagged: true },
+  { name: 'web-dec-145 正例: 通報の内側 APP が react を import する', filePath: 'lib/platform/application/errorReporting.ts', source: "import { useEffect } from 'react'", flagged: true },
+  { name: 'web-dec-145 正例: 通報の内側 APP が next/navigation を import する', filePath: 'lib/platform/application/errorReporting.ts', source: "import { useRouter } from 'next/navigation'", flagged: true },
+  { name: 'web-dec-145 正例: adapter が内側 APP の値を import する', filePath: 'lib/platform/errorReporter.ts', source: "import { x } from '@/lib/platform/application/errorReporting'", flagged: true },
+  { name: 'web-dec-145 負例: adapter が内側 APP の型を import type で import する', filePath: 'lib/platform/errorReporter.ts', source: "import type { ReportClientError } from '@/lib/platform/application/errorReporting'", flagged: false },
+  { name: 'web-dec-146 負例: 専用 root が component を import する', filePath: 'app/global-error.tsx', source: "import { GlobalErrorFallback } from '@/components/GlobalErrorFallback'", flagged: false },
+  { name: 'web-dec-146 負例: 専用 root が gateway を import する（PRES なら禁止になる import）', filePath: 'app/global-error.tsx', source: "import { createGateway } from '@/lib/api/gateway'", flagged: false },
+  { name: 'web-dec-149 正例: 表示 component が内側 APP の型を import type で import する', filePath: 'components/ErrorFallback.tsx', source: "import type { ReportClientError } from '@/lib/platform/application/errorReporting'", flagged: true },
+  { name: 'web-dec-149 負例: 表示 component が contexts 経由の型を import type で import する', filePath: 'components/GlobalErrorFallback.tsx', source: "import type { ReportClientError } from '@/contexts/ErrorReportingProvider'", flagged: false },
 ]
 
 describe('web-check-01 eslint の禁止項目の効き目（反例を実際に lint に通す）', () => {

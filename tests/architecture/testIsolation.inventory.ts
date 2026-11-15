@@ -107,7 +107,7 @@ const ADAPTER_GROUPS: readonly ReasonedGroup[] = [
       'tests/lib/platform/adapters.test.ts',
       'tests/lib/platform/playbackBrowserAdapters.test.ts',
       'tests/lib/pushBrowserPort.real.test.ts',
-      'tests/lib/reportClientError.test.ts',
+      'tests/lib/platform/errorReporter.test.ts',
       'tests/lib/sfx.test.ts',
       'tests/lib/swCacheCleanup.test.ts',
       'tests/lib/webpush.test.ts',
@@ -190,6 +190,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/components/AudioPlayerBar.test.tsx',
       'tests/components/BrandLogo.test.tsx',
       'tests/components/ClientErrorReporter.test.tsx',
+      'tests/components/GlobalErrorFallback.test.tsx',
       'tests/components/lp/LandingPage.test.tsx',
       'tests/components/NavigationBar.test.tsx',
       'tests/components/PlaybackToasts.test.tsx',
@@ -219,6 +220,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/AuthProvider.passkey.test.tsx',
       'tests/contexts/AuthProvider.push.test.tsx',
       'tests/contexts/AuthProvider.test.tsx',
+      'tests/contexts/ErrorReportingProvider.test.tsx',
       'tests/contexts/PlaybackProvider.completion.test.tsx',
       'tests/contexts/PlaybackProvider.offline.test.tsx',
       'tests/contexts/PlaybackProvider.queue.test.tsx',
@@ -282,6 +284,7 @@ export const TEST_INVENTORY: Readonly<Record<string, TestInventoryEntry>> = Obje
  * 型だけの module（role・application/ports）は対応が空でよい。
  */
 export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
+  'lib/platform/application/errorReporting.ts': [],
   'lib/account/domain/adminAccess.ts': ['tests/lib/account/adminAccess.test.ts'],
   'lib/account/domain/authSession.ts': [
     'tests/architecture/immutability.account.test.ts',

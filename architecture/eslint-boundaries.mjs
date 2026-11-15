@@ -100,6 +100,7 @@ function appSpec({ name, context, files, match }) {
       regexPattern(`@/lib/(?!${escapeRegex(context)}/)[^/]+/${LAYER}(?:/|$)`, exempt, '別 context の domain・application は型だけを import する（web-dep-02）', {
         allowTypeImports: true,
       }),
+      { group: FRAMEWORK_GROUP, message: 'APP は framework を import しない（web-dep-02）' },
     ],
     externalWorld: true,
   }
@@ -114,17 +115,18 @@ const presSpec = {
       /^lib\/[^/]+\/presentation\//.test(file)) &&
     !file.startsWith('app/api/') &&
     file !== 'app/layout.tsx' &&
-    file !== 'app/(app)/layout.tsx',
+    file !== 'app/(app)/layout.tsx' &&
+    file !== 'app/global-error.tsx',
   files: [
     'app/**/*.{ts,tsx}',
     'components/**/*.{ts,tsx}',
     'hooks/**/*.{ts,tsx}',
     'lib/*/presentation/**/*.{ts,tsx}',
   ],
-  ignores: ['app/api/**', 'app/layout.tsx', 'app/(app)/layout.tsx'],
+  ignores: ['app/api/**', 'app/layout.tsx', 'app/(app)/layout.tsx', 'app/global-error.tsx'],
   importPatterns: (exempt) => [
     regexPattern(
-      '@/lib/(?:api|platform)(?:/|$)|@/lib/(?:audioCache|sfx|reportClientError|config)$|@/lib/[^/]+/infrastructure(?:/|$)',
+      '@/lib/(?:api|platform)(?:/|$)|@/lib/(?:audioCache|sfx|config)$|@/lib/[^/]+/infrastructure(?:/|$)',
       exempt,
       'PRES は adapter・infrastructure を直接 import しない（web-dep-05）',
     ),
@@ -158,8 +160,9 @@ const contextsSpec = {
 
 const platformSpec = {
   name: 'INFRA(lib/platform)',
-  match: (file) => file.startsWith('lib/platform/'),
+  match: (file) => file.startsWith('lib/platform/') && !file.startsWith('lib/platform/application/'),
   files: ['lib/platform/**/*.{ts,tsx}'],
+  ignores: ['lib/platform/application/**'],
   importPatterns: (exempt) => [
     regexPattern(
       `@/lib/[^/]+/${LAYER}(?:/|$)`,
