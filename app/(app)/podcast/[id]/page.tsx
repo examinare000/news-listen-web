@@ -5,16 +5,18 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { formatDuration, formatDate } from '@/lib/format'
-import { useApiClient } from '@/contexts/ApiClientProvider'
 import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import { useLearningCommands } from '@/contexts/useLearningCommands'
+import { useLearningQueries } from '@/contexts/useLearningQueries'
 import type { EpisodeDetailView } from '@/lib/catalog/application/readModels'
-import { getVocabulary, saveVocabulary, submitQuizAnswers } from '@/lib/learning/infrastructure/api'
+import type { QuizReceipt } from '@/lib/learning/application/commands'
+import { toGlossaryViews } from '@/lib/learning/application/readModels'
+import { canSubmit, isPerfect, passed } from '@/lib/learning/domain/quiz'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 import { highlightTerms } from '@/lib/highlightTerms'
 import { playSfx, prepareSfx } from '@/lib/sfx'
-import type { QuizAnswerResponse } from '@/types/index'
 
 interface PodcastDetailPageProps {
   params: Promise<{ id: string }>
@@ -41,8 +43,9 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const { showToast } = useToast()
-  const gateway = useApiClient()
   const queries = useCatalogQueries()
+  const learningCommands = useLearningCommands()
+  const learningQueries = useLearningQueries()
   const { offline } = usePlayback()
   const { startEpisode } = usePlaybackActions()
 
@@ -111,25 +114,26 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   }
 
   // 理解度チェッククイズ（ADR-070・F2）。正解キー（answer_index）は backend が API 境界で
-  // 落とすため、この state には一切含まれない。Submit 後の quizResult にのみ correct_index が載る。
+  // 落とすため、この state には一切含まれない。Submit 後の quizResult にのみ correctIndex が載る。
   // WHY a sparse Record keyed by question index (not a pre-filled array): 「未回答」の初期値が
   // 空オブジェクトそのもので表現できるため、podcast 読み込み完了時に配列を作り直す effect が不要になる。
   const [quizAnswers, setQuizAnswers] = useState<Record<number, number>>({})
-  const [quizResult, setQuizResult] = useState<QuizAnswerResponse | null>(null)
+  const [quizResult, setQuizResult] = useState<QuizReceipt | null>(null)
   const [submittingQuiz, setSubmittingQuiz] = useState(false)
-  const [registeredTerms, setRegisteredTerms] = useState<Set<string>>(() => new Set())
+  const [registeredTerms, setRegisteredTerms] = useState<ReadonlySet<string>>(() => new Set())
 
   useEffect(() => {
     if (!podcast) return
-    getVocabulary(gateway)
+    learningQueries
+      .getRegisteredTerms()
       .then((result) => {
         if (!result.ok) return
-        setRegisteredTerms(new Set(result.value.vocabulary.map((item) => item.term)))
+        setRegisteredTerms(result.value)
       })
       .catch(() => {
         // best-effort: 失敗時は現状動作（空のセットのまま）
       })
-  }, [podcast, gateway])
+  }, [podcast, learningQueries])
   const [savingTerms, setSavingTerms] = useState<Set<string>>(() => new Set())
 
   function handleSelectQuizAnswer(questionIndex: number, optionIndex: number) {
@@ -137,7 +141,11 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   }
 
   const quizAllAnswered = Boolean(
-    podcast?.quiz && podcast.quiz.every((_, index) => quizAnswers[index] !== undefined)
+    podcast &&
+      canSubmit({
+        questionCount: podcast.quiz.length,
+        answers: podcast.quiz.map((_, index) => quizAnswers[index]),
+      })
   )
 
   async function handleSubmitQuiz() {
@@ -146,13 +154,13 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     setSubmittingQuiz(true)
     try {
       const answers = podcast.quiz.map((_, index) => quizAnswers[index])
-      const result = await submitQuizAnswers(gateway, podcast.id, answers)
+      const result = await learningCommands.submitQuiz(podcast.id, answers)
       if (!result.ok) {
         showToast('採点に失敗しました', 'error')
         return
       }
       setQuizResult(result.value)
-      playSfx(result.value.correct_count / result.value.total >= 0.5 ? 'correct' : 'incorrect')
+      playSfx(passed(result.value) ? 'correct' : 'incorrect')
     } catch {
       showToast('採点に失敗しました', 'error')
     } finally {
@@ -164,7 +172,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
     if (!podcast) return
     setSavingTerms((current) => new Set(current).add(term))
     try {
-      const result = await saveVocabulary(gateway, podcast.id, term)
+      const result = await learningCommands.registerTerm(podcast.id, term)
       if (!result.ok) {
         showToast('語彙の登録に失敗しました', 'error')
         return
@@ -265,15 +273,15 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
             <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
               語彙
             </h2>
-            {podcast.glossary.map((entry, index) => (
+            {toGlossaryViews(podcast.glossary, registeredTerms).map((entry, index) => (
               <div key={`${entry.term}-${index}`} className="vocabulary-glossary-item">
                 <div className="vocabulary-glossary-copy">
                   <div style={{ fontSize: 14, fontWeight: 600 }}>{entry.term}</div>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {entry.meaningJa}
+                    {entry.meaning}
                   </div>
                 </div>
-                {registeredTerms.has(entry.term) ? (
+                {entry.registered ? (
                   <span className="vocabulary-registered">登録済み</span>
                 ) : (
                   <button
@@ -305,7 +313,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
 
         {/* 理解度チェッククイズ（ADR-070・F2）。旧エピソードや劣化生成では quiz が null/欠落/空になる
             ため、その場合はセクションごと非表示にする（語彙グロッサリと同じ graceful-hide 方針）。
-            正解（correct_index）は quizResult が届く＝採点後にのみ表示する。採点前は一切保持しない。 */}
+            正解（correctIndex）は quizResult が届く＝採点後にのみ表示する。採点前は一切保持しない。 */}
         {podcast.quiz.length > 0 && (
           <div style={{ marginBottom: 16 }}>
             <h2 className="settings-section-title" style={{ marginBottom: 8 }}>
@@ -313,7 +321,7 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
             </h2>
             {podcast.quiz.map((question, questionIndex) => {
               const questionResult = quizResult?.results.find(
-                (r) => r.question_index === questionIndex
+                (r) => r.questionIndex === questionIndex
               )
               return (
                 <fieldset
@@ -325,8 +333,8 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
                   </legend>
                   {question.options.map((option, optionIndex) => {
                     const isSelected = quizAnswers[questionIndex] === optionIndex
-                    const isCorrectOption = questionResult?.correct_index === optionIndex
-                    const isWrongSelection = isSelected && questionResult && !questionResult.is_correct
+                    const isCorrectOption = questionResult?.correctIndex === optionIndex
+                    const isWrongSelection = isSelected && questionResult && !questionResult.isCorrect
                     return (
                       <label
                         key={`${option}-${optionIndex}`}
@@ -373,9 +381,9 @@ export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
               <div className="quiz-score-card" aria-live="polite">
                 <p className="quiz-score">
                   <span className="quiz-score-label">スコア</span>
-                  {quizResult.correct_count} / {quizResult.total}
+                  {quizResult.correct} / {quizResult.total}
                 </p>
-                {quizResult.correct_count === quizResult.total && (
+                {isPerfect(quizResult) && (
                   <div className="quiz-perfect-stamp">Perfect</div>
                 )}
               </div>
