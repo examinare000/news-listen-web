@@ -132,10 +132,12 @@ function setup(options: SetupOptions = {}) {
   const local: Pick<LocalPositionStore, 'write'> = { write }
   const clock = vi.fn(() => time.now)
   const subject: PositionSubject = { recording: () => who.recording, sending: () => who.recording }
-  const reporter = createPositionReporter({ sync, outbox, local, clock, subject })
+  // 控えの解除は log に混ぜない（既存の「書く」の並びの assert を保つ。呼出は clear の mock で見る）。
+  const clear = vi.fn<(id: string) => void>()
+  const reporter = createPositionReporter({ sync, outbox, local, clock, subject, advisor: { clear } })
   const double = createSessionDouble()
   reporter.attach(double.session)
-  return { log, time, who, markCompleted, updatePosition, flush, write, reporter, ...double }
+  return { log, time, who, markCompleted, updatePosition, flush, write, clear, reporter, ...double }
 }
 
 /** log に出る「書く」の 1 行。 */
@@ -521,5 +523,232 @@ describe('shared-sync-01 / ADR-109 決定 7: 記録の契機と主体', () => {
 
     expect(t.write).toHaveBeenCalledWith('u-a', 'a', { positionSeconds: 5, recordedAt: T0 + 1000, synced: false })
     expect(t.markCompleted).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('shared-sync-10 / shared-dec-39: この端末が記録すると、その episode の控えを無条件に clear する（周期・一時停止・停止・切替・完聴・recordCurrent。保存の失敗でも）', () => {
+  type Setup = ReturnType<typeof setup>
+  const cases: ReadonlyArray<{ name: string; pre: (t: Setup) => void; trigger: (t: Setup) => void; id: string }> = [
+    {
+      name: '周期',
+      pre: (t) => t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0))),
+      trigger: (t) => t.emit(positionChanged('a', 10)),
+      id: 'a',
+    },
+    {
+      name: '一時停止',
+      pre: (t) => t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 9)),
+      trigger: (t) => t.emit(stateChanged(paused('a', 9))),
+      id: 'a',
+    },
+    {
+      name: '停止',
+      pre: (t) => t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7)),
+      trigger: (t) => t.emit(stateChanged(idle)),
+      id: 'a',
+    },
+    {
+      name: 'paused からの切替（前の episode の控えを外す）',
+      pre: (t) =>
+        t.emit(
+          stateChanged(loading('a', 0)),
+          stateChanged(playing('a', 0)),
+          stateChanged(paused('a', 0)),
+          positionChanged('a', 30),
+        ),
+      trigger: (t) => t.emit(stateChanged(loading('b', 0))),
+      id: 'a',
+    },
+    {
+      name: '完聴',
+      pre: (t) => t.emit(stateChanged(loading('a', 0, 100)), stateChanged(playing('a', 0, 100))),
+      trigger: (t) => t.emit(listenCompleted('a')),
+      id: 'a',
+    },
+    {
+      name: 'recordCurrent',
+      pre: (t) => t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42))),
+      trigger: (t) => t.reporter.recordCurrent(),
+      id: 'a',
+    },
+  ]
+
+  test.each(cases)('$name: 記録した episode について clear を 1 回呼ぶ', ({ pre, trigger, id }) => {
+    const t = setup()
+    pre(t)
+    const before = t.clear.mock.calls.length
+    trigger(t)
+    expect(t.clear.mock.calls.length - before).toBe(1)
+    expect(t.clear).toHaveBeenLastCalledWith(id)
+  })
+
+  test.each(cases)('$name: 保存に失敗した（write が false の）記録でも clear する', ({ pre, trigger, id }) => {
+    const t = setup({ writeResult: false })
+    pre(t)
+    const before = t.clear.mock.calls.length
+    trigger(t)
+    expect(t.clear.mock.calls.length - before).toBe(1)
+    expect(t.clear).toHaveBeenLastCalledWith(id)
+  })
+
+  test.each(cases)('$name: clock が別の端末の記録時刻より前でも clear する（時刻の比較で外すかを決めない）', ({ pre, trigger, id }) => {
+    const t = setup()
+    t.time.now = 1
+    pre(t)
+    const before = t.clear.mock.calls.length
+    trigger(t)
+    expect(t.clear.mock.calls.length - before).toBe(1)
+    expect(t.clear).toHaveBeenLastCalledWith(id)
+  })
+
+  test('記録のない遷移（playing → paused で位置が同じ・loading・errored）では clear しない', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 30)))
+    t.emit(stateChanged(loading('b', 0)), stateChanged(errored('b', 0)))
+    expect(t.write).not.toHaveBeenCalled()
+    expect(t.clear).not.toHaveBeenCalled()
+  })
+})
+
+describe('shared-dec-39: 記録の主体が null のときは clear しない', () => {
+  test('recording が null で一時停止しても、write・flush・clear はどれも 0 回', () => {
+    const t = setup({ recording: null })
+    t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 9))
+    t.emit(stateChanged(paused('a', 9)))
+    expect(t.write).not.toHaveBeenCalled()
+    expect(t.flush).not.toHaveBeenCalled()
+    expect(t.clear).not.toHaveBeenCalled()
+
+    // 正方向の対照: 同じ入口で主体があれば clear される。
+    const control = setup({ recording: 'u-a' })
+    control.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 9))
+    control.emit(stateChanged(paused('a', 9)))
+    expect(control.clear).toHaveBeenCalledTimes(1)
+    expect(control.clear).toHaveBeenCalledWith('a')
+  })
+
+  test('recordCurrent も主体が null なら clear しない', () => {
+    const t = setup({ recording: null })
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    t.reporter.recordCurrent()
+    expect(t.clear).not.toHaveBeenCalled()
+  })
+})
+
+describe('shared-sync-13 / web-dec-181: recordCurrent は playing・paused のとき今の位置を今の時刻で記録して送る', () => {
+  const T1 = T0 + 5000
+
+  test('paused では呼出の前後で write・flush・clear が 1 回ずつ増え、その 1 件は今の位置を今の時刻・未送信で記録する', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    // 一時停止の遷移で Reporter が 42 を 1 回書いている。
+    expect(t.write).toHaveBeenCalledTimes(1)
+    expect(t.write).toHaveBeenLastCalledWith('u-a', 'a', { positionSeconds: 42, recordedAt: T0, synced: false })
+
+    t.time.now = T1
+    const writes = t.write.mock.calls.length
+    const flushes = t.flush.mock.calls.length
+    const clears = t.clear.mock.calls.length
+    t.reporter.recordCurrent()
+
+    expect(t.write.mock.calls.length - writes).toBe(1)
+    expect(t.write).toHaveBeenLastCalledWith('u-a', 'a', { positionSeconds: 42, recordedAt: T1, synced: false })
+    expect(t.flush.mock.calls.length - flushes).toBe(1)
+    expect(t.clear.mock.calls.length - clears).toBe(1)
+    expect(t.clear).toHaveBeenLastCalledWith('a')
+    expect(t.updatePosition).not.toHaveBeenCalled()
+  })
+
+  test('playing でも書く（session.play() の直後に呼ぶため）', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    t.emit(stateChanged(playing('a', 42)))
+
+    t.time.now = T1
+    const writes = t.write.mock.calls.length
+    t.reporter.recordCurrent()
+
+    expect(t.write.mock.calls.length - writes).toBe(1)
+    expect(t.write).toHaveBeenLastCalledWith('u-a', 'a', { positionSeconds: 42, recordedAt: T1, synced: false })
+  })
+
+  test('paused 中に seek した位置は、その位置を記録する', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    t.emit(positionChanged('a', 100))
+
+    t.time.now = T1
+    t.reporter.recordCurrent()
+
+    expect(t.write).toHaveBeenLastCalledWith('u-a', 'a', { positionSeconds: 100, recordedAt: T1, synced: false })
+  })
+
+  test('2 回呼べば 2 回記録する', () => {
+    const t = setup()
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    const writes = t.write.mock.calls.length
+    t.reporter.recordCurrent()
+    t.reporter.recordCurrent()
+    expect(t.write.mock.calls.length - writes).toBe(2)
+  })
+})
+
+describe('shared-sync-13: recordCurrent は idle・loading・ended・errored・reset の後・主体 null では何もしない', () => {
+  type Setup = ReturnType<typeof setup>
+  const cases: ReadonlyArray<[string, (t: Setup) => void]> = [
+    ['idle（何も起きていない）', () => {}],
+    ['loading', (t) => t.emit(stateChanged(loading('a', 30)))],
+    [
+      'ended',
+      (t) =>
+        t.emit(
+          stateChanged(loading('a', 0)),
+          stateChanged(playing('a', 0)),
+          stateChanged({ status: 'ended', episode: episode('a', 100), duration: 100 }),
+        ),
+    ],
+    ['errored', (t) => t.emit(stateChanged(loading('a', 0)), stateChanged(errored('a', 0)))],
+    [
+      'reset の後',
+      (t) => {
+        t.emit(stateChanged(loading('a', 0)), stateChanged(playing('a', 0)), positionChanged('a', 7))
+        t.reporter.reset()
+      },
+    ],
+  ]
+
+  test.each(cases)('%s: write・flush・clear は 0 回', (_name, pre) => {
+    const t = setup()
+    pre(t)
+    t.reporter.recordCurrent()
+    expect(t.write).not.toHaveBeenCalled()
+    expect(t.flush).not.toHaveBeenCalled()
+    expect(t.clear).not.toHaveBeenCalled()
+  })
+
+  test('主体が null なら paused でも何もしない', () => {
+    const t = setup({ recording: null })
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    t.reporter.recordCurrent()
+    expect(t.write).not.toHaveBeenCalled()
+    expect(t.flush).not.toHaveBeenCalled()
+    expect(t.clear).not.toHaveBeenCalled()
+  })
+})
+
+describe('shared-sync-13: recordCurrent の保存に失敗しても flush に直接渡して送る', () => {
+  test('write が false でも、その回の flush に記録を直接渡す', () => {
+    const t = setup({ writeResult: false })
+    t.emit(stateChanged(loading('a', 30)), stateChanged(playing('a', 30)), stateChanged(paused('a', 42)))
+    t.time.now = T0 + 5000
+    const flushes = t.flush.mock.calls.length
+    t.reporter.recordCurrent()
+
+    expect(t.flush.mock.calls.length - flushes).toBe(1)
+    expect(t.flush).toHaveBeenLastCalledWith({
+      episodeId: 'a',
+      record: { positionSeconds: 42, recordedAt: T0 + 5000, synced: false },
+    })
+    expect(t.log.at(-1)).toBe('flush:a:42')
   })
 })

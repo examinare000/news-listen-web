@@ -6,12 +6,14 @@ import { describe, expect, test, vi } from 'vitest'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import { createPositionReporter } from '@/lib/playback/application/positionReporter'
 import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
+import type { ResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'
 import type {
   EpisodeSource,
   LocalPositionStore,
   OfflineLibrary,
   PositionSubject,
   PositionSync,
+  RemotePosition,
   StoredPosition,
 } from '@/lib/playback/application/ports'
 import { createPlaybackSession } from '@/lib/playback/application/session'
@@ -89,7 +91,10 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     real.fail(ref, reason)
   })
   const play = vi.fn((): Promise<void> => real.play())
-  const session: PlaybackSession = { ...real, start, fail, play }
+  const seek = vi.fn((seconds: number): void => {
+    real.seek(seconds)
+  })
+  const session: PlaybackSession = { ...real, start, fail, play, seek }
 
   const env = {
     online: options.online ?? true,
@@ -97,6 +102,7 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     now: T0,
     recording: USER as string | null,
     sending: USER as string | null,
+    foreground: true,
   }
   const saved = new Set<string>()
   const catalog = new Map<string, Episode>()
@@ -160,12 +166,26 @@ function createWorld(options: { readonly online?: boolean } = {}) {
   const flush = vi.fn<PositionOutbox['flush']>(() => Promise.resolve(OK_VOID))
   const adopt = vi.fn<PositionOutbox['adopt']>()
   const subject: PositionSubject = { recording: () => env.recording, sending: () => env.sending }
+  // 控えは手書きの fake（実物は値で import しない）。Map が控え、vi.fn が呼出の観測。
+  const advice = new Map<string, RemotePosition>()
+  const note = vi.fn<ResumeAdvisor['note']>((id, remote) => {
+    advice.set(id, remote)
+  })
+  const pending = vi.fn<ResumeAdvisor['pending']>((id) => advice.get(id) ?? null)
+  const clear = vi.fn<ResumeAdvisor['clear']>((id) => {
+    advice.delete(id)
+  })
+  const resetAdvice = vi.fn<ResumeAdvisor['reset']>(() => {
+    advice.clear()
+  })
+  const resumeAdvisor: ResumeAdvisor = { note, pending, clear, reset: resetAdvice }
   const positionReporter = createPositionReporter({
     sync: { updatePosition, markCompleted },
     outbox: { flush },
     local: localPositions,
     clock: () => env.now,
     subject,
+    advisor: resumeAdvisor,
   })
 
   const coordinator = createPlaybackCoordinator({
@@ -176,6 +196,8 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     localPositions,
     subject,
     positionIntake: { adopt },
+    resumeAdvisor,
+    isForeground: () => env.foreground,
     isOnline: () => env.online,
     defaultSpeed: () => env.speed,
   })
@@ -197,6 +219,10 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     start,
     fail,
     play,
+    seek,
+    advice,
+    resumeAdvisor,
+    advisorCalls: { note, pending, clear, reset: resetAdvice },
     fetch,
     has,
     get,
@@ -1530,5 +1556,378 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     expect(w.flush).not.toHaveBeenCalled()
     expect(w.write).not.toHaveBeenCalled()
     expect(w.markCompleted).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 再開時の確認（ADR-109 決定 11・12）
+// ---------------------------------------------------------------------------
+
+/** id を総時間 duration で読み込み、自動再生の後、位置 position で一時停止する。 */
+async function pauseAt(w: World, id: string, position: number, duration = 600): Promise<void> {
+  expect(await w.coordinator.startEpisode(id)).toEqual({ ok: true })
+  w.audio.fireLoadedMetadata(duration)
+  await settle()
+  w.audio.fireTimeUpdate(position)
+  w.session.pause()
+  expect(stateOf(w)).toEqual({ status: 'paused', id })
+}
+
+const advise = (w: World, id: string, positionSeconds: number): void => {
+  w.advice.set(id, { positionSeconds, recordedAt: T1 })
+}
+
+/** a を位置 100 で一時停止し、別の端末の位置 remote を控える。 */
+async function pausedWithRemote(w: World, remote = 500): Promise<void> {
+  await pauseAt(w, 'a', 100)
+  advise(w, 'a', remote)
+}
+
+/** 確認を出した状態（choose を返した後）。 */
+async function asked(w: World, remote = 500): Promise<void> {
+  await pausedWithRemote(w, remote)
+  expect(w.coordinator.requestResume()).toEqual({ kind: 'choose', remoteSeconds: remote, localSeconds: 100 })
+}
+
+const CHOICES = ['remote', 'local'] as const
+
+describe('requestResume・chooseResume（ADR-109 決定 11・12 / shared-sync-10〜15）', () => {
+  test('shared-sync-10 / ADR-109 決定 11: requestResume は条件がすべてそろったときだけ choose を返し、session.play を呼ばない', async () => {
+    const w = createWorld()
+    await pausedWithRemote(w)
+    w.play.mockClear()
+
+    const result = w.coordinator.requestResume()
+
+    expect(result).toEqual({ kind: 'choose', remoteSeconds: 500, localSeconds: 100 })
+    expect(Object.isFrozen(result)).toBe(true)
+    expect(w.coordinator.requestResume()).not.toBe(result)
+    expect(w.play).not.toHaveBeenCalled()
+    expect(stateOf(w)).toEqual({ status: 'paused', id: 'a' })
+    expect(w.advice.has('a')).toBe(true)
+  })
+
+  test.each<[string, (w: World) => Promise<void>, boolean]>([
+    [
+      '前面でない',
+      async (w) => {
+        await pausedWithRemote(w)
+        w.env.foreground = false
+      },
+      false,
+    ],
+    ['控えが無い', async (w) => pauseAt(w, 'a', 100), false],
+    ['差が 15 秒未満 (114.99)', async (w) => pausedWithRemote(w, 114.99), false],
+    [
+      'playing',
+      async (w) => {
+        await pausedWithRemote(w)
+        await w.session.play()
+      },
+      true,
+    ],
+    [
+      'ended',
+      async (w) => {
+        await pausedWithRemote(w)
+        await w.session.play()
+        await endPlayback(w)
+      },
+      true,
+    ],
+  ])('shared-sync-10: 前面でない・控え無し・15 秒未満・paused でないときは尋ねず再生する (%s)', async (_name, arrange, notPaused) => {
+    const w = createWorld()
+    await arrange(w)
+    expect(stateOf(w).status === 'paused').toBe(!notPaused)
+    w.play.mockClear()
+    w.advisorCalls.clear.mockClear()
+
+    const result = w.coordinator.requestResume()
+
+    expect(result).toEqual({ kind: 'resumed' })
+    expect(w.play).toHaveBeenCalledTimes(notPaused ? 0 : 1)
+    // 尋ねずに再生したときは控えを消す。paused でないときは控えに触らない。
+    if (notPaused) expect(w.advisorCalls.clear).not.toHaveBeenCalled()
+    else expect(w.advice.has('a')).toBe(false)
+  })
+
+  test.each<[string, number, 'choose' | 'resumed']>([
+    ['差 15 秒ちょうど (115)', 115, 'choose'],
+    ['差 14.99 (114.99)', 114.99, 'resumed'],
+  ])('shared-sync-10: %s', async (_name, remote, kind) => {
+    const w = createWorld()
+    await pausedWithRemote(w, remote)
+
+    expect(w.coordinator.requestResume().kind).toBe(kind)
+  })
+
+  test.each<[string, number, number]>([
+    ['窓の外の 500 はその位置', 500, 500],
+    ['末尾 2 秒窓の中の 598 は 0', 598, 0],
+  ])("shared-sync-12: chooseResume('remote') は resolveResumePosition（末尾 2 秒窓）を通した位置へ seek した後に play し、控えが消える（%s）", async (_name, remote, expectedSeek) => {
+    const w = createWorld()
+    await asked(w, remote)
+    w.seek.mockClear()
+    w.play.mockClear()
+    w.write.mockClear()
+
+    w.coordinator.chooseResume('remote')
+
+    expect(w.seek).toHaveBeenCalledTimes(1)
+    expect(w.seek).toHaveBeenCalledWith(expectedSeek)
+    expect(w.play).toHaveBeenCalledTimes(1)
+    expect(w.seek.mock.invocationCallOrder[0]).toBeLessThan(w.play.mock.invocationCallOrder[0])
+    expect(w.resumeAdvisor.pending('a')).toBeNull()
+    expect(w.write).not.toHaveBeenCalled()
+    expect(stateOf(w)).toEqual({ status: 'playing', id: 'a' })
+  })
+
+  test('shared-sync-12: state の duration が 0 のときは episode の durationSeconds を総時間に使う', async () => {
+    const w = createWorld()
+    await pauseAt(w, 'a', 10, 0)
+    advise(w, 'a', 99)
+    expect(w.coordinator.requestResume()).toEqual({ kind: 'choose', remoteSeconds: 99, localSeconds: 10 })
+    w.seek.mockClear()
+
+    w.coordinator.chooseResume('remote')
+
+    expect(w.seek).toHaveBeenCalledTimes(1)
+    expect(w.seek).toHaveBeenCalledWith(0)
+  })
+
+  test("shared-sync-13: chooseResume('local') は seek せず play の後に recordCurrent を呼び、控えが消える", async () => {
+    const w = createWorld()
+    await asked(w)
+    w.seek.mockClear()
+    w.play.mockClear()
+    const before = w.write.mock.calls.length
+
+    w.coordinator.chooseResume('local')
+
+    expect(w.write.mock.calls.length - before).toBe(1)
+    expect(w.write).toHaveBeenCalledWith(USER, 'a', { positionSeconds: 100, recordedAt: T0, synced: false })
+    expect(w.seek).not.toHaveBeenCalled()
+    expect(w.play).toHaveBeenCalledTimes(1)
+    expect(w.play.mock.invocationCallOrder[0]).toBeLessThan(w.write.mock.invocationCallOrder.at(-1)!)
+    expect(w.resumeAdvisor.pending('a')).toBeNull()
+    expect(stateOf(w)).toEqual({ status: 'playing', id: 'a' })
+  })
+
+  test('shared-sync-12: 閉じるでは何も呼ばず paused のまま・次の再生ボタンでまた尋ねる', async () => {
+    const w = createWorld()
+    await pausedWithRemote(w)
+    const first = w.coordinator.requestResume()
+    expect(first.kind).toBe('choose')
+    w.seek.mockClear()
+    w.play.mockClear()
+    w.write.mockClear()
+
+    // 閉じるための command は無い。何もしない。
+    expect(stateOf(w)).toEqual({ status: 'paused', id: 'a' })
+    expect(w.play).not.toHaveBeenCalled()
+    expect(w.seek).not.toHaveBeenCalled()
+    expect(w.write).not.toHaveBeenCalled()
+    expect(w.coordinator.requestResume()).toEqual(first)
+  })
+
+  test('web-dec-183: 確認の後に控えが置き換わっても、確認を出した時点の位置を適用する', async () => {
+    const w = createWorld()
+    await asked(w, 500)
+    w.advice.set('a', { positionSeconds: 800, recordedAt: T2 })
+    w.seek.mockClear()
+
+    w.coordinator.chooseResume('remote')
+
+    expect(w.seek).toHaveBeenCalledTimes(1)
+    expect(w.seek).toHaveBeenCalledWith(500)
+  })
+
+  describe('shared-sync-15: 確認の保留中に再生が始まった後の chooseResume は何もしない', () => {
+    const interruptions: ReadonlyArray<readonly [string, (w: World) => Promise<void>]> = [
+      ['直接の session.play()', async (w) => void (await w.session.play())],
+      [
+        '保留した別 episode の startEpisode(b) の解決',
+        async (w) => {
+          const held = w.holdFetch('b')
+          const starting = w.coordinator.startEpisode('b')
+          await settle()
+          held.resolve(w.fetched('b'))
+          await starting
+        },
+      ],
+      [
+        'skipToNext',
+        async (w) => {
+          expect(await w.coordinator.addToQueue(entry('b'))).toEqual({ ok: true })
+          await w.coordinator.skipToNext()
+        },
+      ],
+      ['session.fail', async (w) => w.session.fail({ id: 'a' }, { kind: 'fetch_failed', failure: NETWORK_FAILURE })],
+      ['stopForSubjectLeave', async (w) => w.coordinator.stopForSubjectLeave()],
+    ]
+
+    test.each(interruptions)('%s の後の chooseResume(remote)・(local) は seek・play・write を増やさない', async (_name, interrupt) => {
+      const w = createWorld()
+      await asked(w)
+      await interrupt(w)
+      await settle()
+      const seeks = w.seek.mock.calls.length
+      const plays = w.play.mock.calls.length
+      const writes = w.write.mock.calls.length
+
+      for (const choice of CHOICES) w.coordinator.chooseResume(choice)
+
+      expect(w.seek.mock.calls.length - seeks).toBe(0)
+      expect(w.play.mock.calls.length - plays).toBe(0)
+      expect(w.write.mock.calls.length - writes).toBe(0)
+    })
+  })
+
+  test('shared-sync-15: paused のまま同じ episode の通知（確認中の seek）では保留を消さない', async () => {
+    const w = createWorld()
+    await asked(w)
+    w.session.seek(10)
+    w.seek.mockClear()
+    w.play.mockClear()
+
+    w.coordinator.chooseResume('remote')
+
+    expect(w.seek).toHaveBeenCalledTimes(1)
+    expect(w.seek).toHaveBeenCalledWith(500)
+    expect(w.play).toHaveBeenCalledTimes(1)
+  })
+
+  test('web-dec-182: stopForSubjectLeave は控えと確認の保留を空にする', async () => {
+    const w = createWorld()
+    await asked(w)
+    advise(w, 'b', 300)
+    w.advisorCalls.reset.mockClear()
+
+    w.coordinator.stopForSubjectLeave()
+
+    expect(w.advisorCalls.reset).toHaveBeenCalledTimes(1)
+    expect(w.resumeAdvisor.pending('a')).toBeNull()
+    expect(w.resumeAdvisor.pending('b')).toBeNull()
+  })
+
+  describe('shared-sync-11 / ADR-109 決定 12: 控えがあり差が 15 秒以上でも、startEpisode・retry・skipToNext・自動の次は尋ねず、新しい方の位置から開始する', () => {
+    // a・b ともサーバーの位置は 120（端末の記録は無い）。どの入口でも開始位置は pickCandidate の 120。
+    const withServerPositions = (w: World): void => {
+      for (const id of ['a', 'b']) {
+        w.catalog.set(id, playable(id, { durationSeconds: 300, serverPositionSeconds: 120, serverPositionRecordedAt: T1 }))
+      }
+    }
+    const lastStart = (w: World): { id: string; resume: number } => {
+      const call = w.start.mock.calls.at(-1)
+      if (call === undefined) throw new Error('start が呼ばれていない')
+      return { id: call[0].id, resume: call[1] }
+    }
+
+    const entries: ReadonlyArray<readonly [string, (w: World) => Promise<void>, string]> = [
+      ['startEpisode', async (w) => void (await w.coordinator.startEpisode('b')), 'b'],
+      [
+        'retry',
+        async (w) => {
+          w.session.fail({ id: 'a' }, { kind: 'fetch_failed', failure: NETWORK_FAILURE })
+          await w.coordinator.retry()
+        },
+        'a',
+      ],
+      [
+        'skipToNext',
+        async (w) => {
+          expect(await w.coordinator.addToQueue(entry('b'))).toEqual({ ok: true })
+          await w.coordinator.skipToNext()
+        },
+        'b',
+      ],
+      [
+        '自動の次',
+        async (w) => {
+          expect(await w.coordinator.addToQueue(entry('b'))).toEqual({ ok: true })
+          await w.session.play()
+          await endPlayback(w)
+        },
+        'b',
+      ],
+    ]
+
+    test.each(entries)('%s は pending を読まず、新しい方の位置から開始する', async (_name, enter, expectedId) => {
+      const w = createWorld()
+      withServerPositions(w)
+      await pausedWithRemote(w)
+      w.advisorCalls.pending.mockClear()
+
+      await enter(w)
+      await settle()
+
+      expect(w.advisorCalls.pending).not.toHaveBeenCalled()
+      expect(lastStart(w)).toEqual({ id: expectedId, resume: 120 })
+
+      // 正方向の対照: 同じ構成で requestResume は choose を返す（pending を読む）。
+      const control = createWorld()
+      withServerPositions(control)
+      await pausedWithRemote(control)
+      expect(control.coordinator.requestResume().kind).toBe('choose')
+      expect(control.advisorCalls.pending).toHaveBeenCalled()
+    })
+  })
+
+  test('shared-sync-10: chooseResume の連打は 1 回目だけ動く', async () => {
+    const w = createWorld()
+    await asked(w)
+    w.seek.mockClear()
+    w.play.mockClear()
+
+    w.coordinator.chooseResume('remote')
+    w.coordinator.chooseResume('remote')
+
+    expect(w.seek).toHaveBeenCalledTimes(1)
+    expect(w.play).toHaveBeenCalledTimes(1)
+  })
+
+  describe('shared-sync-15 / web-dec-183: 確認の後に一度 paused を外れて同じ episode の paused に戻っても、閉じた確認の選択は何もしない', () => {
+    const roundTrips: ReadonlyArray<readonly [string, (w: World) => Promise<void>]> = [
+      [
+        '(i) play → pause',
+        async (w) => {
+          await asked(w)
+          await w.session.play()
+          w.session.pause()
+        },
+      ],
+      [
+        '(ii) 保留した startEpisode(a) の解決 → 自動再生 → pause',
+        async (w) => {
+          await pausedWithRemote(w)
+          const held = w.holdFetch('a')
+          const starting = w.coordinator.startEpisode('a')
+          await settle()
+          expect(w.coordinator.requestResume()).toEqual({ kind: 'choose', remoteSeconds: 500, localSeconds: 100 })
+          held.resolve(w.fetched('a'))
+          await starting
+          w.audio.fireLoadedMetadata(600)
+          await settle()
+          expect(stateOf(w)).toEqual({ status: 'playing', id: 'a' })
+          w.session.pause()
+        },
+      ],
+    ]
+
+    test.each(roundTrips)('%s', async (_name, roundTrip) => {
+      const w = createWorld()
+      await roundTrip(w)
+      expect(stateOf(w)).toEqual({ status: 'paused', id: 'a' })
+      await settle()
+      const seeks = w.seek.mock.calls.length
+      const plays = w.play.mock.calls.length
+      const writes = w.write.mock.calls.length
+
+      for (const choice of CHOICES) w.coordinator.chooseResume(choice)
+
+      expect(w.seek.mock.calls.length - seeks).toBe(0)
+      expect(w.play.mock.calls.length - plays).toBe(0)
+      expect(w.write.mock.calls.length - writes).toBe(0)
+    })
   })
 })

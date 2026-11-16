@@ -47,8 +47,10 @@ export function createPositionOutbox(deps: {
   readonly sync: PositionSync
   readonly local: LocalPositionStore
   readonly subject: PositionSubject
+  /** 取り込みで端末の記録を置き換えた直後に 1 回呼ぶ。 */
+  readonly onAdopted?: (episodeId: string, remote: RemotePosition) => void
 }): PositionOutbox {
-  const { sync, local, subject } = deps
+  const { sync, local, subject, onAdopted } = deps
   let running = false
   let pending: Pending[] = []
 
@@ -61,6 +63,7 @@ export function createPositionOutbox(deps: {
       recordedAt: remote.recordedAt,
       synced: true,
     })
+    onAdopted?.(episodeId, remote)
   }
 
   async function run(): Promise<Result<void, ApiFailure>> {

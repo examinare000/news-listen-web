@@ -75,6 +75,16 @@ export interface PositionSubject {
 
 export type Connectivity = () => boolean
 
+/** 画面が前面にあるか。判定の実体（document）は composition が持つ。 */
+export type Foreground = () => boolean
+
+/** 再生ボタンの結果。choose のときは再生せず、利用者に位置の選択を求める。 */
+export type ResumeRequest =
+  | { readonly kind: 'resumed' }
+  | { readonly kind: 'choose'; readonly remoteSeconds: number; readonly localSeconds: number }
+
+export type ResumeChoice = 'remote' | 'local'
+
 export type DefaultSpeedSource = () => PlaybackSpeed
 
 export interface QueueEntryInput {

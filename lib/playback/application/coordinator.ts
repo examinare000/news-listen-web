@@ -8,14 +8,18 @@ import type {
   Connectivity,
   DefaultSpeedSource,
   EpisodeSource,
+  Foreground,
   LocalPositionStore,
   OfflineLibrary,
   PositionSubject,
   QueueEntryInput,
+  ResumeChoice,
+  ResumeRequest,
   StartResult,
 } from '@/lib/playback/application/ports'
 import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
 import type { PositionReporter } from '@/lib/playback/application/positionReporter'
+import type { ResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'
 import { toNowPlaying, toPlaybackView, toQueueView, toUpNextItems } from '@/lib/playback/application/readModels'
 import type { NowPlaying, PlaybackView, QueueView, UpNextItem } from '@/lib/playback/application/readModels'
 import type { PlaybackSession } from '@/lib/playback/application/session'
@@ -32,6 +36,7 @@ import {
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
 import { queueEntryOf } from '@/lib/playback/domain/queueEntry'
+import { needsResumeChoice } from '@/lib/playback/domain/resumeConfirmation'
 import { pickCandidate } from '@/lib/playback/domain/positionRecord'
 import { resolveResumePosition } from '@/lib/playback/domain/resume'
 import { resolvePlaybackSource } from '@/lib/playback/domain/source'
@@ -48,6 +53,8 @@ export interface PlaybackCoordinatorDeps {
   readonly positionIntake: Pick<PositionOutbox, 'adopt'>
   readonly isOnline: Connectivity
   readonly defaultSpeed: DefaultSpeedSource
+  readonly resumeAdvisor: ResumeAdvisor
+  readonly isForeground: Foreground
 }
 
 export interface PlaybackCommands {
@@ -58,6 +65,10 @@ export interface PlaybackCommands {
   removeFromQueue(id: string): void
   reorder(fromIndex: number, toOffset: number): void
   skipToNext(): Promise<StartResult>
+  /** 一時停止中の再生ボタン。尋ねる条件がそろえば再生せず choose を返し、そうでなければ再生して resumed を返す（決定 11）。 */
+  requestResume(): ResumeRequest
+  /** choose の後の選択。確認を出した時点の位置で動く。保留が無効なら何もしない。 */
+  chooseResume(choice: ResumeChoice): void
   /** 主体離脱の停止（web-cmd-playback-09）。待ち中の解決は捨て、Queue を空にし、位置も完聴も送らない。 */
   stopForSubjectLeave(): void
 }
@@ -84,9 +95,22 @@ type Resolution =
   | { readonly ok: false; readonly notice: FailureNotice; readonly failure?: ApiFailure }
 
 const OK: StartResult = Object.freeze({ ok: true })
+const RESUMED: ResumeRequest = Object.freeze({ kind: 'resumed' })
 
 export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): PlaybackCoordinator {
-  const { session, offline, positionReporter, episodes, localPositions, subject, positionIntake, isOnline, defaultSpeed } = deps
+  const {
+    session,
+    offline,
+    positionReporter,
+    episodes,
+    localPositions,
+    subject,
+    positionIntake,
+    isOnline,
+    defaultSpeed,
+    resumeAdvisor,
+    isForeground,
+  } = deps
 
   let queue: QueueState<QueuedEpisode> = emptyQueue
   // 開始の世代。解決を始める利用者の開始・自動の側を捨てるとき・次がある onEnded で 1 つ進める。比較は等値だけ。
@@ -95,6 +119,8 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
   let userPending = 0
   // advance 済みで解決を待っている自動の開始。endedId は戻し先（session が ended になった episode）。
   let autoPending: { readonly endedId: string } | null = null
+  // requestResume が choose を返した確認。値は確認を出した時点のもの（選択の時点で控えを読み直さない）。
+  let pendingChoice: { readonly episodeId: string; readonly remoteSeconds: number; readonly localSeconds: number } | null = null
   const listeners = new Set<() => void>()
 
   const notify = (): void => {
@@ -242,7 +268,14 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
   }
 
   session.subscribe((event) => {
-    if (event.type === 'stateChanged' && event.state.status === 'ended') onEnded(event.state.episode.id)
+    if (event.type === 'stateChanged') {
+      const state = event.state
+      // 確認の対象が paused でなくなった・別の episode になったら閉じる。paused のままの通知（確認中の seek）では閉じない。
+      if (pendingChoice !== null && (state.status !== 'paused' || state.episode.id !== pendingChoice.episodeId)) {
+        pendingChoice = null
+      }
+      if (state.status === 'ended') onEnded(state.episode.id)
+    }
     notify()
   })
 
@@ -321,7 +354,39 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
       notify()
       // reset してから stop: A の位置・完聴を B の確立後に送らない（web-dec-76）。
       positionReporter.reset()
+      resumeAdvisor.reset()
+      pendingChoice = null
       session.stop()
+    },
+
+    requestResume() {
+      const state = session.state()
+      if (state.status !== 'paused') return RESUMED
+      const remote = resumeAdvisor.pending(state.episode.id)
+      if (remote !== null && isForeground() && needsResumeChoice(remote.positionSeconds, state.position)) {
+        pendingChoice = { episodeId: state.episode.id, remoteSeconds: remote.positionSeconds, localSeconds: state.position }
+        return Object.freeze({ kind: 'choose', remoteSeconds: remote.positionSeconds, localSeconds: state.position })
+      }
+      pendingChoice = null
+      void session.play()
+      if (remote !== null) resumeAdvisor.clear(state.episode.id)
+      return RESUMED
+    },
+
+    chooseResume(choice) {
+      const chosen = pendingChoice
+      pendingChoice = null
+      const state = session.state()
+      if (chosen === null || state.status !== 'paused' || state.episode.id !== chosen.episodeId) return
+      if (choice === 'remote') {
+        const total = state.duration > 0 ? state.duration : state.episode.durationSeconds
+        session.seek(resolveResumePosition(chosen.remoteSeconds, total))
+        void session.play()
+      } else {
+        void session.play()
+        positionReporter.recordCurrent()
+      }
+      resumeAdvisor.clear(chosen.episodeId)
     },
 
     async addToQueue(input) {
