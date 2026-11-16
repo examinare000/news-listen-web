@@ -1,6 +1,6 @@
 'use client'
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react'
 
 type ToastType = 'success' | 'error'
 
@@ -22,13 +22,25 @@ const TOAST_DURATION_MS = 3000
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([])
+  const timersRef = useRef(new Set<ReturnType<typeof setTimeout>>())
+
+  // unmount 後に自動消滅のタイマーが残ると、環境の teardown の後に発火して unhandled error になりうる。
+  useEffect(() => {
+    const pending = timersRef.current
+    return () => {
+      pending.forEach(clearTimeout)
+      pending.clear()
+    }
+  }, [])
 
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     const id = nextId++
     setToasts((prev) => [...prev, { id, message, type }])
-    setTimeout(() => {
+    const timer = setTimeout(() => {
+      timersRef.current.delete(timer)
       setToasts((prev) => prev.filter((t) => t.id !== id))
     }, TOAST_DURATION_MS)
+    timersRef.current.add(timer)
   }, [])
 
   return (
