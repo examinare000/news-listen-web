@@ -8,6 +8,7 @@ import { decodeEpisode, readSourceOrigin, readStatus } from '@/lib/catalog/infra
 import type { ApiGateway } from '@/lib/api/gateway'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { getPodcast, getPodcasts } from '@/lib/api/podcasts'
+import { parseRecordedAt } from '@/lib/shared/recordedAt'
 import { dismissArticle, getStarredArticles, starArticle, unstarArticle } from '@/lib/api/articles'
 import { getFeed } from '@/lib/api/feed'
 import { getGenerationQuota } from '@/lib/api/users'
@@ -77,15 +78,43 @@ function toQuotaRecord(dto: GenerationQuota): QuotaRecord {
   }
 }
 
-export function createCatalogGateway(gateway: ApiGateway): CatalogGateway {
+/** 応答に含まれた位置の観測。catalog は playback を知らないので、受け手は関数の型だけで受ける。 */
+export interface ObservedPosition {
+  readonly id: string
+  readonly positionSeconds: number
+  readonly recordedAt: number | null
+}
+
+export interface CatalogGatewayOptions {
+  /** 取得の前に 1 回呼び、その時点の取り込み口を得る。 */
+  readonly observePositions?: () => (items: ReadonlyArray<ObservedPosition>) => void
+}
+
+function toObserved(dto: Podcast): ObservedPosition {
+  const at = dto.playback_position_recorded_at
+  return {
+    id: dto.id,
+    positionSeconds: dto.playback_position_seconds,
+    recordedAt: typeof at === 'string' ? parseRecordedAt(at) : null,
+  }
+}
+
+export function createCatalogGateway(gateway: ApiGateway, options?: CatalogGatewayOptions): CatalogGateway {
   return {
     async listEpisodes() {
+      // 取得の前に控える: 応答を待つ間に主体が変わっても、控えた主体の記録としてだけ取り込むため。
+      const observe = options?.observePositions?.()
       const result = await getPodcasts(gateway)
-      return result.ok ? { ok: true, value: result.value.podcasts.map(toRecord) } : result
+      if (!result.ok) return result
+      observe?.(result.value.podcasts.map(toObserved))
+      return { ok: true, value: result.value.podcasts.map(toRecord) }
     },
     async getEpisode(id) {
+      const observe = options?.observePositions?.()
       const result = await getPodcast(gateway, id)
-      return result.ok ? { ok: true, value: toRecord(result.value) } : result
+      if (!result.ok) return result
+      observe?.([toObserved(result.value)])
+      return { ok: true, value: toRecord(result.value) }
     },
     async getFeed() {
       const result = await getFeed(gateway)

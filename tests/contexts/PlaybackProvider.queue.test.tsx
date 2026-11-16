@@ -139,7 +139,11 @@ beforeEach(() => {
   for (const id of ['a', 'b', 'c', 'd']) {
     gateway.respond('GET', `/api/backend/podcasts/${id}`, { ok: true, value: pod(id) })
     gateway.respond('POST', `/api/backend/podcasts/${id}/completed`, { ok: true, value: undefined })
-    gateway.respond('PATCH', `/api/backend/podcasts/${id}/position`, { ok: true, value: undefined })
+    // WHY Podcast の形: 応答の形が違うと送信が失敗扱いで未送信のまま残る。時刻なしは取り込みが起きない形
+    gateway.respond('PATCH', `/api/backend/podcasts/${id}/position`, {
+      ok: true,
+      value: { ...pod(id), playback_position_recorded_at: null },
+    })
   }
 })
 
@@ -477,7 +481,7 @@ describe('完聴の送信 (shared-session-07)', () => {
     expect(completedAt).toBeGreaterThanOrEqual(0)
     expect(positionAt).toBeGreaterThan(completedAt)
     expect(gateway.calls.filter((call) => call.path === '/api/backend/podcasts/a/position')).toEqual([
-      { method: 'PATCH', path: '/api/backend/podcasts/a/position', body: { position_seconds: 60 } },
+      { method: 'PATCH', path: '/api/backend/podcasts/a/position', body: { position_seconds: 60, recorded_at: expect.any(String) } },
     ])
     // 完聴の応答は保留のまま、次の回の取得はもう始まっている。
     await waitFor(() => expect(gateway.calls.some((call) => call.method === 'GET' && call.path === '/api/backend/podcasts/b')).toBe(true))

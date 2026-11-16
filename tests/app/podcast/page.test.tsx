@@ -59,7 +59,7 @@ vi.mock('@/components/PlaybackToasts', () => ({ usePlaybackActions: () => double
 const has = vi.fn<(id: string) => Promise<boolean>>()
 const save = vi.fn<(id: string) => Promise<unknown>>()
 const nowPlaying = vi.fn<() => { episodeId: string } | null>()
-const savedPosition = vi.fn<(id: string) => number | null>()
+const savedPosition = vi.fn<(id: string, durationSeconds: number | undefined) => number | null>()
 const startEpisode = vi.fn()
 const playNext = vi.fn()
 const addToQueue = vi.fn()
@@ -204,6 +204,15 @@ describe('PodcastPage — playback actions', () => {
 
     expect(screen.getAllByText(/続きから/)).toHaveLength(1)
     expect(screen.getByText('続きから 2:00')).toBeInTheDocument()
+  })
+
+  test('続きからの位置は、episode の総時間つきで問い合わせる（末尾 2 秒窓の規則を総時間で適用するため）', async () => {
+    givenPodcasts(TWO_PODCASTS)
+    renderPodcastPage()
+    await waitFor(() => screen.getByText(/二つ目のポッドキャストのイントロ/))
+
+    expect(savedPosition).toHaveBeenCalledWith('p1', 300)
+    expect(savedPosition).toHaveBeenCalledWith('p2', 600)
   })
 })
 

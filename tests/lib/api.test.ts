@@ -860,6 +860,18 @@ describe('updatePosition', () => {
     expect(gw.calls).toEqual([{ method: 'PATCH', path: PATH, body: { position_seconds: 150 } }])
   })
 
+  test('recordedAt を渡したときだけ body に recorded_at を入れる（省略時は position_seconds だけ）', async () => {
+    const gw = createGatewayDouble()
+    gw.respond('PATCH', PATH, { ok: true, value: {} })
+    await updatePosition(gw, 'p1', 12, '2026-11-16T00:00:00.000Z')
+    await updatePosition(gw, 'p1', 13)
+
+    expect(gw.calls).toEqual([
+      { method: 'PATCH', path: PATH, body: { position_seconds: 12, recorded_at: '2026-11-16T00:00:00.000Z' } },
+      { method: 'PATCH', path: PATH, body: { position_seconds: 13 } },
+    ])
+  })
+
   test('returns updated Podcast with new position', async () => {
     const updatedPodcast = {
       id: 'p1',

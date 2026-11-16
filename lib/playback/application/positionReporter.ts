@@ -1,6 +1,7 @@
-// 再生位置の送信規則（web-contract-11）。Session の事象を受けて、端末の位置と server への位置を書く。
-// 応答は待たず再送もしない。失敗は lastSyncFailure() で読める。
-import type { LocalPositionStore, PositionSync } from '@/lib/playback/application/ports'
+// 再生位置の記録規則（web-contract-11）。Session の事象を受けて、主体つきの記録を端末に書き、送信は outbox に任せる。
+// 応答は待たず、再送の経路は outbox の 1 本だけ。失敗は lastSyncFailure() で読める。
+import type { Clock, LocalPositionStore, PositionSubject, PositionSync } from '@/lib/playback/application/ports'
+import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackEvent, PlaybackState } from '@/lib/playback/domain/session'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
@@ -11,7 +12,10 @@ const SAVE_INTERVAL_SECONDS = 10
 
 export interface PositionReporterDeps {
   readonly sync: PositionSync
-  readonly local: LocalPositionStore
+  readonly outbox: Pick<PositionOutbox, 'flush'>
+  readonly local: Pick<LocalPositionStore, 'write'>
+  readonly clock: Clock
+  readonly subject: PositionSubject
 }
 
 export interface PositionReporter {
@@ -23,7 +27,7 @@ export interface PositionReporter {
 }
 
 export function createPositionReporter(deps: PositionReporterDeps): PositionReporter {
-  const { sync, local } = deps
+  const { sync, outbox, local, clock, subject } = deps
 
   let unsubscribe: (() => void) | null = null
   let episodeId = ''
@@ -41,13 +45,17 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     })
   }
 
-  const send = (id: string, seconds: number): void => {
-    track(sync.updatePosition(id, seconds))
+  // 記録の主体が無いときは記録も送信もしない。保存に失敗した記録も、その回の送信には直接渡す。
+  const record = (id: string, seconds: number): void => {
+    const user = subject.recording()
+    if (user === null) return
+    const entry = { positionSeconds: seconds, recordedAt: Math.floor(clock()), synced: false }
+    const persisted = local.write(user, id, entry)
+    track(persisted ? outbox.flush() : outbox.flush({ episodeId: id, record: entry }))
   }
 
   const write = (seconds: number): void => {
-    local.write(episodeId, seconds)
-    send(episodeId, seconds)
+    record(episodeId, seconds)
     lastSaved = seconds
   }
 
@@ -63,6 +71,8 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     lastStatus = state.status
     switch (state.status) {
       case 'loading':
+        // paused の間に動かした位置は、次の episode へ切り替わる前に前の episode へ記録する。
+        if (previous === 'paused' && lastKnown !== lastSaved) write(lastKnown)
         episodeId = state.episode.id
         episodeDuration = state.episode.durationSeconds
         lastDuration = 0
@@ -107,9 +117,8 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     if (completedSent) return
     completedSent = true
     track(sync.markCompleted(episodeId))
-    local.write(episodeId, 0)
     const total = totalDuration()
-    if (total > 0) send(episodeId, total)
+    if (total > 0) record(episodeId, total)
   }
 
   const handle = (event: PlaybackEvent): void => {

@@ -8,6 +8,7 @@ import { describe, expect, test, vi, beforeEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { useCatalogQueries } from '@/contexts/useCatalogQueries'
+import { usePositionIntake } from '@/contexts/PositionIntakeContext'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 
@@ -82,5 +83,46 @@ describe('useCatalogQueries (composition root)', () => {
     await result.current.getEpisodeDetail('p9')
 
     expect(gateway.calls.map((c) => `${c.method} ${c.path}`)).toEqual(['GET /api/backend/podcasts/p9'])
+  })
+
+  test('PlaybackProvider の外でも描画できる（no-op）', async () => {
+    // 端末の記録を seed する。応答がより新しい位置を返しても、Provider の外では取り込まれず記録は変わらない。
+    const seeded = JSON.stringify({ position: 10, recorded_at: 1000, synced: false })
+    localStorage.setItem('playback_position_record:u-a:p1', seeded)
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', '/api/backend/podcasts', {
+      ok: true,
+      value: {
+        podcasts: [
+          {
+            id: 'p1',
+            type: 'single',
+            article_ids: [],
+            difficulty: 'toeic_900',
+            audio_url: 'https://storage.example.com/p1.mp3',
+            japanese_intro_text: 'intro p1',
+            duration_seconds: 60,
+            created_at: '2026-06-10T09:00:00Z',
+            status: 'completed',
+            error_message: null,
+            playback_position_seconds: 50,
+            playback_position_recorded_at: '2026-11-16T00:00:00Z',
+          },
+        ],
+      },
+    })
+    const { result, rerender } = renderHook(() => ({ queries: useCatalogQueries(), intake: usePositionIntake() }), {
+      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+    })
+    const first = result.current
+
+    const listed = await result.current.queries.listEpisodes()
+    rerender()
+
+    expect(listed.ok).toBe(true)
+    expect(result.current.queries).toBe(first.queries)
+    expect(result.current.intake).toBe(first.intake)
+    expect(localStorage.getItem('playback_position_record:u-a:p1')).toBe(seeded)
+    localStorage.clear()
   })
 })

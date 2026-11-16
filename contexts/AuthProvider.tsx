@@ -154,7 +154,7 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
           if (now !== subject.userId && copiedForRef.current !== null && copiedForRef.current === now) {
             set(defaultPlaybackSpeed, current)
           }
-          localPositions.clearAll()
+          if (subject.userId !== null) localPositions.clearSubject(subject.userId)
         },
       })(subject, options)
     },
@@ -182,6 +182,12 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
   const reclaimOnce = useCallback((): Promise<void> => {
     if (reclaimedRef.current) return Promise.resolve()
     reclaimedRef.current = true
+    // 位置の回収は同期で行い、音声キャッシュの回収（非同期）の失敗や待ちに左右させない。
+    try {
+      createLocalPositionStore(createBrowserKeyValueStore()).reclaim(currentUserId())
+    } catch {
+      // 次回起動の回収で収束する。
+    }
     return (async () => {
       try {
         await reclaimAudioCaches(createBrowserCacheStore(), currentUserId)

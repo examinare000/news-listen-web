@@ -190,3 +190,44 @@ describe('decodeEpisode: 欠落の補完と名前の写像', () => {
     expect(failed).toMatchObject({ kind: 'failed', title: intro, id: 'p1' })
   })
 })
+
+// ---------------------------------------------------------------------------
+// shared-sync-09: サーバーの記録時刻の読み（ミリ秒に切り捨て。読めない値・TZ なしは時刻なし）
+// ---------------------------------------------------------------------------
+describe('shared-sync-09 decodeEpisode: playback_position_recorded_at は serverPositionRecordedAt に写される', () => {
+  const BASE = Date.UTC(2026, 10, 16, 0, 0, 1)
+
+  test.each([
+    ['小数 6 桁・Z', '2026-11-16T00:00:01.123456Z', BASE + 123],
+    ['小数 9 桁・+00:00', '2026-11-16T00:00:01.123456789+00:00', BASE + 123],
+    ['小数なし・Z', '2026-11-16T00:00:01Z', BASE],
+    ['+09:00 は UTC に換算する', '2026-11-16T09:00:01+09:00', BASE],
+  ])('%s → ミリ秒に切り捨てた値', (_name, text, expected) => {
+    const episode = decodeEpisode(dto({ playback_position_recorded_at: text }))
+    expect(episode).toMatchObject({ kind: 'playable', serverPositionRecordedAt: expected })
+  })
+
+  test('欠落・null・不正・タイムゾーン無しではキーを作らない（undefined のキーも無い）', () => {
+    for (const over of [
+      {},
+      { playback_position_recorded_at: null },
+      { playback_position_recorded_at: 'broken' },
+      { playback_position_recorded_at: '2026-11-16T00:00:01.123456' },
+    ] as const) {
+      const episode = decodeEpisode(dto(over))
+      expect(episode.kind).toBe('playable')
+      expect(Object.keys(episode)).not.toContain('serverPositionRecordedAt')
+    }
+  })
+
+  test('正方向の対照: 読めた時刻があるときだけキーが増える', () => {
+    const without = Object.keys(decodeEpisode(dto()))
+    const withTime = Object.keys(decodeEpisode(dto({ playback_position_recorded_at: '2026-11-16T00:00:01Z' })))
+    expect(withTime.filter((k) => !without.includes(k))).toEqual(['serverPositionRecordedAt'])
+  })
+
+  test('時刻があっても位置・ほかの field は変わらない', () => {
+    const episode = decodeEpisode(dto({ playback_position_recorded_at: '2026-11-16T00:00:01Z' }))
+    expect(episode).toMatchObject({ serverPositionSeconds: 42, durationSeconds: 600, id: 'p1' })
+  })
+})

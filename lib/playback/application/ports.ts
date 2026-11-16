@@ -9,9 +9,15 @@ export interface EpisodeSource {
   fetch(id: string): Promise<Result<Episode, ApiFailure>>
 }
 
-/** 位置と完聴の送信。応答の本文は捨て、成否だけを返す。 */
+/** サーバーが返した位置と記録時刻（epoch ms。読めない・無いときは null = 最古）。 */
+export interface RemotePosition {
+  readonly positionSeconds: number
+  readonly recordedAt: number | null
+}
+
+/** 位置と完聴の送信。位置の応答は取り込みのために RemotePosition として返す。 */
 export interface PositionSync {
-  updatePosition(id: string, seconds: number): Promise<Result<void, ApiFailure>>
+  updatePosition(id: string, seconds: number, recordedAt: number): Promise<Result<RemotePosition, ApiFailure>>
   markCompleted(id: string): Promise<Result<void, ApiFailure>>
 }
 
@@ -32,12 +38,39 @@ export interface OfflineLibrary {
   usage(): Promise<StorageUsageView | null>
 }
 
-/** 端末に残す再生位置。表示と resume の候補に使う。 */
+/** 端末に残す再生位置（主体 × episode の最新 1 件）。recordedAt は epoch ms。 */
+export interface StoredPosition {
+  readonly positionSeconds: number
+  readonly recordedAt: number
+  readonly synced: boolean
+}
+
+export interface UnsentPosition {
+  readonly episodeId: string
+  readonly record: StoredPosition
+}
+
 export interface LocalPositionStore {
-  read(id: string): number | null
-  write(id: string, seconds: number): void
-  /** 主体離脱で、端末に残した全 episode の位置を消す。 */
-  clearAll(): void
+  read(userId: string, episodeId: string): StoredPosition | null
+  /** 保存に成功したか。失敗しても呼び出し側は送信を試みる。 */
+  write(userId: string, episodeId: string, record: StoredPosition): boolean
+  unsent(userId: string): ReadonlyArray<UnsentPosition>
+  /** 保存中の記録の recordedAt が一致するときだけ送信済みにする。 */
+  markSynced(userId: string, episodeId: string, recordedAt: number): void
+  /** 主体離脱で、その主体の記録だけを送らずに消す。 */
+  clearSubject(userId: string): void
+  /** 起動時の回収。keep 以外の主体の記録を消す（null なら全部）。 */
+  reclaim(keep: string | null): void
+  /** 旧い形（持ち主も時刻も無い）の記録を取り込まずに消す。 */
+  discardLegacy(): void
+}
+
+export type Clock = () => number
+
+/** recording = 記録の主体、sending = 送信の主体（認証が確定しているときだけ値を持つ）。 */
+export interface PositionSubject {
+  recording(): string | null
+  sending(): string | null
 }
 
 export type Connectivity = () => boolean

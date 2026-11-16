@@ -758,3 +758,116 @@ describe('createCatalogGateway.getGenerationQuota (web-query-catalog-08)', () =>
     expect(!result.ok && result.failure).toBe(failure)
   })
 })
+
+// ---------------------------------------------------------------------------
+// 位置の取り込みの入口（一覧・詳細）。observePositions は要求の前に 1 回呼び、成功した応答の位置と時刻を渡す。
+// ---------------------------------------------------------------------------
+describe('shared-sync-07: 一覧・詳細の取得が位置と時刻を observePositions の関数へ渡す', () => {
+  type Item = { id: string; positionSeconds: number; recordedAt: number | null }
+
+  function observer(log: string[] = []) {
+    const received: Array<ReadonlyArray<Item>> = []
+    const observePositions = () => {
+      log.push('observe')
+      return (items: ReadonlyArray<Item>) => {
+        log.push('deliver')
+        received.push(items)
+      }
+    }
+    return { observePositions, received, log }
+  }
+
+  test('listEpisodes は getPodcasts の前に 1 回だけ observePositions を呼び、各 Podcast の位置と時刻（ミリ秒に切り捨て）を 1 回渡す', async () => {
+    const log: string[] = []
+    const { observePositions, received } = observer(log)
+    const gateway = createGatewayDouble()
+    gateway.respondWith('GET', LIST_PATH, async () => {
+      log.push('request')
+      return {
+        ok: true,
+        value: {
+          podcasts: [
+            dto({ id: 'p1', playback_position_seconds: 30, playback_position_recorded_at: '2026-11-16T00:00:01.123456Z' }),
+            dto({ id: 'p2', playback_position_seconds: 0 }),
+            dto({ id: 'p3', playback_position_seconds: 5, playback_position_recorded_at: 'broken' }),
+          ],
+        },
+      }
+    })
+
+    const result = await createCatalogGateway(gateway, { observePositions }).listEpisodes()
+
+    expect(result.ok).toBe(true)
+    expect(log).toEqual(['observe', 'request', 'deliver'])
+    expect(received).toEqual([
+      [
+        { id: 'p1', positionSeconds: 30, recordedAt: Date.UTC(2026, 10, 16, 0, 0, 1) + 123 },
+        { id: 'p2', positionSeconds: 0, recordedAt: null },
+        { id: 'p3', positionSeconds: 5, recordedAt: null },
+      ],
+    ])
+  })
+
+  test('getEpisode も getPodcast の前に 1 回だけ observePositions を呼び、その Podcast の値を渡す', async () => {
+    const log: string[] = []
+    const { observePositions, received } = observer(log)
+    const gateway = createGatewayDouble()
+    gateway.respondWith('GET', '/api/backend/podcasts/p1', async () => {
+      log.push('request')
+      return {
+        ok: true,
+        value: dto({ id: 'p1', playback_position_seconds: 80, playback_position_recorded_at: '2026-11-16T00:00:02+00:00' }),
+      }
+    })
+
+    const result = await createCatalogGateway(gateway, { observePositions }).getEpisode('p1')
+
+    expect(result.ok).toBe(true)
+    expect(log).toEqual(['observe', 'request', 'deliver'])
+    expect(received).toEqual([[{ id: 'p1', positionSeconds: 80, recordedAt: Date.UTC(2026, 10, 16, 0, 0, 2) }]])
+  })
+
+  test('失敗では受けた関数へ渡さない（observePositions は要求の前に呼ばれ、戻り値の failure は変わらない）', async () => {
+    const { observePositions, received, log } = observer()
+    const failure: ApiFailure = { kind: 'server', status: 503 }
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', LIST_PATH, { ok: false, failure })
+    gateway.respond('GET', '/api/backend/podcasts/p1', { ok: false, failure })
+    const source = createCatalogGateway(gateway, { observePositions })
+
+    const list = await source.listEpisodes()
+    const one = await source.getEpisode('p1')
+
+    expect(!list.ok && list.failure).toBe(failure)
+    expect(!one.ok && one.failure).toBe(failure)
+    expect(received).toEqual([])
+    expect(log).toEqual(['observe', 'observe'])
+  })
+
+  test('戻り値（view）は observePositions の有無で変わらない', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', LIST_PATH, {
+      ok: true,
+      value: { podcasts: [dto({ playback_position_recorded_at: '2026-11-16T00:00:01Z' })] },
+    })
+    const plain = await createCatalogGateway(gateway).listEpisodes()
+    const observed = await createCatalogGateway(gateway, { observePositions: observer().observePositions }).listEpisodes()
+    expect(observed).toEqual(plain)
+  })
+
+  test('options なし・observePositions なしは今と同じ（呼ぶ関数が無く、例外にならない）', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', LIST_PATH, { ok: true, value: { podcasts: [dto()] } })
+    gateway.respond('GET', '/api/backend/podcasts/p1', { ok: true, value: dto() })
+    expect((await createCatalogGateway(gateway).listEpisodes()).ok).toBe(true)
+    expect((await createCatalogGateway(gateway, {}).getEpisode('p1')).ok).toBe(true)
+  })
+
+  test('getFeed など位置に関係しない操作は観測しない', async () => {
+    const { observePositions, log } = observer()
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', FEED_PATH, { ok: true, value: { articles: [], date: '2026-06-01' } })
+    await createCatalogGateway(gateway, { observePositions }).getFeed()
+    expect(log).toEqual([])
+  })
+})
