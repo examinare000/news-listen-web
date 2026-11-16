@@ -34,7 +34,7 @@ import type {
   InviteCreateResponse,
   MetricsSnapshot,
   UserSummary,
-} from '@/types/index'
+} from '@/lib/api/dto'
 
 function toUserRecord(dto: UserSummary): AdminUserRecord {
   return { username: dto.username, displayName: dto.display_name, role: dto.role }

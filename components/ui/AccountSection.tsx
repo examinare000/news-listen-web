@@ -10,7 +10,7 @@ import { usePasskeySupport } from '@/contexts/usePasskeySupport'
 import { validatePassword } from '@/lib/account/domain/password'
 import { isAdmin } from '@/lib/account/domain/adminAccess'
 import type { PasskeyRow, SessionRow } from '@/lib/account/application/readModels'
-import { formatAuthUserLabel } from '@/lib/format'
+import { formatAuthUserLabel } from '@/lib/presentation/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 
 function validateNewPassword(password: string) {

@@ -23,7 +23,7 @@ import {
 import type { GenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
-import { formatRetryAfter } from '@/lib/format'
+import { formatRetryAfter } from '@/lib/presentation/format'
 import { useSfx } from '@/contexts/SfxProvider'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。

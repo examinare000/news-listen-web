@@ -4,7 +4,7 @@ import type { ApiGateway } from '@/lib/api/gateway'
 import { getVapidPublicKey, subscribePush, unsubscribePush } from '@/lib/api/notifications'
 import type { NotificationsGateway } from '@/lib/notifications/application/ports'
 import { urlBase64ToUint8Array } from '@/lib/platform/webpush'
-import type { PushSubscriptionJSON } from '@/types/index'
+import type { PushSubscriptionJSON } from '@/lib/api/dto'
 
 export function createNotificationsGateway(gateway: ApiGateway): NotificationsGateway {
   return {

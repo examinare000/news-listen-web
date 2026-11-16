@@ -20,7 +20,7 @@ import {
   getOnboardingStatus,
   getSources,
 } from '@/lib/api/settings'
-import type { Article, FeaturedSource, GenerationQuota, Podcast, Source } from '@/types'
+import type { Article, FeaturedSource, GenerationQuota, Podcast, Source } from '@/lib/api/dto'
 
 // 内容 4 つと表示 field は kind に依らず DTO から写す。null・欠落は空配列。
 function toRecord(dto: Podcast): EpisodeRecord {

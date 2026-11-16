@@ -5,7 +5,7 @@
 import { describe, expect, test } from 'vitest'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
 import { createEpisodeGateway } from '@/lib/catalog/infrastructure/episodeGateway'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 
 function dto(): Podcast {

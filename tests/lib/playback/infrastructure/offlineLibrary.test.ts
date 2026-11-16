@@ -11,7 +11,7 @@ import {
   reclaimAudioCaches,
 } from '@/lib/playback/infrastructure/offlineLibrary'
 import type { CacheBucket } from '@/lib/platform/cacheStore'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import { MockCacheStorage } from '../../../helpers/mockCaches'
 

@@ -12,7 +12,7 @@ import { MockAudio } from '../helpers/mockAudio'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {

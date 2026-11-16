@@ -2,7 +2,9 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest'
 import { createErrorReporter } from '@/lib/platform/errorReporter'
 import type { ClientErrorReport } from '@/lib/platform/application/errorReporting'
 import { createGateway } from '@/lib/api/gateway'
-import type { ApiFailure, ApiGateway, GatewayJsonRequest, GatewayNoContentRequest, GatewayRequest, Result } from '@/lib/api/gateway'
+import type { ApiGateway, GatewayJsonRequest, GatewayNoContentRequest, GatewayRequest } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 // web-usecase-21: エラー通報を ApiGateway 経由で送る adapter（fire-and-forget・失敗は握る）。
 

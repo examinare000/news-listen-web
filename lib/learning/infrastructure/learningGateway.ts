@@ -6,7 +6,7 @@ import { getVocabulary, getVocabularyTestSession, saveVocabulary, submitVocabula
 import { getDifficultySuggestion, getLearningDashboard, getListeningStreak } from '@/lib/api/users'
 import { submitQuizAnswers } from '@/lib/api/podcasts'
 import type { DashboardSnapshot, StreakSummary, VocabularySummary } from '@/lib/learning/application/readModels'
-import type { ListeningStreak, QuizAnswerResponse, VocabularyListResponse, LearningDashboard } from '@/types'
+import type { ListeningStreak, QuizAnswerResponse, VocabularyListResponse, LearningDashboard } from '@/lib/api/dto'
 
 // 日付だけの表示用の値は application が持つので、切り出しはここ（gateway）だけで行う。
 const toDay = (timestamp: string): string => timestamp.slice(0, 10)

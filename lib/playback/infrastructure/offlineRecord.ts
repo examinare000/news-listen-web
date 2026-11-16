@@ -1,6 +1,6 @@
 // 保存庫に永続化する record の形と読み書き（JSON）。旧 lib/audioCache.ts が書いた entry をそのまま読める。
 // DTO → PlayableEpisode の変換は持たない（Catalog infrastructure の mapper が行う）。
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 /** 一覧用の meta。後ろ 2 field は新しく書く entry だけが持つ。旧 entry は欠ける。 */
 export interface OfflineMeta {

@@ -19,6 +19,7 @@ import {
   readSource,
   rowKeys,
   type AllowlistRow,
+  isAllowlistEmpty,
   type Row,
 } from '../helpers/architecture'
 import { detectGlobalRows, detectImportRows } from '../helpers/architectureDetectors'
@@ -172,6 +173,21 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-learning-02')).toHaveLength(0)
   })
+
+  test('removeBy が web-slice-closure-01 の行は 0 件（web-slice-closure-01 で消した）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-closure-01')).toHaveLength(0)
+  })
+
+  test('許可リストは空（web-temp-04 の最終行を解消した。内容は正規形 "[]\\n"）', () => {
+    expect(readAllowlistRowsStrict()).toEqual([])
+    expect(readAllowlistText()).toBe('[]\n')
+  })
+
+  test('isAllowlistEmpty は 0 件のときだけ true を返す（1 件以上は false）', () => {
+    expect(isAllowlistEmpty([])).toBe(true)
+    expect(isAllowlistEmpty([{ rule: 'web-dep-04', file: 'lib/example.ts', specifier: '@/example' }])).toBe(false)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -301,15 +317,15 @@ const importCases: readonly ImportCase[] = [
     expected: ['web-dep-02 | lib/notifications/application/pushRegistration.ts | @/lib/account/domain/adminAccess'],
   },
   {
-    name: 'web-dep-02 正例: APP が @/types・adapter を import する（現状の違反の形）。shared とパッケージは許す',
+    name: 'web-dep-02 正例: APP が @/lib/api/dto・adapter を import する（現状の違反の形）。shared とパッケージは許す',
     file: 'lib/account/application/passkey.ts',
     source: [
-      "import type { X } from '@/types/index'",
+      "import type { X } from '@/lib/api/dto'",
       "import { y } from '@/lib/webauthnBrowserPort'",
       "import { z } from '@/lib/shared/apiFailure'",
       "import { w } from '@simplewebauthn/browser'",
     ].join('\n'),
-    expected: ['web-dep-02 | lib/account/application/passkey.ts | @/lib/webauthnBrowserPort', 'web-dep-02 | lib/account/application/passkey.ts | @/types/index'],
+    expected: ['web-dep-02 | lib/account/application/passkey.ts | @/lib/api/dto', 'web-dep-02 | lib/account/application/passkey.ts | @/lib/webauthnBrowserPort'],
   },
   // web-dep-05（PRES は再生 domain の session・queue の値を import しない。型と PLAYBACK_SPEEDS を除く）
   {
@@ -367,7 +383,7 @@ const importCases: readonly ImportCase[] = [
       "import { b } from '@/lib/platform/cacheStore'",
       "import { c } from '@/lib/catalog/infrastructure/gateway'",
       "import { d } from '@/lib/config'",
-      "import { e } from '@/lib/format'",
+      "import { e } from '@/lib/presentation/format'",
     ].join('\n'),
     expected: [
       'web-dep-05 | components/Y.tsx | @/lib/api',
@@ -410,21 +426,21 @@ const importCases: readonly ImportCase[] = [
     expected: [],
   },
   {
-    name: 'web-dep-05 負例: PRES が ports の型と @/lib/format を import する（web-dec-185）',
+    name: 'web-dep-05 負例: PRES が ports の型と @/lib/presentation/format を import する（web-dec-185）',
     file: 'components/AudioPlayerBar.tsx',
     source: [
       "import type { ResumeRequest, ResumeChoice } from '@/lib/playback/application/ports'",
-      "import { formatDuration } from '@/lib/format'",
+      "import { formatDuration } from '@/lib/presentation/format'",
     ].join('\n'),
     expected: [],
   },
   // web-dep-01・web-dep-12（DOMAIN）
   {
-    name: 'web-dep-01 正例: DOMAIN が @/types・API・フレームワークを import する。同じ dir・shared・他のパッケージは許す',
+    name: 'web-dep-01 正例: DOMAIN が @/lib/api/dto・API・フレームワークを import する。同じ dir・shared・他のパッケージは許す',
     file: 'lib/playback/domain/session.ts',
     source: [
-      "import type { Podcast } from '@/types'",
-      "import type { Result } from '@/lib/api/gateway'",
+      "import type { Podcast } from '@/lib/api/dto'",
+      "import type { ApiGateway } from '@/lib/api/gateway'",
       "import { useState } from 'react'",
       "import { useRouter } from 'next/navigation'",
       "import type { AudioElement } from './audioElement'",
@@ -432,8 +448,8 @@ const importCases: readonly ImportCase[] = [
       "import { z } from 'zod'",
     ].join('\n'),
     expected: [
+      'web-dep-01 | lib/playback/domain/session.ts | @/lib/api/dto',
       'web-dep-01 | lib/playback/domain/session.ts | @/lib/api/gateway',
-      'web-dep-01 | lib/playback/domain/session.ts | @/types',
       'web-dep-01 | lib/playback/domain/session.ts | next/navigation',
       'web-dep-01 | lib/playback/domain/session.ts | react',
     ],
@@ -489,14 +505,14 @@ const importCases: readonly ImportCase[] = [
     file: 'lib/api/gateway.ts',
     source: [
       "import type { Result } from '@/lib/shared/result'",
-      "import type { Podcast } from '@/types/index'",
+      "import type { Podcast } from '@/lib/api/dto'",
       "import { getCookie } from '@/lib/platform/cookie'",
       "import { request } from '@/lib/api/legacyRequest'",
       "import { helper } from './helper'",
       "import { c } from '@/lib/cookie'",
-      "import { f } from '@/lib/format'",
+      "import { f } from '@/lib/presentation/format'",
     ].join('\n'),
-    expected: ['web-dep-07 | lib/api/gateway.ts | @/lib/cookie', 'web-dep-07 | lib/api/gateway.ts | @/lib/format'],
+    expected: ['web-dep-07 | lib/api/gateway.ts | @/lib/cookie', 'web-dep-07 | lib/api/gateway.ts | @/lib/presentation/format'],
   },
   // web-slice-platform-01: 通報の内側 APP・adapter・2 つの root
   {
@@ -650,7 +666,8 @@ describe('web-check-02 層の判定（helper）', () => {
     ['lib/shared/result.ts', 'SHARED'],
     ['lib/platform/cacheStore.ts', 'INFRA'],
     ['lib/api/gateway.ts', 'INFRA'],
-    ['types/index.ts', 'INFRA'],
+    ['lib/api/dto.ts', 'INFRA'],
+    ['types/css.d.ts', 'INFRA'],
     ['lib/config.ts', 'INFRA'],
     ['lib/api.ts', 'OUTSIDE'],
     ['lib/audioCache.ts', 'OUTSIDE'],

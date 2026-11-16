@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react'
 import { useFocusTrap } from '@/hooks/useFocusTrap'
-import { formatDuration } from '@/lib/format'
+import { formatDuration } from '@/lib/presentation/format'
 
 // 文言は shared-dec-42 で確定済み。受入の grep が固定の文字列で探すので、分けずに連続した文字列で置く。
 const TITLE = 'どちらの位置から続けますか'

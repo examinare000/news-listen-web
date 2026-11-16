@@ -3,7 +3,7 @@ import type {
   ListeningStreak,
   DifficultySuggestion,
   LearningDashboard,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 /** 生成残回数。limit=0 は無制限（remaining は null）。issue #164 / ADR-061。 */

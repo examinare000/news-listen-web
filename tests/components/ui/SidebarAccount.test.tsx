@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import React from 'react'
 import { SidebarAccount } from '@/components/ui/SidebarAccount'
-import type { AuthUser } from '@/types/index'
+import type { AuthUser } from '@/lib/api/dto'
 
 // ログアウトの押下挙動（呼び出し回数・disabled・二重押下防止）は
 // LogoutButton.test.tsx で検証する。本ファイルは表示ゲートと表示内容に集中する。

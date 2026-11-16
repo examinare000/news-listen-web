@@ -224,18 +224,18 @@ export function detectGlobalRows(file: string, source: string): Row[] {
 // web-dep-04（データモデルの漏れ）・web-dep-11（localStorage）
 // ---------------------------------------------------------------------------
 
-/** web-dep-04 (a): INFRA・DOMAIN・APP 以外のファイルが `@/types`（`types/**`）を import する。 */
+/** web-dep-04 (a): INFRA・DOMAIN・APP 以外のファイルが `@/lib/api/dto`・`@/types`（`types/**`）を import する。 */
 export function detectTypesImportRows(file: string, source: string): Row[] {
   const layer = layerOf(file)
   if (layer === 'INFRA' || layer === 'DOMAIN' || layer === 'APP') return []
   return collectImports(file, source)
-    .filter((imp) => imp.resolved !== null && (imp.resolved === 'types' || imp.resolved.startsWith('types/')))
+    .filter((imp) => imp.resolved !== null && (imp.resolved === 'lib/api/dto' || imp.resolved === 'types' || imp.resolved.startsWith('types/')))
     .map((imp) => ({ rule: 'web-dep-04', file, specifier: imp.specifier }))
 }
 
-/** `types/index.ts` が自分で宣言して export する型の名前（再 export を除く）。 */
-export function collectOwnDeclaredTypeNames(typesIndexSource: string): Set<string> {
-  const sf = parseSource('types/index.ts', typesIndexSource)
+/** `lib/api/dto.ts` が自分で宣言して export する型の名前（再 export を除く）。 */
+export function collectOwnDeclaredTypeNames(dtoSource: string): Set<string> {
+  const sf = parseSource('lib/api/dto.ts', dtoSource)
   const names = new Set<string>()
   for (const statement of sf.statements) {
     const exported = ts.canHaveModifiers(statement)
@@ -292,7 +292,7 @@ function topLevelTypeDeclarationNames(sf: ts.SourceFile): Set<string> {
 }
 
 /**
- * web-dep-04 (b): DOMAIN・APP の export する宣言の中に、`types/index.ts` が自分で宣言した型名が型参照として現れる。
+ * web-dep-04 (b): DOMAIN・APP の export する宣言の中に、`lib/api/dto.ts` が自分で宣言した型名が型参照として現れる。
  * そのファイル自身が同名の型を宣言しているとき、参照はその型に解決されるので DTO の漏れではなく、数えない。
  */
 export function detectDomainTypeReferenceRows(file: string, source: string, dtoTypeNames: ReadonlySet<string>): Row[] {
@@ -483,8 +483,8 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
       {
         label: '86400',
         find: (ctx) => regexStarts(ctx.body, /\b86400\b/),
-        // 新 Spec §7: lib/format.ts の 86400 は除外
-        excludeFile: only('lib/format.ts'),
+        // 新 Spec §7: lib/presentation/format.ts の 86400 は除外
+        excludeFile: only('lib/presentation/format.ts'),
       },
     ],
   },

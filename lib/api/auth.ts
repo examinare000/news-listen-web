@@ -6,7 +6,7 @@ import type {
   PasskeyCredentialsListResponse,
   SessionsListResponse,
   RevokeSessionsResponse,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 // ── 認証（セッション） ──────────────────────────────────────

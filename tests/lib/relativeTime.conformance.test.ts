@@ -3,7 +3,7 @@
 // テスト名先頭の行 ID で機械的・目視双方に照合可能な形で実装する。
 // shared-reltime-16/A02（アダプタ層・空/不正入力）は文字列パース責務のため本コア仕様の対象外（既存 format.test.ts が担当）。
 import { describe, test, expect } from 'vitest'
-import { formatRelativeTime } from '@/lib/format'
+import { formatRelativeTime } from '@/lib/presentation/format'
 
 // 基準 now は固定日時。target = now - offset として与える。
 const NOW = new Date('2026-06-10T09:00:00Z')

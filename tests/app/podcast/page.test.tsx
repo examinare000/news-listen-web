@@ -8,13 +8,15 @@ import React from 'react'
 import PodcastPage from '@/app/(app)/podcast/page'
 import PodcastDetailPage from '@/app/(app)/podcast/[id]/page'
 import { usePodcastListPolling } from '@/hooks/usePodcastListPolling'
-import { formatDate } from '@/lib/format'
+import { formatDate } from '@/lib/presentation/format'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
-import type { ApiFailure, Result } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
+import { legacyPartialFailed } from '../../helpers/legacyPodcast'
 
 const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
   rtlRender(ui, { wrapper: ApiClientProvider, ...options })
@@ -432,7 +434,7 @@ describe('PodcastPage — Episode kinds (web-contract-14)', () => {
       ...base,
       id: 'part-1',
       japanese_intro_text: '一部失敗した回のイントロです。',
-      status: 'partial_failed' as const,
+      status: legacyPartialFailed(),
       error_message: 'free text from backend',
     },
     { ...base, id: 'empty-1', japanese_intro_text: '音声が空の回のイントロです。', audio_url: '' },

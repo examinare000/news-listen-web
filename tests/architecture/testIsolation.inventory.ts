@@ -95,7 +95,6 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/relativeTime.conformance.test.ts',
   'tests/helpers/fakeWebAuthnBrowserPort.test.ts',
   'tests/next.config.test.ts',
-  'tests/types/index.test.ts',
   'tests/types/jest-dom-matchers.test.ts',
 ]
 

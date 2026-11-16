@@ -1,7 +1,5 @@
-import type {
-  DifficultyLevel,
-  StarredArticlesResponse,
-} from '@/types/index'
+import type { StarredArticlesResponse } from '@/lib/api/dto'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 /**

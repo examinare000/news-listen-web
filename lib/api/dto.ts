@@ -1,13 +1,10 @@
 // Domain types shared across the frontend
-import type { UserRole } from '@/lib/account/domain/role'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
-export type { DifficultyLevel, UserRole }
+/** 通信上の role の値。domain の UserRole と同じ 2 値だが、lib/api は account を import しないので自前で持つ（web-dep-07）。 */
+export type UserRoleDto = 'admin' | 'user'
 
-// 統一デフォルト難易度（issue #163・docs/design/shared-playback-spec.md 正本）。正本は lib/shared/difficulty.ts。
-export { DEFAULT_DIFFICULTY } from '@/lib/shared/difficulty'
-
-export type PodcastStatus = 'processing' | 'completed' | 'failed' | 'partial_failed'
+export type PodcastStatus = 'processing' | 'completed' | 'failed'
 
 export interface Article {
   id: string
@@ -149,14 +146,14 @@ export interface AuthUser {
   /** backend の主体 ID（ADR-104 決定 6・15）。/admin/users の応答には無い（UserSummary）。 */
   user_id: string
   username: string
-  role: UserRole
+  role: UserRoleDto
   display_name: string
 }
 
 /** /admin/users の一覧・作成・更新の応答。user_id を持たない（ADR-104 決定 15）。 */
 export interface UserSummary {
   username: string
-  role: UserRole
+  role: UserRoleDto
   display_name: string
 }
 
@@ -413,9 +410,6 @@ export interface PushSubscriptionJSON {
 export interface VapidPublicKeyResponse {
   public_key: string
 }
-
-/** Web Push 購読状態機械（持ち主は notifications の domain。移行中の再 export） */
-export type { PushSubscriptionState } from '@/lib/notifications/domain/pushSubscriptionState'
 
 // ── リテンション計測（ADR-075・backend api/schemas.py 確定契約） ─────────────
 /** D_N コホート継続率 1 点分。eligible=0（評価適格ユーザーがいない）は rate が null（ゼロ除算回避・ADR-075 §2）。 */

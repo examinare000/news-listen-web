@@ -47,9 +47,9 @@ describe('web-check-04 規則の表', () => {
     expect(text).not.toMatch(/\(\?<[=!]/)
   })
 
-  test('規則ごとの「出てよいファイル以外の出現」の集合 ＝ 許可リストの同じ rule の行（走査集合は types/** を除く）', () => {
+  test('規則ごとの「出てよいファイル以外の出現」の集合 ＝ 許可リストの同じ rule の行（走査集合は types/** と lib/api/dto.ts を除く）', () => {
     const measured: Row[] = scanFiles
-      .filter((f) => !f.startsWith('types/'))
+      .filter((f) => !f.startsWith('types/') && f !== 'lib/api/dto.ts')
       .flatMap((f) => detectRuleRows(f, readSource(f)))
     const expected = readAllowlistRowsStrict().filter((r) => EXPECTED_RULES.includes(r.rule))
     expect(rowKeys(measured)).toEqual(rowKeys(expected))
@@ -252,12 +252,12 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, "const url = 'https://example.com//x'; const n = POLL_TIMEOUT_MS")).toEqual([`web-rule-catalog-06 | ${F} | POLL_TIMEOUT_MS`])
   })
 
-  test('出てよいファイルは数えない。86400 は lib/format.ts を除外する', () => {
+  test('出てよいファイルは数えない。86400 は lib/presentation/format.ts を除外する', () => {
     expect(rows('lib/learning/domain/streak.ts', 'const g = 5 * 60 * 1000')).toEqual([])
     expect(rows('lib/shared/difficulty.ts', "export const D = ['toeic_600', 'ielts_7']")).toEqual([])
     expect(rows('lib/api/gateway.ts', 'if (res.status === 401) {}')).toEqual([])
     expect(rows('app/api/x/route.ts', 'if (res.status === 401) {}')).toEqual([])
-    expect(rows('lib/format.ts', 'const day = 86400')).toEqual([])
-    expect(rows('lib/format.ts', 'const r = /monthly/i')).toEqual([`web-rule-catalog-03 | lib/format.ts | /monthly/i`])
+    expect(rows('lib/presentation/format.ts', 'const day = 86400')).toEqual([])
+    expect(rows('lib/presentation/format.ts', 'const r = /monthly/i')).toEqual([`web-rule-catalog-03 | lib/presentation/format.ts | /monthly/i`])
   })
 })

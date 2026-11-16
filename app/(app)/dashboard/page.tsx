@@ -22,7 +22,7 @@ const ACHIEVEMENT_CATALOG = [
 ] as const
 
 // 正答率（0-1）を四捨五入した % 表記へ整形する（ADR-072: quiz.averageCorrectRate / trend 用）。
-// 小さな用途のため lib/format.ts に切り出さず、このページに閉じる。
+// 小さな用途のため lib/presentation/format.ts に切り出さず、このページに閉じる。
 function formatPercent(rate: number): string {
   return `${Math.round(rate * 100)}%`
 }

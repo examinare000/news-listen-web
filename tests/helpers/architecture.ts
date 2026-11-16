@@ -55,7 +55,7 @@ export type Layer = 'DOMAIN' | 'APP' | 'SHARED' | 'INFRA' | 'PRES' | 'ROOT' | 'O
  * 層の glob（`lib/*\/application/**`）がまだ 0 ファイルのため、APP とみなす現状の 2 ファイルと、
  * その移動先の context（新 Spec §3.2）。
  */
-const LEGACY_APP_FILES: Readonly<Record<string, string>> = {
+export const LEGACY_APP_FILES: Readonly<Record<string, string>> = {
 }
 
 const stripExtension = (p: string): string => p.replace(/\.d\.ts$|\.tsx?$/, '')
@@ -282,6 +282,11 @@ export function rowKeys(rows: readonly Row[]): string[] {
 export interface AllowlistRow extends Row {
   readonly introducedBy: string
   readonly removeBy: string
+}
+
+/** 許可リスト・移行許可・暫定表が 0 件であること。1 件以上で false。 */
+export function isAllowlistEmpty(rows: readonly unknown[]): boolean {
+  return rows.length === 0
 }
 
 /** 厳格な読込（許可リストの検査用）。ファイルが無くても落ちる。 */

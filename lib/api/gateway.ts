@@ -9,8 +9,6 @@ import { readCookie } from '@/lib/platform/cookie'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
 
-export type { ApiFailure, Result }
-
 export const REQUEST_DEADLINE_MS = 30_000
 
 type GatewayMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'

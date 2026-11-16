@@ -4,7 +4,6 @@
 // RED 理由（実装前）: `normalizeDifficulty`・`DEFAULT_DIFFICULTY` が `@/lib/shared/difficulty` から export されていない。
 import { describe, expect, test } from 'vitest'
 import { DEFAULT_DIFFICULTY, DIFFICULTY_LEVELS, normalizeDifficulty } from '@/lib/shared/difficulty'
-import { DEFAULT_DIFFICULTY as REEXPORTED_DEFAULT_DIFFICULTY } from '@/types/index'
 
 describe('normalizeDifficulty', () => {
   test.each(['toeic_600', 'toeic_900', 'ielts_55', 'ielts_7', 'eiken_2', 'eiken_p1'])(
@@ -39,9 +38,5 @@ describe('DEFAULT_DIFFICULTY', () => {
   test('DEFAULT_DIFFICULTY は toeic_600 で、DIFFICULTY_LEVELS に含まれる', () => {
     expect(DEFAULT_DIFFICULTY).toBe('toeic_600')
     expect(DIFFICULTY_LEVELS).toContain(DEFAULT_DIFFICULTY)
-  })
-
-  test('DEFAULT_DIFFICULTY: @/types/index の再 export と同じ値を指す', () => {
-    expect(REEXPORTED_DEFAULT_DIFFICULTY).toBe(DEFAULT_DIFFICULTY)
   })
 })

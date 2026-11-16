@@ -1,5 +1,7 @@
 // 位置と完聴の送信。path・method・body は lib/api/podcasts.ts が持つ。完聴の応答の本文は捨てる。
-import type { ApiFailure, ApiGateway, Result } from '@/lib/api/gateway'
+import type { ApiGateway } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { markCompleted, updatePosition } from '@/lib/api/podcasts'
 import type { PositionSync, RemotePosition } from '@/lib/playback/application/ports'
 import { parseRecordedAt } from '@/lib/shared/recordedAt'

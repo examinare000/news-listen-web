@@ -1,5 +1,5 @@
 // Catalog domain の Episode: 判別（web-rule-catalog-01）・題の規則（web-rule-catalog-02）・出典の可否（web-rule-catalog-10）・失敗の値域（web-rule-catalog-11）。
-// DTO（`@/types`）も Playback も import しない（web-dep-01・web-dep-12）。DTO からの読み取りは infrastructure の episodeMapper が行う。
+// DTO（`@/lib/api/dto`）も Playback も import しない（web-dep-01・web-dep-12）。DTO からの読み取りは infrastructure の episodeMapper が行う。
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 
 /** オフライン再生用に発行された音源の解放口。中身（blob URL 等）は露出しない。 */

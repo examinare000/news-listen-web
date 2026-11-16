@@ -3,11 +3,11 @@ import type {
   FeaturedSourcesResponse,
   UserSummary,
   UserListResponse,
-  UserRole,
+  UserRoleDto,
   InviteCreateResponse,
   InviteListResponse,
   MetricsSnapshot,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 /**
@@ -25,7 +25,7 @@ export function listUsers(gateway: ApiGateway) {
   return gateway.request<UserListResponse>('/api/backend/admin/users', { method: 'GET' })
 }
 
-export function createUser(gateway: ApiGateway, input: { username: string; password: string; display_name?: string; role?: UserRole }) {
+export function createUser(gateway: ApiGateway, input: { username: string; password: string; display_name?: string; role?: UserRoleDto }) {
   return gateway.request<UserSummary>('/api/backend/admin/users', {
     method: 'POST',
     body: input,
@@ -35,7 +35,7 @@ export function createUser(gateway: ApiGateway, input: { username: string; passw
 export function updateUser(
   gateway: ApiGateway,
   username: string,
-  patch: { role?: UserRole; new_password?: string; display_name?: string },
+  patch: { role?: UserRoleDto; new_password?: string; display_name?: string },
 ) {
   return gateway.request<UserSummary>(`/api/backend/admin/users/${encodeURIComponent(username)}`, {
     method: 'PATCH',

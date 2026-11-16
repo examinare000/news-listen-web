@@ -2,7 +2,7 @@ import type { UserRole } from './role'
 
 // 認証状態の判別共用体と遷移（web-contract-18 / web-dec-66〜71）。
 // どの状態からも全事象を受ける（禁止遷移なし）。次状態は事象だけで決まる。ただし expired だけは直前の状態にも依る。
-// react・@/types・HTTP status を持たない純関数。
+// react・@/lib/api/dto・HTTP status を持たない純関数。
 
 export interface AuthSessionUser {
   readonly username: string

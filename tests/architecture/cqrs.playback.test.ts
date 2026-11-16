@@ -225,8 +225,8 @@ const entry = (id: string) => ({ id, title: `title ${id}`, intro: `intro ${id}` 
 // ---------------------------------------------------------------------------
 // (a) 名前の集合
 // ---------------------------------------------------------------------------
-describe('web-check-07 (a) command 7 と query 5 は別の名前の集合として公開される', () => {
-  test('verifies: CI-T38 (web-check-07, web-cmd-playback-01) — 戻り値の key は command 8 ＋ query 5 ＋ subscribe の 14 だけ', () => {
+describe('web-check-07 (a) command 10 と query 5 は別の名前の集合として公開される', () => {
+  test('verifies: CI-T38 (web-check-07, web-cmd-playback-01) — 戻り値の key は command 10 ＋ query 5 ＋ subscribe の 16 だけ', () => {
     const { coordinator } = harness()
     const commands: readonly CommandNames[] = [
       'startEpisode',

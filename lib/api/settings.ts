@@ -4,7 +4,7 @@ import type {
   OnboardingStatusResponse,
   UserPreferences,
   UserPreferencesPatch,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 export function getSources(gateway: ApiGateway) {

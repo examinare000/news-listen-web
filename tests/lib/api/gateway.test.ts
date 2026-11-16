@@ -9,7 +9,9 @@
 // コメントを含めて書かない（CI-W8 第 8 版・T-W8 (5)）。
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
 import { createGateway } from '@/lib/api/gateway'
-import type { ApiFailure, ApiGateway, GatewayRequest, Result } from '@/lib/api/gateway'
+import type { ApiGateway, GatewayRequest } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 const RAW_KEY = Symbol.for('news-listen.web.gateway.raw')
 

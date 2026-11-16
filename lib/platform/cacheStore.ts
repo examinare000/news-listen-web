@@ -1,4 +1,5 @@
-import type { ApiFailure, Result } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 export interface CacheBucket {
   put(key: string, response: Response): Promise<void>

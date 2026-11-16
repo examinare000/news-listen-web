@@ -6,8 +6,9 @@
 import { describe, expect, test } from 'vitest'
 import { createCatalogGateway } from '@/lib/catalog/infrastructure/catalogGateway'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
-import type { Article, FeaturedSource, Podcast } from '@/types'
+import type { Article, FeaturedSource, Podcast } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
+import { legacyPartialFailed } from '../../../helpers/legacyPodcast'
 
 const LIST_PATH = '/api/backend/podcasts'
 
@@ -158,7 +159,7 @@ describe('createCatalogGateway: 写しの不変条件', () => {
   })
 
   test('verifies: CI-GW3 — partial_failed → generation は failed', async () => {
-    const record = await listOne(dto({ status: 'partial_failed' }))
+    const record = await listOne(dto({ status: legacyPartialFailed() }))
     expect(record.generation).toBe('failed')
     expect(record.episode.kind).toBe('failed')
   })

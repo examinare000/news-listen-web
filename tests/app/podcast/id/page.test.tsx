@@ -11,6 +11,7 @@ import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { ToastProvider } from '@/components/ui/Toast'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../../helpers/gatewayDouble'
+import { legacyPartialFailed } from '../../../helpers/legacyPodcast'
 
 const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
   rtlRender(ui, { wrapper: ApiClientProvider, ...options })
@@ -753,7 +754,7 @@ describe('PodcastDetailPage — Episode kinds (web-contract-14)', () => {
       { ...SAMPLE_PODCAST, status: 'failed', error_message: 'something went wrong' },
       '生成に失敗しました',
     ],
-    ['shared-session-09: partial_failed', { ...SAMPLE_PODCAST, status: 'partial_failed' }, '生成に失敗しました'],
+    ['shared-session-09: partial_failed', { ...SAMPLE_PODCAST, status: legacyPartialFailed() }, '生成に失敗しました'],
     ['shared-session-08: 矛盾 DTO（completed なのに audio_url が空）', { ...SAMPLE_PODCAST, audio_url: '' }, '生成に失敗しました'],
     [
       'shared-session-08: 矛盾 DTO（completed なのに error_message が識別子）',

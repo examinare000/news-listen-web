@@ -2,7 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { formatDuration, formatDate } from '@/lib/format'
+import { formatDuration, formatDate } from '@/lib/presentation/format'
 import type { EpisodeCardView } from '@/lib/catalog/application/readModels'
 import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 

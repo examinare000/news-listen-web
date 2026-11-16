@@ -112,6 +112,7 @@ const presSpec = {
     (file.startsWith('app/') ||
       file.startsWith('components/') ||
       file.startsWith('hooks/') ||
+      file.startsWith('lib/presentation/') ||
       /^lib\/[^/]+\/presentation\//.test(file)) &&
     !file.startsWith('app/api/') &&
     file !== 'app/layout.tsx' &&
@@ -122,6 +123,7 @@ const presSpec = {
     'components/**/*.{ts,tsx}',
     'hooks/**/*.{ts,tsx}',
     'lib/*/presentation/**/*.{ts,tsx}',
+    'lib/presentation/**/*.{ts,tsx}',
   ],
   ignores: ['app/api/**', 'app/layout.tsx', 'app/(app)/layout.tsx', 'app/global-error.tsx'],
   importPatterns: (exempt) => [

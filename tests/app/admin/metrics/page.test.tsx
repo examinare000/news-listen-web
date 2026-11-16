@@ -5,7 +5,7 @@ import type { ReactElement } from 'react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import React from 'react'
 import AdminMetricsPage from '@/app/(app)/admin/metrics/page'
-import type { MetricsSnapshot } from '@/types/index'
+import type { MetricsSnapshot } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../../helpers/gatewayDouble'
 

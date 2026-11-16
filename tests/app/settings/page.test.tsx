@@ -10,7 +10,7 @@ import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvi
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { StreakProvider } from '@/contexts/StreakProvider'
 import { ToastProvider } from '@/components/ui/Toast'
-import type { UserPreferencesPatch } from '@/types/index'
+import type { UserPreferencesPatch } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
 

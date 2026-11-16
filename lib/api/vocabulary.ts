@@ -4,7 +4,7 @@ import type {
   VocabularyTestSessionResponse,
   VocabularyTestResultItem,
   VocabularyTestResultResponse,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 export function saveVocabulary(gateway: ApiGateway, podcastId: string, term: string) {

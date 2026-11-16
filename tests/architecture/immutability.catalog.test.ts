@@ -33,7 +33,8 @@ import { createCatalogCommands } from '@/lib/catalog/application/commands'
 import { createCatalogQueries } from '@/lib/catalog/application/queries'
 import type { CatalogGateway, EpisodeRecord, QuotaRecord } from '@/lib/catalog/application/ports'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
+import { legacyPartialFailed } from '../helpers/legacyPodcast'
 
 // 呼出側が入れ子を書き換える状況を作るため、readonly を全深さで外す（関数は辿らない）
 type DeepMutable<T> = T extends (...args: never[]) => unknown
@@ -318,7 +319,7 @@ describe('web-check-06 decodeEpisode: 戻り値は DTO と参照を共有せず�
   test('戻り値は全深さで凍結されている（Playable・Generating・Failed）', () => {
     expectDeeplyFrozen('playable', decodeEpisode(podcastDto()))
     expectDeeplyFrozen('generating', decodeEpisode({ ...podcastDto(), status: 'processing' }))
-    expectDeeplyFrozen('failed', decodeEpisode({ ...podcastDto(), status: 'partial_failed' }))
+    expectDeeplyFrozen('failed', decodeEpisode({ ...podcastDto(), status: legacyPartialFailed() }))
   })
 })
 

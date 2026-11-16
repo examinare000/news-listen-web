@@ -1,6 +1,6 @@
 import { vi } from 'vitest'
 import type { CacheStore, CacheWriteFailure } from '@/lib/platform/cacheStore'
-import type { Result } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
 
 /**
  * jsdom には Cache Storage API (`caches`) が実装されていないため、テスト用モックを提供する。

@@ -12,7 +12,7 @@ import { MockAudio } from '../helpers/mockAudio'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 // 実の AuthProvider・PlaybackProvider・AudioPlayerBar を、Audio の stub・localStorage（jsdom）・gateway の double で動かし、
 // 他の端末の位置が取り込まれた後の再生ボタンの確認（ADR-109 決定 11・12）を、利用者の操作から固定する。
