@@ -27,6 +27,7 @@ vi.mock('@/contexts/ApiClientProvider', async (importOriginal) => {
 
 beforeEach(() => {
   override.gateway = undefined
+  localStorage.clear()
 })
 
 describe('useLearningQueries (composition root)', () => {
@@ -77,5 +78,35 @@ describe('useLearningQueries (composition root)', () => {
 
     expect(gateway.calls).toEqual([{ method: 'GET', path: '/api/backend/vocabulary', body: undefined }])
     expect(terms.ok && [...terms.value]).toEqual(['apple'])
+  })
+
+  test('verifies: CI-LD13 — getDashboard は localStorage の seen_achievement_ids を既読として読み、newlyUnlocked から除く（PreferencesProvider を経由しない）(web-dec-170)', async () => {
+    localStorage.setItem('seen_achievement_ids', '["first_listen"]')
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', '/api/backend/users/me/learning-dashboard', {
+      ok: true,
+      value: {
+        streak: { current_streak_days: 1, today_listened: false, last_listened_day: null },
+        total_episodes: 0,
+        vocabulary_acquired: 0,
+        quiz: { quizzed_episodes: 0, average_correct_rate: null, trend: [] },
+        monthly_activity: [],
+        current_difficulty: 'toeic_600',
+        weekly_goal: { goal_episodes: 3, week: '2026-W27', completed_this_week: 0, history: [] },
+        achievements: [
+          { id: 'first_listen', unlocked_at: '2026-07-01' },
+          { id: 'streak_7', unlocked_at: '2026-07-02' },
+        ],
+      },
+    })
+    const { result } = renderHook(() => useLearningQueries(), {
+      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+    })
+
+    const dashboard = await result.current.getDashboard()
+
+    expect(dashboard.dashboard?.newlyUnlocked).toEqual(['streak_7'])
+    // 読むだけで書かない（読む操作に書込みを付けない）。
+    expect(localStorage.getItem('seen_achievement_ids')).toBe('["first_listen"]')
   })
 })

@@ -5,7 +5,8 @@
 // verifies: web-contract-20
 //
 // 分類の理由: DOMAIN の settings.ts を値で import するので、台帳の閉じた集合 domainImportingNonUnit で固定される。
-// infrastructure の localSettingsStore も値で import する（adapter 分類の実行時 import 検査を満たし、書込み・読込の複製を検証する）。
+// infrastructure の束ね物（LOCAL_SETTING_BINDINGS）も値で import する（adapter 分類の実行時 import 検査を満たし、凍結を検証する）。
+// 既読の store の書込み・読込の不変性は tests/lib/learning/infrastructure/seenAchievementsStore.test.ts へ移した。
 //
 // RED 理由（実装前）: `@/lib/preferences/domain/settings`・`@/lib/preferences/infrastructure/localSettingsStore` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
@@ -20,8 +21,7 @@ import {
   timeFormat,
   volume,
 } from '@/lib/preferences/domain/settings'
-import { LOCAL_SETTING_BINDINGS, createLocalSettingsStore } from '@/lib/preferences/infrastructure/localSettingsStore'
-import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 
 // ---------------------------------------------------------------------------
 // 深い凍結の検査 helper: plain object と配列をすべての深さで辿る（関数は辿らない）。
@@ -48,23 +48,6 @@ function unfrozenNodes(value: unknown, where = '$'): string[] {
 
 function expectDeeplyFrozen(label: string, value: unknown): void {
   expect(unfrozenNodes(value, label), `${label} に凍結されていない node がある`).toEqual([])
-}
-
-function memoryStore(): { store: KeyValueStore; data: Map<string, string> } {
-  const data = new Map<string, string>()
-  return {
-    data,
-    store: {
-      get: (key) => data.get(key) ?? null,
-      set: (key, value) => {
-        data.set(key, value)
-        return true
-      },
-      remove: (key) => {
-        data.delete(key)
-      },
-    },
-  }
 }
 
 describe('web-check-06 helper の自己点検: 深い凍結の判定', () => {
@@ -127,43 +110,12 @@ describe('web-check-06: normalize は入力を複製し、返り値を凍結す�
   })
 })
 
-describe('web-check-06: infrastructure の束ね物と read/write の不変性', () => {
+describe('web-check-06: infrastructure の束ね物の不変性', () => {
   test('束ね物とその各要素は凍結されている（key・decode・encode を差し替えられない）', () => {
     expectDeeplyFrozen('LOCAL_SETTING_BINDINGS', LOCAL_SETTING_BINDINGS)
     expect(() => {
       ;(LOCAL_SETTING_BINDINGS.theme as unknown as { key: string }).key = 'other'
     }).toThrow()
     expect(LOCAL_SETTING_BINDINGS.theme.key).toBe('theme')
-  })
-
-  test('write に渡した配列を後から書き換えても、保存値・次の read・write の返り値は変わらない', () => {
-    const { store, data } = memoryStore()
-    const settings = createLocalSettingsStore(store)
-    const setting = LOCAL_SETTING_BINDINGS.seenAchievementIds.setting
-    const input = ['a']
-
-    const written = settings.write(setting, input)
-    input.push('b')
-
-    expect(written).toEqual(['a'])
-    expect(written).not.toBe(input)
-    expect(Object.isFrozen(written)).toBe(true)
-    expect(data.get('seen_achievement_ids')).toBe('["a"]')
-    expect(settings.read(setting)).toEqual(['a'])
-  })
-
-  test('read の返り値は凍結され、書き換えを試みても次の read は変わらない', () => {
-    const { store, data } = memoryStore()
-    data.set('seen_achievement_ids', '["a"]')
-    const settings = createLocalSettingsStore(store)
-    const setting = LOCAL_SETTING_BINDINGS.seenAchievementIds.setting
-
-    const first = settings.read(setting)
-    expect(Object.isFrozen(first)).toBe(true)
-    expect(() => {
-      ;(first as string[]).push('b')
-    }).toThrow()
-    expect(settings.read(setting)).toEqual(['a'])
-    expect(data.get('seen_achievement_ids')).toBe('["a"]')
   })
 })

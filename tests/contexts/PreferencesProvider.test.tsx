@@ -1,5 +1,5 @@
 // verifies: web-contract-20（registry の合成: get / set / ready だけを公開し、列挙外・型不正は既定へ正規化する）
-// PreferencesProvider を実物の KeyValueStore 互換 double と結んで描画し、公開面・初回描画の timing・同一性・sfx の注入を検証する。
+// PreferencesProvider を実物の KeyValueStore 互換 double と結んで描画し、公開面・初回描画の timing・同一性を検証する（効果音の有効判定の注入は SfxProvider.test.tsx）。
 // 記述子は settings.ts を値で import せず、INFRA の束ね物（LOCAL_SETTING_BINDINGS）から得る。
 //
 // RED 理由（実装前）: `@/contexts/PreferencesProvider` が無い（module not found）。
@@ -10,16 +10,8 @@ import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvi
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 
-const configureSfx = vi.hoisted(() => vi.fn())
-vi.mock('@/lib/sfx', () => ({
-  configureSfx,
-  prepareSfx: vi.fn(),
-  playSfx: vi.fn(),
-}))
-
 const B = LOCAL_SETTING_BINDINGS
 const TIME_FORMAT = B.timeFormat.setting
-const SFX = B.sfxEnabled.setting
 
 function memoryStore(initial: Record<string, string> = {}, setResult = true) {
   const data = new Map<string, string>(Object.entries(initial))
@@ -60,7 +52,6 @@ function renderWith(store: KeyValueStore | undefined) {
 }
 
 beforeEach(() => {
-  configureSfx.mockClear()
   localStorage.clear()
 })
 
@@ -229,64 +220,6 @@ describe('web-contract-20: get / set の同一性', () => {
     )
     expect(latest().get).toBe(before.get)
     expect(latest().set).toBe(before.set)
-  })
-})
-
-describe('web-contract-20: 効果音の有効判定の注入', () => {
-  test('provider の mount 時に 1 回だけ configureSfx を呼び、渡した関数は最新の sfxEnabled を返す', () => {
-    const { store } = memoryStore({ sfx_enabled: 'false' })
-    const { latest, rerender, log } = renderWith(store)
-
-    expect(configureSfx).toHaveBeenCalledTimes(1)
-    const isEnabled = configureSfx.mock.calls[0][0] as () => boolean
-    expect(isEnabled()).toBe(false)
-
-    act(() => {
-      latest().set(SFX, true)
-    })
-    expect(isEnabled()).toBe(true)
-
-    rerender(
-      <PreferencesProvider store={store}>
-        <Recorder log={log} />
-      </PreferencesProvider>,
-    )
-    expect(configureSfx).toHaveBeenCalledTimes(1)
-  })
-
-  test('子の mount effect より前に注入される（子が prepareSfx を呼ぶ時点で注入済み）', () => {
-    let callsSeenByChildEffect = -1
-    function Child() {
-      React.useEffect(() => {
-        callsSeenByChildEffect = configureSfx.mock.calls.length
-      }, [])
-      return null
-    }
-    render(
-      <PreferencesProvider store={memoryStore().store}>
-        <Child />
-      </PreferencesProvider>,
-    )
-    expect(callsSeenByChildEffect).toBe(1)
-  })
-
-  test('StrictMode でも、最後に注入された判定関数が切替後の値を返す', () => {
-    const { store } = memoryStore({ sfx_enabled: 'false' })
-    const log: Array<{ prefs: Prefs; timeFormat: string; ready: boolean }> = []
-    render(
-      <React.StrictMode>
-        <PreferencesProvider store={store}>
-          <Recorder log={log} />
-        </PreferencesProvider>
-      </React.StrictMode>,
-    )
-    const latestInjected = () => configureSfx.mock.calls[configureSfx.mock.calls.length - 1][0] as () => boolean
-    expect(latestInjected()()).toBe(false)
-
-    act(() => {
-      log[log.length - 1].prefs.set(SFX, true)
-    })
-    expect(latestInjected()()).toBe(true)
   })
 })
 

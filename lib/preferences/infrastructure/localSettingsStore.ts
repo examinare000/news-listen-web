@@ -1,6 +1,5 @@
 import {
   defaultPlaybackSpeed,
-  seenAchievementIds,
   sfxEnabled,
   theme,
   timeFormat,
@@ -10,7 +9,6 @@ import type { SettingDescriptor } from '@/lib/preferences/domain/settings'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 
 export const KEY_DEFAULT_PLAYBACK_SPEED = 'default_playback_speed'
-export const KEY_SEEN_ACHIEVEMENT_IDS = 'seen_achievement_ids'
 export const KEY_TIME_FORMAT = 'time_format'
 // app/layout.tsx の inline theme script が同じ key を生文字列で読むため、key 名と生値の形式を変えない。
 export const KEY_THEME = 'theme'
@@ -43,7 +41,6 @@ function jsonBinding<T>(setting: SettingDescriptor<T>, key: string): Binding<T> 
 
 export const LOCAL_SETTING_BINDINGS = Object.freeze({
   defaultPlaybackSpeed: jsonBinding(defaultPlaybackSpeed, KEY_DEFAULT_PLAYBACK_SPEED),
-  seenAchievementIds: jsonBinding(seenAchievementIds, KEY_SEEN_ACHIEVEMENT_IDS),
   timeFormat: jsonBinding(timeFormat, KEY_TIME_FORMAT),
   theme: Object.freeze<Binding<typeof theme.default>>({
     setting: theme,

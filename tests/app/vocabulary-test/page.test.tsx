@@ -24,7 +24,7 @@ const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined })
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
-vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx }))
+vi.mock('@/contexts/SfxProvider', () => ({ useSfx: () => ({ play: playSfx, prepare: prepareSfx }) }))
 
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast }),

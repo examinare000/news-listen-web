@@ -1,15 +1,13 @@
 'use client'
 
 import React, { createContext, use, useCallback, useEffect, useRef, useState } from 'react'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getListeningStreak } from '@/lib/learning/infrastructure/api'
-import { playSfx } from '@/lib/sfx'
-import type { ListeningStreak } from '@/types/index'
-
-const STALE_AFTER_MS = 5 * 60 * 1000
+import { useSfx } from '@/contexts/SfxProvider'
+import { useLearningQueries } from '@/contexts/useLearningQueries'
+import { isStale } from '@/lib/learning/domain/streak'
+import type { StreakView } from '@/lib/learning/application/readModels'
 
 interface StreakContextValue {
-  streak: ListeningStreak | null
+  streak: StreakView | null
   refresh: () => Promise<void>
   isPulsing: boolean
 }
@@ -17,38 +15,29 @@ interface StreakContextValue {
 const StreakContext = createContext<StreakContextValue | null>(null)
 
 export function StreakProvider({ children }: { children: React.ReactNode }) {
-  const gateway = useApiClient()
-  const [streak, setStreak] = useState<ListeningStreak | null>(null)
+  const queries = useLearningQueries()
+  const { play } = useSfx()
+  const [streak, setStreak] = useState<StreakView | null>(null)
   const [isPulsing, setIsPulsing] = useState(false)
-  const streakRef = useRef<ListeningStreak | null>(null)
+  const streakRef = useRef<StreakView | null>(null)
   const lastFetchedAtRef = useRef(0)
   const requestRef = useRef<Promise<void> | null>(null)
   const pulseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const refresh = useCallback(async () => {
-    if (Date.now() - lastFetchedAtRef.current < STALE_AFTER_MS) return
+    if (!isStale(lastFetchedAtRef.current, Date.now())) return
     if (requestRef.current) return requestRef.current
 
-    let response: ReturnType<typeof getListeningStreak>
-    try {
-      response = getListeningStreak(gateway)
-    } catch {
-      return
-    }
-
-    const request = response
-      .then((result) => {
-        if (!result.ok) return
-        const nextStreak = result.value
-        const previousStreak = streakRef.current
-        streakRef.current = nextStreak
+    // getStreak は reject しない。取得できなかったとき（null）は state・取得時刻を変えず、次の focus で取り直す。
+    const request = queries
+      .getStreak(streakRef.current)
+      .then((view) => {
+        if (view === null) return
+        streakRef.current = view
         lastFetchedAtRef.current = Date.now()
-        setStreak(nextStreak)
-        if (
-          previousStreak !== null
-          && nextStreak.current_streak_days > previousStreak.current_streak_days
-        ) {
-          playSfx('streak')
+        setStreak(view)
+        if (view.justIncreased) {
+          play('streak')
           setIsPulsing(true)
           if (pulseTimeoutRef.current) clearTimeout(pulseTimeoutRef.current)
           pulseTimeoutRef.current = setTimeout(() => {
@@ -56,17 +45,13 @@ export function StreakProvider({ children }: { children: React.ReactNode }) {
           }, 300)
         }
       })
-      .catch(() => {
-        // This shell-wide status is supportive context: retain the previous value and
-        // retry silently on a later stale focus.
-      })
       .finally(() => {
         requestRef.current = null
       })
 
     requestRef.current = request
     return request
-  }, [gateway])
+  }, [queries, play])
 
   useEffect(() => {
     void refresh()

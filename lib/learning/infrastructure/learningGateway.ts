@@ -2,9 +2,81 @@
 import type { LearningGateway } from '@/lib/learning/application/ports'
 import type { QuizReceipt } from '@/lib/learning/application/commands'
 import type { ApiGateway } from '@/lib/api/gateway'
-import { getVocabulary, saveVocabulary } from '@/lib/api/vocabulary'
+import { getVocabulary, getVocabularyTestSession, saveVocabulary } from '@/lib/api/vocabulary'
+import { getDifficultySuggestion, getLearningDashboard, getListeningStreak } from '@/lib/api/users'
 import { submitQuizAnswers } from '@/lib/api/podcasts'
-import type { QuizAnswerResponse } from '@/types'
+import type { DashboardSnapshot, StreakSummary, VocabularySummary } from '@/lib/learning/application/readModels'
+import type { ListeningStreak, QuizAnswerResponse, VocabularyListResponse, LearningDashboard } from '@/types'
+
+// 日付だけの表示用の値は application が持つので、切り出しはここ（gateway）だけで行う。
+const toDay = (timestamp: string): string => timestamp.slice(0, 10)
+
+function toStreak(dto: ListeningStreak): StreakSummary {
+  return Object.freeze({
+    days: dto.current_streak_days,
+    todayListened: dto.today_listened,
+    lastListenedDay: dto.last_listened_day,
+  })
+}
+
+// weekly_goal が null・欠落の応答は weeklyGoal: null（その節だけを出さない現行の挙動）にする。
+function toSnapshot(dto: LearningDashboard): DashboardSnapshot {
+  const goal = (dto as { weekly_goal?: LearningDashboard['weekly_goal'] | null }).weekly_goal ?? null
+  return Object.freeze({
+    streak: toStreak(dto.streak),
+    totalEpisodes: dto.total_episodes,
+    vocabularyAcquired: dto.vocabulary_acquired,
+    currentDifficulty: dto.current_difficulty,
+    weeklyGoal:
+      goal === null
+        ? null
+        : Object.freeze({
+            goalEpisodes: goal.goal_episodes,
+            completedThisWeek: goal.completed_this_week,
+            history: Object.freeze(
+              goal.history.map((record) =>
+                Object.freeze({ week: record.week, goal: record.goal, completed: record.completed }),
+              ),
+            ),
+          }),
+    monthly: Object.freeze(
+      dto.monthly_activity.map((entry) => Object.freeze({ month: entry.month, activeDays: entry.active_days })),
+    ),
+    quiz: Object.freeze({
+      quizzedEpisodes: dto.quiz.quizzed_episodes,
+      averageCorrectRate: dto.quiz.average_correct_rate,
+      trend: Object.freeze(
+        dto.quiz.trend.map((point) =>
+          Object.freeze({
+            gradedAt: point.graded_at,
+            gradedDay: toDay(point.graded_at),
+            correctRate: point.correct_rate,
+          }),
+        ),
+      ),
+    }),
+    achievements: Object.freeze(
+      dto.achievements.map((a) => Object.freeze({ id: a.id, unlockedAt: a.unlocked_at })),
+    ),
+  })
+}
+
+function toVocabularySummary(dto: VocabularyListResponse): VocabularySummary {
+  return Object.freeze({
+    count: dto.count,
+    items: Object.freeze(
+      dto.vocabulary.map((item) =>
+        Object.freeze({
+          id: item.vocabulary_id,
+          term: item.term,
+          meaning: item.meaning,
+          registeredAt: item.registered_at,
+          registeredDay: toDay(item.registered_at),
+        }),
+      ),
+    ),
+  })
+}
 
 // correct_rate は application が持たないので捨てる。
 function toReceipt(dto: QuizAnswerResponse): QuizReceipt {
@@ -38,6 +110,28 @@ export function createLearningGateway(gateway: ApiGateway): LearningGateway {
     async listRegisteredTerms() {
       const result = await getVocabulary(gateway)
       return result.ok ? { ok: true, value: result.value.vocabulary.map((v) => v.term) } : result
+    },
+    async getListeningStreak() {
+      const result = await getListeningStreak(gateway)
+      return result.ok ? { ok: true, value: toStreak(result.value) } : result
+    },
+    async getLearningDashboard() {
+      const result = await getLearningDashboard(gateway)
+      return result.ok ? { ok: true, value: toSnapshot(result.value) } : result
+    },
+    async getVocabularySummary() {
+      const result = await getVocabulary(gateway)
+      return result.ok ? { ok: true, value: toVocabularySummary(result.value) } : result
+    },
+    async countDueTestItems() {
+      const result = await getVocabularyTestSession(gateway)
+      return result.ok ? { ok: true, value: result.value.items.length } : result
+    },
+    async getDifficultySuggestion() {
+      const result = await getDifficultySuggestion(gateway)
+      if (!result.ok) return result
+      const { has_suggestion, suggested, reason } = result.value
+      return { ok: true, value: Object.freeze({ hasSuggestion: has_suggestion, suggested, reason }) }
     },
   }
 }

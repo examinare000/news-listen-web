@@ -38,6 +38,9 @@ const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined })
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
 
+// PodcastDetailPage が useSfx() を呼ぶ（SfxProvider は (app)/layout の中）。効果音そのものは本テストの対象外。
+vi.mock('@/contexts/SfxProvider', () => ({ useSfx: () => ({ play: vi.fn(), prepare: vi.fn() }) }))
+
 const PODCASTS_PATH = '/api/backend/podcasts'
 
 let gw: GatewayDouble

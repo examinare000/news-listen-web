@@ -27,6 +27,7 @@ import { createPreferencesGateway } from '@/lib/preferences/infrastructure/prefe
 import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
 import { deleteSubjectAudio, reclaimAudioCaches } from '@/lib/playback/infrastructure/offlineLibrary'
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
+import { createBrowserSeenAchievementsStore } from '@/contexts/seenAchievementsSession'
 import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
 import { createRealWebAuthnBrowserPort } from '@/lib/platform/webauthn'
 import { createRealPushBrowserPort } from '@/lib/platform/pushBrowser'
@@ -155,6 +156,8 @@ export function AuthProvider({ children, initialSession, webAuthnPort }: AuthPro
             set(defaultPlaybackSpeed, current)
           }
           if (subject.userId !== null) localPositions.clearSubject(subject.userId)
+          // 既読の実績は Learning の store が持つ（registry の管轄外）。保存に失敗した記憶も空にする。
+          createBrowserSeenAchievementsStore().clear()
         },
       })(subject, options)
     },

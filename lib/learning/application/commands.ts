@@ -1,5 +1,5 @@
 // Learning の command（web-cmd-learning-03・04）: 語の登録とクイズの送信。gateway へ委譲し、失敗は Result で返す。
-import type { LearningGateway } from '@/lib/learning/application/ports'
+import type { LearningGateway, SeenAchievementsStore } from '@/lib/learning/application/ports'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
 
@@ -18,11 +18,25 @@ export interface QuizReceipt {
 export interface LearningCommands {
   registerTerm(episodeId: string, term: string): Promise<Result<void, ApiFailure>>
   submitQuiz(episodeId: string, answers: ReadonlyArray<number>): Promise<Result<QuizReceipt, ApiFailure>>
+  /** 既読の実績の id に ids を続けて保存する（既存の既読を保ち、新しい id だけで上書きしない）。 */
+  markAchievementsSeen(ids: ReadonlyArray<string>): Promise<void>
 }
 
-export function createLearningCommands({ gateway }: { readonly gateway: LearningGateway }): LearningCommands {
+export interface LearningCommandDeps {
+  readonly gateway: LearningGateway
+  readonly seenAchievements: SeenAchievementsStore
+}
+
+export function createLearningCommands({ gateway, seenAchievements }: LearningCommandDeps): LearningCommands {
   return {
     registerTerm: (episodeId, term) => gateway.registerTerm(episodeId, term),
     submitQuiz: (episodeId, answers) => gateway.submitQuiz(episodeId, answers),
+    markAchievementsSeen(ids) {
+      // Set の挿入順で、保存済みの既読の後に ids の初出の新しいものを続ける。
+      const merged = new Set(seenAchievements.read())
+      for (const id of ids) merged.add(id)
+      seenAchievements.write([...merged])
+      return Promise.resolve()
+    },
   }
 }

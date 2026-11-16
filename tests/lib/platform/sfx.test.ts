@@ -43,7 +43,7 @@ class AudioContextMock {
 }
 
 async function loadSfx(): Promise<SfxModule> {
-  return import('@/lib/sfx')
+  return import('@/lib/platform/sfx')
 }
 
 beforeEach(() => {

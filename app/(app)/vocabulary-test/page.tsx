@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { useApiClient } from '@/contexts/ApiClientProvider'
 import { getVocabularyTestSession, submitVocabularyTestResult } from '@/lib/learning/infrastructure/api'
-import { playSfx, prepareSfx } from '@/lib/sfx'
+import { useSfx } from '@/contexts/SfxProvider'
 import type { VocabularyTestItem, VocabularyTestResultItem } from '@/types/index'
 
 type Phase = 'loading' | 'self-assessment' | 'retest' | 'submitting' | 'result' | 'empty' | 'error'
@@ -31,6 +31,7 @@ function buildChoices(item: VocabularyTestItem): string[] {
 
 export default function VocabularyTestPage() {
   const { showToast } = useToast()
+  const { play: playSfx, prepare: prepareSfx } = useSfx()
   const gateway = useApiClient()
   const [phase, setPhase] = useState<Phase>('loading')
   const [items, setItems] = useState<VocabularyTestItem[]>([])

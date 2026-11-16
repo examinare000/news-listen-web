@@ -2,7 +2,7 @@ import { describe, test, expect, vi, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { NavigationBar } from '@/components/NavigationBar'
 import { useAuth } from '@/contexts/AuthProvider'
-import { useStreak } from '@/contexts/StreakContext'
+import { useStreak } from '@/contexts/StreakProvider'
 
 vi.mock('next/navigation', () => ({
   usePathname: vi.fn(() => '/feed'),
@@ -41,7 +41,7 @@ vi.mock('@/contexts/PreferencesProvider', () => ({
   usePreferences: () => ({ get: vi.fn(), set: vi.fn(), ready: true }),
 }))
 
-vi.mock('@/contexts/StreakContext', () => ({
+vi.mock('@/contexts/StreakProvider', () => ({
   useStreak: vi.fn(() => ({ streak: null, isPulsing: false, refresh: vi.fn() })),
 }))
 
@@ -63,9 +63,10 @@ afterEach(() => {
 describe('NavigationBar', () => {
   test('shows a compact vermilion streak only for a positive shared value', () => {
     vi.mocked(useStreak).mockReturnValue({ isPulsing: false, streak: {
-        current_streak_days: 8,
-        today_listened: false,
-        last_listened_day: '2026-07-28',
+        days: 8,
+        todayListened: false,
+        lastListenedDay: '2026-07-28',
+        justIncreased: false,
       },
       refresh: vi.fn(),
     })
@@ -77,9 +78,10 @@ describe('NavigationBar', () => {
 
   test('does not show a punitive zero or an unavailable streak', () => {
     vi.mocked(useStreak).mockReturnValue({ isPulsing: false, streak: {
-        current_streak_days: 0,
-        today_listened: false,
-        last_listened_day: '2026-07-01',
+        days: 0,
+        todayListened: false,
+        lastListenedDay: '2026-07-01',
+        justIncreased: false,
       },
       refresh: vi.fn(),
     })
