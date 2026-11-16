@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import {
   KEY_DEFAULT_PLAYBACK_SPEED,
   KEY_PLAYER_VOLUME,
-  KEY_SEEN_ACHIEVEMENT_IDS,
   KEY_SFX_ENABLED,
   KEY_THEME,
   KEY_TIME_FORMAT,
@@ -46,19 +45,17 @@ function writeUnchecked(
 }
 
 describe('web-contract-20: key 定数と束ね物', () => {
-  test('6 つの key 定数は保存形式の表の文字列と一致する', () => {
+  test('5 つの key 定数は保存形式の表の文字列と一致する', () => {
     expect(KEY_DEFAULT_PLAYBACK_SPEED).toBe('default_playback_speed')
-    expect(KEY_SEEN_ACHIEVEMENT_IDS).toBe('seen_achievement_ids')
     expect(KEY_TIME_FORMAT).toBe('time_format')
     expect(KEY_THEME).toBe('theme')
     expect(KEY_SFX_ENABLED).toBe('sfx_enabled')
     expect(KEY_PLAYER_VOLUME).toBe('player_volume')
   })
 
-  test('束ね物は記述子の id をキーにした 6 件で、podcastPosition を含まない', () => {
+  test('束ね物は記述子の id をキーにした 5 件で、podcastPosition を含まない', () => {
     expect(Object.keys(B).sort()).toEqual([
       'defaultPlaybackSpeed',
-      'seenAchievementIds',
       'sfxEnabled',
       'theme',
       'timeFormat',
@@ -68,14 +65,12 @@ describe('web-contract-20: key 定数と束ね物', () => {
 
   test('各束ね物の setting.id は自分のキーと一致し、key は対応する定数である', () => {
     expect(B.defaultPlaybackSpeed.setting.id).toBe('defaultPlaybackSpeed')
-    expect(B.seenAchievementIds.setting.id).toBe('seenAchievementIds')
     expect(B.timeFormat.setting.id).toBe('timeFormat')
     expect(B.theme.setting.id).toBe('theme')
     expect(B.sfxEnabled.setting.id).toBe('sfxEnabled')
     expect(B.volume.setting.id).toBe('volume')
 
     expect(B.defaultPlaybackSpeed.key).toBe(KEY_DEFAULT_PLAYBACK_SPEED)
-    expect(B.seenAchievementIds.key).toBe(KEY_SEEN_ACHIEVEMENT_IDS)
     expect(B.timeFormat.key).toBe(KEY_TIME_FORMAT)
     expect(B.theme.key).toBe(KEY_THEME)
     expect(B.sfxEnabled.key).toBe(KEY_SFX_ENABLED)
@@ -105,15 +100,6 @@ describe('web-contract-20: read（保存形式の表どおりに復元し、不�
     expect(settings.read(binding.setting as never)).toEqual(expected)
   })
 
-  test('seenAchievementIds は JSON の文字列配列を復元し、壊れた値・配列以外・文字列以外の要素は []', () => {
-    const read = (stored: string) =>
-      createLocalSettingsStore(memoryStore({ seen_achievement_ids: stored }).store).read(B.seenAchievementIds.setting)
-    expect(read('["a","b"]')).toEqual(['a', 'b'])
-    expect(read('not-json')).toEqual([])
-    expect(read('{"a":1}')).toEqual([])
-    expect(read('["a",1]')).toEqual([])
-  })
-
   test('theme は生文字列で読む（JSON の "light" は不正値として dark）', () => {
     const read = (stored: string) =>
       createLocalSettingsStore(memoryStore({ theme: stored }).store).read(B.theme.setting)
@@ -123,10 +109,9 @@ describe('web-contract-20: read（保存形式の表どおりに復元し、不�
     expect(read('blue')).toBe('dark')
   })
 
-  test('欠落した key は 6 設定とも既定値を返す', () => {
+  test('欠落した key は 5 設定とも既定値を返す', () => {
     const settings = createLocalSettingsStore(memoryStore().store)
     expect(settings.read(B.defaultPlaybackSpeed.setting)).toBe(1.0)
-    expect(settings.read(B.seenAchievementIds.setting)).toEqual([])
     expect(settings.read(B.timeFormat.setting)).toBe('absolute')
     expect(settings.read(B.theme.setting)).toBe('dark')
     expect(settings.read(B.sfxEnabled.setting)).toBe(true)
@@ -143,20 +128,18 @@ describe('web-contract-20: 読み込みが失敗する環境（private browsing 
     localStorage.clear()
   })
 
-  test('getItem が投げても 6 設定とも投げずに既定値を返す（保存値があれば読めることとの対）', () => {
+  test('getItem が投げても 5 設定とも投げずに既定値を返す（保存値があれば読めることとの対）', () => {
     localStorage.setItem('time_format', '"relative"')
     localStorage.setItem('theme', 'light')
     localStorage.setItem('sfx_enabled', 'false')
     localStorage.setItem('player_volume', '0.3')
     localStorage.setItem('default_playback_speed', '1.5')
-    localStorage.setItem('seen_achievement_ids', '["a"]')
     const settings = createLocalSettingsStore(createBrowserKeyValueStore())
     expect(settings.read(B.timeFormat.setting)).toBe('relative')
     expect(settings.read(B.theme.setting)).toBe('light')
     expect(settings.read(B.sfxEnabled.setting)).toBe(false)
     expect(settings.read(B.volume.setting)).toBe(0.3)
     expect(settings.read(B.defaultPlaybackSpeed.setting)).toBe(1.5)
-    expect(settings.read(B.seenAchievementIds.setting)).toEqual(['a'])
 
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('storage denied')
@@ -166,7 +149,6 @@ describe('web-contract-20: 読み込みが失敗する環境（private browsing 
     expect(settings.read(B.sfxEnabled.setting)).toBe(true)
     expect(settings.read(B.volume.setting)).toBe(1.0)
     expect(settings.read(B.defaultPlaybackSpeed.setting)).toBe(1.0)
-    expect(settings.read(B.seenAchievementIds.setting)).toEqual([])
   })
 })
 
@@ -179,14 +161,12 @@ describe('web-contract-20: write（保存形式の表どおりに保存し、正
     expect(settings.write(B.theme.setting, 'light')).toBe('light')
     expect(settings.write(B.sfxEnabled.setting, false)).toBe(false)
     expect(settings.write(B.volume.setting, 0.4)).toBe(0.4)
-    expect(settings.write(B.seenAchievementIds.setting, ['a', 'b'])).toEqual(['a', 'b'])
 
     expect(data.get('default_playback_speed')).toBe('1.5')
     expect(data.get('time_format')).toBe('"relative"')
     expect(data.get('theme')).toBe('light')
     expect(data.get('sfx_enabled')).toBe('false')
     expect(data.get('player_volume')).toBe('0.4')
-    expect(data.get('seen_achievement_ids')).toBe('["a","b"]')
   })
 
   test('値域外の値は既定へ正規化して保存し、正規化値を返す', () => {
@@ -197,14 +177,12 @@ describe('web-contract-20: write（保存形式の表どおりに保存し、正
     expect(writeUnchecked(settings, B.theme.setting, 'blue')).toBe('dark')
     expect(writeUnchecked(settings, B.sfxEnabled.setting, 'abc')).toBe(true)
     expect(writeUnchecked(settings, B.volume.setting, 2)).toBe(1)
-    expect(writeUnchecked(settings, B.seenAchievementIds.setting, ['a', 1])).toEqual([])
 
     expect(data.get('default_playback_speed')).toBe('1')
     expect(data.get('time_format')).toBe('"absolute"')
     expect(data.get('theme')).toBe('dark')
     expect(data.get('sfx_enabled')).toBe('true')
     expect(data.get('player_volume')).toBe('1')
-    expect(data.get('seen_achievement_ids')).toBe('[]')
   })
 
   test('書込み一巡: write した値を新しい store から read できる', () => {
@@ -272,12 +250,12 @@ describe('shared-leave-01 clearSubjectScoped（shared-dec-02 / web-dec-75）', (
     player_volume: '0.5',
   }
 
-  test('主体依存の 2 key（default_playback_speed・seen_achievement_ids）だけが消え、残り 4 key は元の値のまま。kv.set は 1 回も呼ばれない', () => {
+  test('主体依存の 1 key（default_playback_speed）だけが消え、残り 5 key（seen_achievement_ids は registry の管轄外で、この store は触らない）は元の値のまま。kv.set は 1 回も呼ばれない', () => {
     const { store, data, sets } = memoryStore(ALL)
     createLocalSettingsStore(store).clearSubjectScoped()
 
     expect(data.has('default_playback_speed')).toBe(false)
-    expect(data.has('seen_achievement_ids')).toBe(false)
+    expect(data.get('seen_achievement_ids')).toBe('["a"]')
     expect(data.get('time_format')).toBe('"relative"')
     expect(data.get('theme')).toBe('light')
     expect(data.get('sfx_enabled')).toBe('false')
@@ -291,7 +269,6 @@ describe('shared-leave-01 clearSubjectScoped（shared-dec-02 / web-dec-75）', (
     settings.clearSubjectScoped()
     settings.clearSubjectScoped()
     expect(settings.read(B.defaultPlaybackSpeed.setting)).toBe(B.defaultPlaybackSpeed.setting.default)
-    expect(settings.read(B.seenAchievementIds.setting)).toEqual(B.seenAchievementIds.setting.default)
-    expect(data.size).toBe(4)
+    expect(data.size).toBe(5)
   })
 })
