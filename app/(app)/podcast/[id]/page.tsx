@@ -16,7 +16,7 @@ import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { failureMessage } from '@/lib/catalog/presentation/failureMessage'
 import { highlightTerms } from '@/lib/highlightTerms'
-import { playSfx, prepareSfx } from '@/lib/sfx'
+import { useSfx } from '@/contexts/SfxProvider'
 
 interface PodcastDetailPageProps {
   params: Promise<{ id: string }>
@@ -43,6 +43,7 @@ function PageHeader({ showBackLink }: { showBackLink: boolean }) {
 
 export default function PodcastDetailPage({ params }: PodcastDetailPageProps) {
   const { showToast } = useToast()
+  const { play: playSfx, prepare: prepareSfx } = useSfx()
   const queries = useCatalogQueries()
   const learningCommands = useLearningCommands()
   const learningQueries = useLearningQueries()

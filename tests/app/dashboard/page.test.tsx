@@ -6,7 +6,7 @@ import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import DashboardPage from '@/app/(app)/dashboard/page'
 import { PreferencesProvider } from '@/contexts/PreferencesProvider'
-import type { KeyValueStore } from '@/lib/platform/keyValueStore'
+import { createBrowserSeenAchievementsStore } from '@/contexts/seenAchievementsSession'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
@@ -19,7 +19,7 @@ const { playSfx, showToast } = vi.hoisted(() => ({
   showToast: vi.fn(),
 }))
 
-vi.mock('@/lib/sfx', () => ({ playSfx, configureSfx: vi.fn() }))
+vi.mock('@/contexts/SfxProvider', () => ({ useSfx: () => ({ play: playSfx, prepare: vi.fn() }) }))
 vi.mock('@/components/ui/Toast', () => ({
   useToast: () => ({ showToast }),
 }))
@@ -91,29 +91,23 @@ const EMPTY_DASHBOARD = {
   achievements: [],
 }
 
-// 設定の保存先は、テストごとに新しい in-memory の KeyValueStore。前のテストが書いた値に頼らない。
+// 既読の実績の保存先は localStorage（既読の store は KeyValueStore の組み立て済みの実物。PreferencesProvider を経由しない）。
+// テストごとに空にして seed し、書かれた値は localStorage.getItem で読む。
 function renderDashboard(initial: Record<string, string> = {}) {
-  const data = new Map<string, string>(Object.entries(initial))
-  const store: KeyValueStore = {
-    get: (key) => data.get(key) ?? null,
-    set: (key, value) => {
-      data.set(key, value)
-      return true
-    },
-    remove: (key) => {
-      data.delete(key)
-    },
-  }
+  for (const [key, value] of Object.entries(initial)) localStorage.setItem(key, value)
   render(
-    <PreferencesProvider store={store}>
+    <PreferencesProvider>
       <DashboardPage />
     </PreferencesProvider>,
   )
-  return data
+  return { get: (key: string) => localStorage.getItem(key) }
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
+  // 通知済みの記憶は module の状態（session で 1 つ）なので、テストごとに主体離脱の消去と同じ経路で空にする。
+  createBrowserSeenAchievementsStore().clear()
   gw = createGatewayDouble()
   holder.gw = gw
 })
@@ -355,5 +349,220 @@ describe('DashboardPage — graceful degradation', () => {
     await screen.findByText(/最新のデータ取得に失敗しました/)
     expect(screen.getByText(/5日連続/)).toBeInTheDocument()
     expect(callsTo('GET', DASHBOARD_PATH)).toHaveLength(2)
+  })
+})
+
+// ==========================================================
+// 再試行の組合せ（product-learn-04・product-learn-09・product-learn-10・web-dec-174）。
+// 初回に 3 つとも成功した状態から再試行し、失敗した slot だけが前の値を保ち、成功した slot は新しい値に更新される。
+// ==========================================================
+const VOCAB_ITEM = (term: string) => ({
+  vocabulary_id: `v-${term}`,
+  podcast_id: 'p1',
+  term,
+  meaning: `meaning-${term}`,
+  example: `example-${term}`,
+  registered_at: '2026-07-05T00:00:00Z',
+})
+const DUE_ITEM = { vocabulary_id: 'v1', term: 'accelerate', meaning: '加速する', example: 'e', distractors: [] }
+
+type Outcome = Result<unknown, ApiFailure>
+const FAIL: Outcome = { ok: false, failure: { kind: 'network' } }
+
+function respondInOrder(path: string, ...outcomes: Outcome[]) {
+  gw.respondWith('GET', path, () => Promise.resolve(outcomes[Math.min(callsTo('GET', path).length - 1, outcomes.length - 1)]))
+}
+
+function setupRetry(second: { dashboard: Outcome; vocabulary: Outcome; due: Outcome }) {
+  respondInOrder(DASHBOARD_PATH, { ok: true, value: POPULATED_DASHBOARD }, second.dashboard)
+  respondInOrder(VOCABULARY_PATH, { ok: true, value: { count: 1, vocabulary: [VOCAB_ITEM('alpha')] } }, second.vocabulary)
+  respondInOrder(TEST_SESSION_PATH, { ok: true, value: { items: [DUE_ITEM] } }, second.due)
+}
+
+async function retry() {
+  await screen.findByText('alpha')
+  await userEvent.click(screen.getByRole('button', { name: 'ダッシュボードを再読み込み' }))
+  await waitFor(() => expect(callsTo('GET', DASHBOARD_PATH)).toHaveLength(2))
+  await waitFor(() => expect(callsTo('GET', VOCABULARY_PATH)).toHaveLength(2))
+  await waitFor(() => expect(callsTo('GET', TEST_SESSION_PATH)).toHaveLength(2))
+}
+
+describe('DashboardPage — retry combinations (product-learn-04・product-learn-09・product-learn-10)', () => {
+  test('verifies: CI-LD17 — 再試行で本体だけ失敗: 前の「5日連続」を保ち、loadError の文言と再試行ボタンが出る。語彙・出題は更新される', async () => {
+    setupRetry({
+      dashboard: FAIL,
+      vocabulary: { ok: true, value: { count: 2, vocabulary: [VOCAB_ITEM('alpha'), VOCAB_ITEM('beta')] } },
+      due: { ok: true, value: { items: [] } },
+    })
+
+    renderDashboard()
+    await retry()
+
+    expect(await screen.findByText(/最新のデータ取得に失敗しました/)).toBeInTheDocument()
+    expect(screen.getByText(/5日連続/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'ダッシュボードを再読み込み' })).toBeInTheDocument()
+    expect(await screen.findByText('2 語')).toBeInTheDocument()
+    expect(screen.getByText('beta')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '単語テスト' })).not.toBeInTheDocument()
+  })
+
+  test('verifies: CI-LD17 — 再試行で語彙だけ失敗: 前の語彙の節（前の件数）を保ち、本体・出題は成功として扱う', async () => {
+    setupRetry({
+      dashboard: { ok: true, value: { ...POPULATED_DASHBOARD, total_episodes: 99 } },
+      vocabulary: FAIL,
+      due: { ok: true, value: { items: [DUE_ITEM] } },
+    })
+
+    renderDashboard()
+    await retry()
+
+    expect(await screen.findByText('99')).toBeInTheDocument()
+    expect(screen.getByText('1 語')).toBeInTheDocument()
+    expect(screen.getByText('alpha')).toBeInTheDocument()
+    expect(screen.queryByText(/最新のデータ取得に失敗しました/)).not.toBeInTheDocument()
+  })
+
+  test('verifies: CI-LD17 — 再試行で出題だけ失敗: 前の単語テストのリンクを保つ', async () => {
+    setupRetry({
+      dashboard: { ok: true, value: POPULATED_DASHBOARD },
+      vocabulary: { ok: true, value: { count: 1, vocabulary: [VOCAB_ITEM('alpha')] } },
+      due: FAIL,
+    })
+
+    renderDashboard()
+    await retry()
+
+    expect(screen.getByRole('link', { name: '単語テスト' })).toHaveAttribute('href', '/vocabulary-test')
+  })
+
+  test('verifies: CI-LD17 — 再試行で本体が失敗し語彙・出題が成功: 語彙の節・リンクは新しい値に更新される（出題 0 件ならリンクが消える）', async () => {
+    setupRetry({
+      dashboard: FAIL,
+      vocabulary: { ok: true, value: { count: 3, vocabulary: [VOCAB_ITEM('alpha'), VOCAB_ITEM('beta'), VOCAB_ITEM('gamma')] } },
+      due: { ok: true, value: { items: [] } },
+    })
+
+    renderDashboard()
+    await retry()
+
+    expect(await screen.findByText('3 語')).toBeInTheDocument()
+    expect(screen.getByText('gamma')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '単語テスト' })).not.toBeInTheDocument()
+    expect(screen.getByText(/5日連続/)).toBeInTheDocument()
+  })
+
+  test('verifies: CI-LD17 — 初回に本体が失敗 → 再試行で成功: 本体が出て、loadError の文言は消える', async () => {
+    respondInOrder(DASHBOARD_PATH, FAIL, { ok: true, value: POPULATED_DASHBOARD })
+
+    renderDashboard()
+    await screen.findByText(/取得できませんでした/)
+    await userEvent.click(screen.getByRole('button', { name: /ダッシュボードを再読み込み/ }))
+
+    expect(await screen.findByText(/5日連続/)).toBeInTheDocument()
+    expect(screen.queryByText(/取得できませんでした/)).not.toBeInTheDocument()
+  })
+})
+
+describe('DashboardPage — achievements order and optional sections (product-learn-04・product-learn-09)', () => {
+  const WITH_NEW = {
+    ...POPULATED_DASHBOARD,
+    achievements: [
+      { id: 'first_episode_completed', unlocked_at: '2026-07-01' },
+      { id: 'first_quiz_correct', unlocked_at: '2026-07-29' },
+    ],
+  }
+
+  test('verifies: CI-LD17 — 解錠ありは play(achievement) → toast → 既読の書込みの順で、効果音は 1 回、既読は既存に続けて保存される', async () => {
+    respondDashboard(WITH_NEW)
+    localStorage.setItem('seen_achievement_ids', JSON.stringify(['first_episode_completed']))
+    // 素通しの spy（実際に保存もされる）。呼出順は invocationCallOrder で比べる。
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+    renderDashboard()
+    await waitFor(() => expect(setItem).toHaveBeenCalledWith('seen_achievement_ids', expect.any(String)))
+    const writeOrder = setItem.mock.invocationCallOrder[setItem.mock.calls.findIndex(([key]) => key === 'seen_achievement_ids')]
+    setItem.mockRestore()
+
+    expect(playSfx.mock.invocationCallOrder[0]).toBeLessThan(showToast.mock.invocationCallOrder[0])
+    expect(showToast.mock.invocationCallOrder[0]).toBeLessThan(writeOrder)
+    expect(playSfx).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledWith('実績を解錠しました：初回クイズ正解', 'success')
+    expect(localStorage.getItem('seen_achievement_ids')).toBe('["first_episode_completed","first_quiz_correct"]')
+  })
+
+  test('verifies: CI-LD17 — 全部が既読なら、効果音・toast・既読の書込みのどれもしない', async () => {
+    respondDashboard(WITH_NEW)
+    localStorage.setItem('seen_achievement_ids', JSON.stringify(['first_episode_completed', 'first_quiz_correct']))
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+
+    renderDashboard()
+    await screen.findByText(/5日連続/)
+
+    expect(playSfx).not.toHaveBeenCalled()
+    expect(showToast).not.toHaveBeenCalled()
+    expect(setItem.mock.calls.filter(([key]) => key === 'seen_achievement_ids')).toEqual([])
+    setItem.mockRestore()
+  })
+
+  test('verifies: CI-LD17 — weekly_goal の無い応答では「今週の進捗」の節だけが出ず、ほかの節（連続聴取日数）は出る（現行の挙動。現 main でも通る）', async () => {
+    const { weekly_goal: _omitted, ...withoutGoal } = POPULATED_DASHBOARD
+    void _omitted
+    respondDashboard(withoutGoal)
+
+    renderDashboard()
+
+    expect(await screen.findByText(/5日連続/)).toBeInTheDocument()
+    expect(screen.queryByText('今週の進捗')).not.toBeInTheDocument()
+    expect(screen.getByText('連続聴取日数')).toBeInTheDocument()
+  })
+
+  test('verifies: CI-LD17 — 同じ新しい実績を含む 2 つの取得が並行に完了しても（再試行の重ね押し）、効果音・toast は 1 回で、既読は重複せず保存される', async () => {
+    const releases: Array<() => void> = []
+    gw.respondWith('GET', DASHBOARD_PATH, () => {
+      if (callsTo('GET', DASHBOARD_PATH).length === 1) return Promise.resolve({ ok: true, value: POPULATED_DASHBOARD })
+      return new Promise((resolve) => {
+        releases.push(() => resolve({ ok: true, value: WITH_NEW }))
+      })
+    })
+    renderDashboard({ seen_achievement_ids: JSON.stringify(['first_episode_completed']) })
+    await screen.findByText(/5日連続/)
+    expect(showToast).not.toHaveBeenCalled()
+
+    const retryButton = screen.getByRole('button', { name: 'ダッシュボードを再読み込み' })
+    await userEvent.click(retryButton)
+    await userEvent.click(retryButton)
+    await waitFor(() => expect(releases).toHaveLength(2))
+    for (const release of releases) release()
+    await waitFor(() => expect(showToast).toHaveBeenCalled())
+    await waitFor(() => expect(localStorage.getItem('seen_achievement_ids')).toBe('["first_episode_completed","first_quiz_correct"]'))
+
+    expect(playSfx).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledTimes(1)
+  })
+
+  test('verifies: CI-LD17 — 取得中に page を unmount して再 mount し、両方の応答を完了させても、同じ実績の効果音・toast は 1 回', async () => {
+    const releases: Array<() => void> = []
+    gw.respondWith('GET', DASHBOARD_PATH, () =>
+      new Promise((resolve) => {
+        releases.push(() => resolve({ ok: true, value: WITH_NEW }))
+      }),
+    )
+    const { unmount } = rtlRender(
+      <PreferencesProvider>
+        <DashboardPage />
+      </PreferencesProvider>,
+      { wrapper: ApiClientProvider },
+    )
+    await waitFor(() => expect(releases).toHaveLength(1))
+    unmount()
+    renderDashboard()
+    await waitFor(() => expect(releases).toHaveLength(2))
+    for (const release of releases) release()
+    await waitFor(() => expect(showToast).toHaveBeenCalled())
+    await screen.findByText(/5日連続/)
+
+    expect(playSfx).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledTimes(2)
   })
 })

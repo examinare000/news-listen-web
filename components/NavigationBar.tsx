@@ -8,7 +8,7 @@ import { SidebarAccount } from '@/components/ui/SidebarAccount'
 import { BrandLogo } from '@/components/ui/BrandLogo'
 import { useAuth } from '@/contexts/AuthProvider'
 import { isAdmin } from '@/lib/account/domain/adminAccess'
-import { useStreak } from '@/contexts/StreakContext'
+import { useStreak } from '@/contexts/StreakProvider'
 
 // アイコン SVG は docs/design/app-ui.html L1392-1418 をインライン移植
 // WHY: アイコンライブラリを導入しない方針（依存追加ゼロ）。NAV_ITEMS はデザイン正本と
@@ -199,9 +199,9 @@ export function NavigationBar() {
       </nav>
 
       <div className="sidebar-footer">
-        {streak && streak.current_streak_days > 0 ? (
+        {streak && streak.days > 0 ? (
           <div className="nav-streak">
-            <span className={`${isPulsing ? 'pulse' : ''}`}>{streak.current_streak_days} 日連続</span>
+            <span className={`${isPulsing ? 'pulse' : ''}`}>{streak.days} 日連続</span>
           </div>
         ) : null}
         <SidebarAccount />

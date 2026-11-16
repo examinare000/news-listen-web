@@ -2,22 +2,14 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import {
-  getLearningDashboard,
-  getVocabulary,
-  getVocabularyTestSession,
-} from '@/lib/learning/infrastructure/api'
+import { claimUnnotifiedAchievements } from '@/contexts/seenAchievementsSession'
+import { useLearningCommands } from '@/contexts/useLearningCommands'
+import { useLearningQueries } from '@/contexts/useLearningQueries'
+import { useSfx } from '@/contexts/SfxProvider'
+import { progress } from '@/lib/learning/domain/weeklyGoal'
+import type { DashboardView, VocabularySummary } from '@/lib/learning/application/readModels'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { useToast } from '@/components/ui/Toast'
-import { usePreferences } from '@/contexts/PreferencesProvider'
-import { seenAchievementIds } from '@/lib/preferences/domain/settings'
-import { playSfx } from '@/lib/sfx'
-import type {
-  LearningDashboard,
-  VocabularyListResponse,
-  VocabularyTestSessionResponse,
-} from '@/types/index'
 
 const ACHIEVEMENT_CATALOG = [
   { id: 'first_episode_completed', name: '初回エピソード完聴', description: 'はじめてエピソードを最後まで聴く' },
@@ -29,7 +21,7 @@ const ACHIEVEMENT_CATALOG = [
   { id: 'completed_50', name: '累計 50 本完聴', description: 'エピソードを累計 50 本聴き終える' },
 ] as const
 
-// 正答率（0-1）を四捨五入した % 表記へ整形する（ADR-072: quiz.average_correct_rate / trend 用）。
+// 正答率（0-1）を四捨五入した % 表記へ整形する（ADR-072: quiz.averageCorrectRate / trend 用）。
 // 小さな用途のため lib/format.ts に切り出さず、このページに閉じる。
 function formatPercent(rate: number): string {
   return `${Math.round(rate * 100)}%`
@@ -37,39 +29,32 @@ function formatPercent(rate: number): string {
 
 export default function DashboardPage() {
   const { showToast } = useToast()
-  const { get, set } = usePreferences()
-  const gateway = useApiClient()
-  const [dashboard, setDashboard] = useState<LearningDashboard | null>(null)
-  const [vocabulary, setVocabulary] = useState<VocabularyListResponse | null>(null)
-  const [testSession, setTestSession] = useState<VocabularyTestSessionResponse | null>(null)
+  const { play } = useSfx()
+  const queries = useLearningQueries()
+  const commands = useLearningCommands()
+  const [dashboard, setDashboard] = useState<DashboardView | null>(null)
+  const [vocabulary, setVocabulary] = useState<VocabularySummary | null>(null)
+  const [dueTestCount, setDueTestCount] = useState<number | null>(null)
   const [loadError, setLoadError] = useState(false)
 
   const loadDashboard = useCallback(async () => {
-    const [dashboardResult, vocabularyResult, sessionResult] = await Promise.allSettled([
-      getLearningDashboard(gateway),
-      getVocabulary(gateway),
-      getVocabularyTestSession(gateway),
-    ])
+    // 3 つは独立で、取れなかった slot（null）は前の値を保つ。
+    const result = await queries.getDashboard()
 
-    if (dashboardResult.status === 'fulfilled' && dashboardResult.value.ok) {
-      const data = dashboardResult.value.value
-      const seenIdsSet = new Set(get(seenAchievementIds))
-
-      const newlyUnlockedAndUnseen = data.achievements.filter(
-        (achievement) => !seenIdsSet.has(achievement.id),
-      )
-      if (newlyUnlockedAndUnseen.length > 0) {
-        playSfx('achievement')
-        for (const achievement of newlyUnlockedAndUnseen) {
-          const catalogEntry = ACHIEVEMENT_CATALOG.find((item) => item.id === achievement.id)
+    if (result.dashboard !== null) {
+      // 並行する取得（再試行・unmount → 再 mount）はどちらも既読の書込み前に未通知を確定するので、同期区間で session の記憶を引く。
+      const newlyUnlocked = claimUnnotifiedAchievements(result.dashboard.newlyUnlocked)
+      if (newlyUnlocked.length > 0) {
+        play('achievement')
+        for (const id of newlyUnlocked) {
+          const catalogEntry = ACHIEVEMENT_CATALOG.find((item) => item.id === id)
           if (catalogEntry) {
             showToast(`実績を解錠しました：${catalogEntry.name}`, 'success')
           }
-          seenIdsSet.add(achievement.id)
         }
-        set(seenAchievementIds, Array.from(seenIdsSet))
+        await commands.markAchievementsSeen(newlyUnlocked)
       }
-      setDashboard(data)
+      setDashboard(result.dashboard)
       setLoadError(false)
     } else {
       // WHY: 404（未実装）・500・ネットワーク断のいずれも同じ扱い ── ADR-072 決定5/決定8 の
@@ -79,13 +64,9 @@ export default function DashboardPage() {
       setLoadError(true)
     }
 
-    if (vocabularyResult.status === 'fulfilled' && vocabularyResult.value.ok) {
-      setVocabulary(vocabularyResult.value.value)
-    }
-    if (sessionResult.status === 'fulfilled' && sessionResult.value.ok) {
-      setTestSession(sessionResult.value.value)
-    }
-  }, [gateway, showToast, get, set])
+    if (result.vocabulary !== null) setVocabulary(result.vocabulary)
+    if (result.dueTestCount !== null) setDueTestCount(result.dueTestCount)
+  }, [queries, commands, showToast, play])
 
   useEffect(() => {
     void loadDashboard()
@@ -93,13 +74,13 @@ export default function DashboardPage() {
 
   function renderStreakDesc() {
     const streak = dashboard!.streak
-    if (streak.last_listened_day === null) {
+    if (streak.lastListenedDay === null) {
       return 'まだ聴取記録がありません'
     }
-    if (streak.current_streak_days === 0) {
-      return `連続0日・最終聴取日 ${streak.last_listened_day}`
+    if (streak.days === 0) {
+      return `連続0日・最終聴取日 ${streak.lastListenedDay}`
     }
-    return `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`
+    return `${streak.days}日連続${streak.todayListened ? '・本日分は聴取済み' : ''}`
   }
 
   function renderQuizSection() {
@@ -115,11 +96,11 @@ export default function DashboardPage() {
         </div>
         <div className="settings-row">
           <div className="settings-row-label">クイズ済みエピソード数</div>
-          <div>{quiz.quizzed_episodes}件</div>
+          <div>{quiz.quizzedEpisodes}件</div>
         </div>
         <div className="settings-row">
           <div className="settings-row-label">平均正答率</div>
-          <div>{quiz.average_correct_rate === null ? '-' : formatPercent(quiz.average_correct_rate)}</div>
+          <div>{quiz.averageCorrectRate === null ? '-' : formatPercent(quiz.averageCorrectRate)}</div>
         </div>
         {quiz.trend.length === 0 ? (
           <div className="settings-row">
@@ -127,9 +108,9 @@ export default function DashboardPage() {
           </div>
         ) : (
           quiz.trend.map((point) => (
-            <div className="settings-row" key={point.graded_at}>
-              <div className="settings-row-desc">{point.graded_at.slice(0, 10)}</div>
-              <div>{formatPercent(point.correct_rate)}</div>
+            <div className="settings-row" key={point.gradedAt}>
+              <div className="settings-row-desc">{point.gradedDay}</div>
+              <div>{formatPercent(point.correctRate)}</div>
             </div>
           ))
         )}
@@ -138,7 +119,7 @@ export default function DashboardPage() {
   }
 
   function renderMonthlyActivitySection() {
-    const activity = dashboard!.monthly_activity
+    const activity = dashboard!.monthly
     return (
       <section className="settings-section">
         <div className="settings-section-header">
@@ -156,7 +137,7 @@ export default function DashboardPage() {
             <div className="engagement-bar-row" key={entry.month}>
               <div className="engagement-bar-copy">
                 <span>{entry.month}</span>
-                <span>{entry.active_days}日</span>
+                <span>{entry.activeDays}日</span>
               </div>
               <div
                 className="engagement-meter"
@@ -164,9 +145,9 @@ export default function DashboardPage() {
                 aria-label={`${entry.month}の活動日数`}
                 aria-valuemin={0}
                 aria-valuemax={31}
-                aria-valuenow={entry.active_days}
+                aria-valuenow={entry.activeDays}
               >
-                <span style={{ transform: `scaleX(${Math.min(entry.active_days / 31, 1)})` }} />
+                <span style={{ transform: `scaleX(${Math.min(entry.activeDays / 31, 1)})` }} />
               </div>
             </div>
           ))
@@ -176,7 +157,7 @@ export default function DashboardPage() {
   }
 
   function renderWeeklyGoalSection() {
-    const weeklyGoal = dashboard?.weekly_goal
+    const weeklyGoal = dashboard?.weeklyGoal
     if (!weeklyGoal) return null
     return (
       <section className="settings-section">
@@ -185,22 +166,19 @@ export default function DashboardPage() {
         </div>
         <div className="weekly-progress">
           <p className="weekly-progress-copy">
-            今週 {weeklyGoal.completed_this_week}/{weeklyGoal.goal_episodes} 本
+            今週 {weeklyGoal.completedThisWeek}/{weeklyGoal.goalEpisodes} 本
           </p>
           <div
             className="engagement-meter weekly"
             role="meter"
             aria-label="今週の学習目標進捗"
             aria-valuemin={0}
-            aria-valuemax={weeklyGoal.goal_episodes}
-            aria-valuenow={weeklyGoal.completed_this_week}
+            aria-valuemax={weeklyGoal.goalEpisodes}
+            aria-valuenow={weeklyGoal.completedThisWeek}
           >
             <span
               style={{
-                transform: `scaleX(${Math.min(
-                  weeklyGoal.completed_this_week / weeklyGoal.goal_episodes,
-                  1,
-                )})`,
+                transform: `scaleX(${progress(weeklyGoal.completedThisWeek, weeklyGoal.goalEpisodes)})`,
               }}
             />
           </div>
@@ -258,7 +236,7 @@ export default function DashboardPage() {
                   <h3>{catalogItem.name}</h3>
                   <p>{catalogItem.description}</p>
                 </div>
-                {unlocked && <span>解錠: {unlocked.unlocked_at}</span>}
+                {unlocked && <span>解錠: {unlocked.unlockedAt}</span>}
               </article>
             )
           })}
@@ -276,19 +254,19 @@ export default function DashboardPage() {
             <h2 className="settings-section-title">登録語彙</h2>
             <p className="settings-row-desc">{vocabulary.count} 語</p>
           </div>
-          {testSession && testSession.items.length > 0 ? (
+          {dueTestCount !== null && dueTestCount > 0 ? (
             <Link href="/vocabulary-test" className="btn btn-primary">
               単語テスト
             </Link>
           ) : null}
         </div>
-        {vocabulary.vocabulary.slice(0, 5).map((item) => (
-          <div className="settings-row vocabulary-row" key={item.vocabulary_id}>
+        {vocabulary.items.slice(0, 5).map((item) => (
+          <div className="settings-row vocabulary-row" key={item.id}>
             <div>
               <div className="settings-row-label">{item.term}</div>
               <div className="settings-row-desc">{item.meaning}</div>
             </div>
-            <time dateTime={item.registered_at}>{item.registered_at.slice(0, 10)}</time>
+            <time dateTime={item.registeredAt}>{item.registeredDay}</time>
           </div>
         ))}
       </section>
@@ -308,7 +286,7 @@ export default function DashboardPage() {
       )
     }
 
-    const difficultyLabel = DIFFICULTY_LABELS[dashboard.current_difficulty] ?? dashboard.current_difficulty
+    const difficultyLabel = DIFFICULTY_LABELS[dashboard.currentDifficulty] ?? dashboard.currentDifficulty
 
     return (
       <>
@@ -342,11 +320,11 @@ export default function DashboardPage() {
           </div>
           <div className="settings-row">
             <div className="settings-row-label">生成済みエピソード数</div>
-            <div>{dashboard.total_episodes}</div>
+            <div>{dashboard.totalEpisodes}</div>
           </div>
           <div className="settings-row">
             <div className="settings-row-label">習得語彙数</div>
-            <div>{dashboard.vocabulary_acquired}</div>
+            <div>{dashboard.vocabularyAcquired}</div>
           </div>
           <div className="settings-row">
             <div className="settings-row-label">現在の難易度</div>

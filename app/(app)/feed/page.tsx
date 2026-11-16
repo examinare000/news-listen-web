@@ -24,7 +24,7 @@ import type { GenerationLimit } from '@/lib/catalog/domain/generationLimit'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { DifficultyLevel } from '@/lib/shared/difficulty'
 import { formatRetryAfter } from '@/lib/format'
-import { playSfx, prepareSfx } from '@/lib/sfx'
+import { useSfx } from '@/contexts/SfxProvider'
 
 // 生成上限超過（429）時のユーザー向けメッセージ（issue #82 / ADR-073）。次回可能時刻があれば併記する。
 // 月次・日次の判定は classifyGenerationLimit（ADR-073 のフォールバック戦略）が command / query の側で済ませている。
@@ -99,6 +99,7 @@ const tabCountStyle: React.CSSProperties = {
 
 export default function FeedPage() {
   const { showToast } = useToast()
+  const { play: playSfx, prepare: prepareSfx } = useSfx()
   const queries = useCatalogQueries()
   const commands = useCatalogCommands()
 

@@ -1,11 +1,10 @@
 'use client'
 
-import React, { createContext, use, useEffect, useLayoutEffect, useMemo, useReducer, useState } from 'react'
+import React, { createContext, use, useEffect, useMemo, useReducer, useState } from 'react'
 import type { SettingDescriptor } from '@/lib/preferences/domain/settings'
 import { LOCAL_SETTING_BINDINGS, createLocalSettingsStore } from '@/lib/preferences/infrastructure/localSettingsStore'
 import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { configureSfx } from '@/lib/sfx'
 
 export interface PreferencesContextValue {
   readonly get: <T>(setting: SettingDescriptor<T>) => T
@@ -51,12 +50,6 @@ export function PreferencesProvider({ children, store }: { children: React.React
   const [version, notify] = useReducer((count: number) => count + 1, 0)
   const [core] = useState(() => createCore(store, notify))
   const [ready, setReady] = useState(false)
-
-  // 開発時の Strict Mode は useState の初期化子を 2 回呼び 2 回目を捨てるため、注入は commit された core に結び付ける。
-  // layout effect は子の mount effect（passive）より前に走る。server では effect が走らず音を鳴らさない。
-  useLayoutEffect(() => {
-    configureSfx(() => core.get(LOCAL_SETTING_BINDINGS.sfxEnabled.setting) === true)
-  }, [core])
 
   useEffect(() => {
     setReady(true)

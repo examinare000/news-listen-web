@@ -8,7 +8,7 @@ import React from 'react'
 import SettingsPage from '@/app/(app)/settings/page'
 import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
-import { StreakProvider } from '@/contexts/StreakContext'
+import { StreakProvider } from '@/contexts/StreakProvider'
 import { ToastProvider } from '@/components/ui/Toast'
 import type { UserPreferencesPatch } from '@/types/index'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
@@ -20,6 +20,9 @@ const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 
 vi.mock('@/lib/api/gateway', () => ({ createGateway: () => holder.gw }))
+
+// 実物の StreakProvider が useSfx() を呼ぶ（SfxProvider は (app)/layout の中）。効果音そのものは本テストの対象外。
+vi.mock('@/contexts/SfxProvider', () => ({ useSfx: () => ({ play: vi.fn(), prepare: vi.fn() }) }))
 
 type GatewayResult = Parameters<GatewayDouble['respond']>[2]
 

@@ -2,18 +2,19 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { usePreferences } from '@/contexts/PreferencesProvider'
-import { useStreak } from '@/contexts/StreakContext'
+import { useStreak } from '@/contexts/StreakProvider'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type { PlaybackSpeed } from '@/lib/playback/domain/session'
 import { useToast } from '@/components/ui/Toast'
-import { useApiClient } from '@/contexts/ApiClientProvider'
+import { useLearningQueries } from '@/contexts/useLearningQueries'
 import { usePreferencesCommands } from '@/contexts/usePreferencesCommands'
 import { usePreferencesQueries } from '@/contexts/usePreferencesQueries'
 import { useCatalogQueries } from '@/contexts/useCatalogQueries'
 import type { QuotaView } from '@/lib/catalog/application/readModels'
-import { getDifficultySuggestion } from '@/lib/learning/infrastructure/api'
+import type { SuggestionView } from '@/lib/learning/application/readModels'
 import { DEFAULT_DIFFICULTY, DIFFICULTY_LEVELS } from '@/lib/shared/difficulty'
+import type { DifficultyLevel } from '@/lib/shared/difficulty'
 import {
   WEEKLY_GOALS,
   defaultPlaybackSpeed,
@@ -24,7 +25,6 @@ import type { WeeklyGoal } from '@/lib/preferences/domain/settings'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
-import type { DifficultyLevel, DifficultySuggestion } from '@/types/index'
 import { formatDuration, formatBytes, formatDate } from '@/lib/format'
 import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 
@@ -32,7 +32,7 @@ export default function SettingsPage() {
   const { get, set } = usePreferences()
   const { streak } = useStreak()
   const { showToast } = useToast()
-  const gateway = useApiClient()
+  const learningQueries = useLearningQueries()
   const commands = usePreferencesCommands()
   const queries = usePreferencesQueries()
   const catalogQueries = useCatalogQueries()
@@ -104,21 +104,12 @@ export default function SettingsPage() {
   // ADR-071 F3: おすすめ難易度バナー。has_suggestion=false や取得失敗（404含む・旧デプロイ等）は
   // 常にバナー非表示へ倒す（quota/streak と異なり 500 でも再試行導線は出さない。非破壊の推奨に過ぎず、
   // 出し損ねても実害が無いため画面を壊さない方を優先する。ADR-071 決定6）。
-  const [suggestion, setSuggestion] = useState<DifficultySuggestion | null>(null)
+  const [suggestion, setSuggestion] = useState<SuggestionView | null>(null)
 
   const loadSuggestion = useCallback(async () => {
-    try {
-      const result = await getDifficultySuggestion(gateway)
-      if (!result.ok) {
-        setSuggestion(null)
-        return
-      }
-      const s = result.value
-      setSuggestion(s.has_suggestion ? s : null)
-    } catch {
-      setSuggestion(null)
-    }
-  }, [gateway])
+    // getDifficultySuggestion は reject せず、提案なし・取得失敗は null で返す。
+    setSuggestion(await learningQueries.getDifficultySuggestion())
+  }, [learningQueries])
 
   useEffect(() => {
     void loadSuggestion()
@@ -468,11 +459,11 @@ export default function SettingsPage() {
               <div>
                 <div className="settings-row-label">連続聴取日数</div>
                 <div className="settings-row-desc">
-                  {streak.last_listened_day === null
+                  {streak.lastListenedDay === null
                     ? 'まだ聴取記録がありません'
-                    : streak.current_streak_days === 0
-                      ? `連続0日・最終聴取日 ${streak.last_listened_day}`
-                      : `${streak.current_streak_days}日連続${streak.today_listened ? '・本日分は聴取済み' : ''}`}
+                    : streak.days === 0
+                      ? `連続0日・最終聴取日 ${streak.lastListenedDay}`
+                      : `${streak.days}日連続${streak.todayListened ? '・本日分は聴取済み' : ''}`}
                 </div>
               </div>
             </div>

@@ -33,7 +33,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {
 
 const { playSfx, prepareSfx } = vi.hoisted(() => ({ playSfx: vi.fn(), prepareSfx: vi.fn() }))
 
-vi.mock('@/lib/sfx', () => ({ playSfx, prepareSfx, configureSfx: vi.fn() }))
+vi.mock('@/contexts/SfxProvider', () => ({ useSfx: () => ({ play: playSfx, prepare: prepareSfx }) }))
 
 const holder = vi.hoisted(() => ({ gw: undefined as GatewayDouble | undefined }))
 

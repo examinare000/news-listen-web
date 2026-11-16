@@ -27,6 +27,7 @@ vi.mock('@/contexts/ApiClientProvider', async (importOriginal) => {
 
 beforeEach(() => {
   override.gateway = undefined
+  localStorage.clear()
 })
 
 describe('useLearningCommands (composition root)', () => {
@@ -83,5 +84,21 @@ describe('useLearningCommands (composition root)', () => {
     ])
     expect(quiz.ok && quiz.value.correct).toBe(1)
     expect(registered).toEqual({ ok: true, value: undefined })
+  })
+
+  test('verifies: CI-LD13 — markAchievementsSeen は localStorage の seen_achievement_ids へ、保存済みの既読に続けて書く（再描画しても同じ command object）(web-dec-170・web-cmd-learning-05)', async () => {
+    localStorage.setItem('seen_achievement_ids', '["a"]')
+    const gateway = createGatewayDouble()
+    const { result, rerender } = renderHook(() => useLearningCommands(), {
+      wrapper: ({ children }) => <ApiClientProvider gateway={gateway}>{children}</ApiClientProvider>,
+    })
+    const first = result.current
+
+    await result.current.markAchievementsSeen(['b'])
+    rerender()
+
+    expect(result.current).toBe(first)
+    expect(localStorage.getItem('seen_achievement_ids')).toBe('["a","b"]')
+    expect(gateway.calls).toEqual([])
   })
 })

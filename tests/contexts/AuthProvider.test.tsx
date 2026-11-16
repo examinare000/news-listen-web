@@ -537,7 +537,6 @@ describe('logout の後始末 (verifies: shared-leave-01, web-dec-79, web-dec-84
   test('shared-leave-01: 音声・SW キャッシュ・主体依存の端末設定が消え、theme と他の端末設定は残る', async () => {
     const prefs = memoryStoreWithData({
       default_playback_speed: '1.5',
-      seen_achievement_ids: '["x"]',
       theme: 'light',
       sfx_enabled: 'false',
     })
@@ -550,13 +549,15 @@ describe('logout の後始末 (verifies: shared-leave-01, web-dec-79, web-dec-84
     seedPositionRecord('u-a', 'p1', 12)
     seedPositionRecord('u-a', 'p2', 34)
     localStorage.setItem('unrelated_key', 'keep')
+    // 既読の実績は PreferencesProvider の記憶ではなく localStorage にある（Learning の既読の store が持つ）
+    localStorage.setItem('seen_achievement_ids', '["x"]')
 
     await userEvent.click(screen.getByText('logout'))
 
     await waitFor(() => expect(deleteSubjectAudio).toHaveBeenCalledWith(null, 'u-a'))
     await waitFor(() => expect(clearManagedServiceWorkerCaches).toHaveBeenCalled())
     await waitFor(() => expect(prefs.data.has('default_playback_speed')).toBe(false))
-    expect(prefs.data.has('seen_achievement_ids')).toBe(false)
+    await waitFor(() => expect(localStorage.getItem('seen_achievement_ids')).toBeNull())
     expect(prefs.data.get('theme')).toBe('light')
     expect(prefs.data.get('sfx_enabled')).toBe('false')
     await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-a', 'p1'))).toBeNull())
