@@ -14,6 +14,7 @@ import { describe, expect, test } from 'vitest'
 import { createLearningCommands } from '@/lib/learning/application/commands'
 import type { LearningCommands, QuizReceipt } from '@/lib/learning/application/commands'
 import { createLearningQueries } from '@/lib/learning/application/queries'
+import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'
 import type { LearningQueries } from '@/lib/learning/application/queries'
 import type { LearningGateway, SeenAchievementsStore } from '@/lib/learning/application/ports'
 import type * as LearningReadModels from '@/lib/learning/application/readModels'
@@ -22,7 +23,7 @@ import type { Result } from '@/lib/shared/result'
 
 type Equals<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false
 
-type QueryNames = 'getRegisteredTerms' | 'getStreak' | 'getDashboard' | 'getDifficultySuggestion'
+type QueryNames = 'getRegisteredTerms' | 'getStreak' | 'getDashboard' | 'getDifficultySuggestion' | 'getVocabularyTestSession'
 type CommandNames = 'registerTerm' | 'submitQuiz' | 'markAchievementsSeen'
 
 /** 呼ばない。型検査だけが読む。 */
@@ -44,7 +45,7 @@ function typeProbes(): void {
   void [submit, commandKeys, queryKeys, commandDepKeys, queryDepKeys, querySeen, commandSeen, fromReadModels]
 }
 
-const WRITE_CALLS = ['registerTerm', 'submitQuiz', 'seen.write', 'seen.clear']
+const WRITE_CALLS = ['registerTerm', 'submitQuiz', 'seen.write', 'seen.clear', 'submitVocabularyTestResults']
 
 function harness() {
   const calls: string[] = []
@@ -96,6 +97,14 @@ function harness() {
       calls.push('getDifficultySuggestion')
       return Promise.resolve({ ok: true, value: { hasSuggestion: true, suggested: null, reason: 'r' } })
     },
+    getVocabularyTestSession: () => {
+      calls.push('getVocabularyTestSession')
+      return Promise.resolve({ ok: true, value: [] })
+    },
+    submitVocabularyTestResults: () => {
+      calls.push('submitVocabularyTestResults')
+      return Promise.resolve({ ok: true, value: undefined })
+    },
   }
   // 既読の store は手書きの fake（infrastructure を値で import しない）。write・clear の呼出を記録する。
   const seenAchievements: SeenAchievementsStore = {
@@ -110,10 +119,23 @@ function harness() {
       calls.push('seen.clear')
     },
   }
+  const queries = createLearningQueries({ gateway, seenAchievements })
+  const waits: number[] = []
+  const session = createVocabularyTestSession({
+    queries,
+    gateway,
+    wait: (ms) => {
+      waits.push(ms)
+      return Promise.resolve()
+    },
+    shuffle: (choices) => choices,
+  })
   return {
     calls,
+    waits,
+    session,
     commands: createLearningCommands({ gateway, seenAchievements }),
-    queries: createLearningQueries({ gateway, seenAchievements }),
+    queries,
   }
 }
 
@@ -132,9 +154,9 @@ describe('web-check-07 (a) command と query の入口は過不足なく公開�
     expect(calls).toEqual([])
   })
 
-  test('verifies: CI-LN10・CI-LD12 (web-query-learning-03・04・05・06) — query の key は getRegisteredTerms・getStreak・getDashboard・getDifficultySuggestion の 4 つだけで、どれも関数', () => {
+  test('verifies: CI-LN10・CI-LD12・CI-VT11 (web-query-learning-03・04・05・06・web-query-learning-01) — query の key は getRegisteredTerms・getStreak・getDashboard・getDifficultySuggestion・getVocabularyTestSession の 5 つだけで、どれも関数', () => {
     const { queries } = harness()
-    const names: readonly QueryNames[] = ['getRegisteredTerms', 'getStreak', 'getDashboard', 'getDifficultySuggestion']
+    const names: readonly QueryNames[] = ['getRegisteredTerms', 'getStreak', 'getDashboard', 'getDifficultySuggestion', 'getVocabularyTestSession']
 
     expect(Object.keys(queries).sort()).toEqual([...names].sort())
     for (const name of names) expect(typeof queries[name], name).toBe('function')
@@ -149,8 +171,10 @@ describe('web-check-07 (b) query を全部呼んでも、gateway への呼出は
     await queries.getStreak(null)
     await queries.getDashboard()
     await queries.getDifficultySuggestion()
+    await queries.getVocabularyTestSession()
 
     expect(calls).toContain('listRegisteredTerms')
+    expect(calls).toContain('getVocabularyTestSession')
     expect(calls).toContain('getLearningDashboard')
     expect(calls).toContain('seen.read')
     for (const write of WRITE_CALLS) expect(calls).not.toContain(write)
@@ -180,5 +204,58 @@ describe('web-check-07 (c) command の戻り値は receipt で、合否を持た
     if (!result.ok) throw new Error('成功を期待した')
     expect(Object.keys(result.value).sort()).toEqual(['correct', 'results', 'total'])
     expect(result.value).not.toHaveProperty('passed')
+  })
+})
+
+describe('web-check-07 単語テストの session（product-learn-06・web-dec-154・web-dec-178）', () => {
+  test('verifies: CI-VT12・CI-VT11 — session の key は 7 つだけで、どれも関数。生成だけでは gateway・wait を呼ばない', () => {
+    const { session, calls, waits } = harness()
+
+    expect(Object.keys(session).sort()).toEqual(
+      ['answerRetest', 'assessVocabulary', 'dispose', 'startVocabularyTest', 'submitVocabularyTest', 'subscribe', 'vocabularyTestView'].sort(),
+    )
+    for (const key of Object.keys(session)) expect(typeof (session as unknown as Record<string, unknown>)[key], key).toBe('function')
+    expect(calls).toEqual([])
+    expect(waits).toEqual([])
+  })
+
+  test('verifies: CI-VT18 — vocabularyTestView() を何度呼んでも gateway・wait の記録は 0 件', () => {
+    const { session, calls, waits } = harness()
+
+    session.vocabularyTestView()
+    session.vocabularyTestView()
+    session.vocabularyTestView()
+
+    expect(calls).toEqual([])
+    expect(waits).toEqual([])
+  })
+
+  test('verifies: CI-VT11・CI-VT13 — startVocabularyTest は読み（getVocabularyTestSession）だけを呼び、書き込み系は 0 回', async () => {
+    const { session, calls } = harness()
+
+    await session.startVocabularyTest()
+
+    expect(calls).toContain('getVocabularyTestSession')
+    for (const write of WRITE_CALLS) expect(calls).not.toContain(write)
+  })
+
+  test('verifies: CI-VT11 — 正方向対照: 全語既知の回答を終えると submitVocabularyTestResults が記録される（記録が配線されている）', async () => {
+    const { calls } = harness()
+    const gatewaySession = createVocabularyTestSession({
+      queries: { getVocabularyTestSession: () => Promise.resolve({ ok: true, value: [{ vocabularyId: 'v1', term: 't', meaning: 'm', example: 'e', distractors: [] }] }) },
+      gateway: {
+        submitVocabularyTestResults: () => {
+          calls.push('submitVocabularyTestResults')
+          return Promise.resolve({ ok: true, value: undefined })
+        },
+      },
+      wait: () => Promise.resolve(),
+      shuffle: (choices) => choices,
+    })
+
+    await gatewaySession.startVocabularyTest()
+    await gatewaySession.assessVocabulary(true)
+
+    expect(calls).toContain('submitVocabularyTestResults')
   })
 })

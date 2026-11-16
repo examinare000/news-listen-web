@@ -78,9 +78,11 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/learning/domain/streak.test.ts',
   'tests/lib/learning/domain/vocabulary.test.ts',
   'tests/lib/learning/domain/weeklyGoal.test.ts',
+  'tests/lib/learning/domain/vocabularyTest.test.ts',
   'tests/lib/learning/application/commands.test.ts',
   'tests/lib/learning/application/queries.test.ts',
   'tests/lib/learning/application/readModels.test.ts',
+  'tests/lib/learning/application/vocabularyTestSession.test.ts',
   'tests/lib/preferences/application/commands.test.ts',
   'tests/lib/preferences/application/queries.test.ts',
   'tests/lib/preferences/application/readModels.test.ts',
@@ -256,6 +258,7 @@ const INTEGRATION_GROUPS: readonly ReasonedGroup[] = [
       'tests/contexts/useCatalogQueries.test.tsx',
       'tests/contexts/useLearningCommands.test.tsx',
       'tests/contexts/useLearningQueries.test.tsx',
+      'tests/contexts/useVocabularyTestSession.test.tsx',
       'tests/contexts/useNotificationsCommands.test.tsx',
       'tests/contexts/useNotificationsQueries.test.tsx',
       'tests/contexts/usePreferencesCommands.test.tsx',
@@ -434,6 +437,12 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   ],
   'lib/learning/application/readModels.ts': ['tests/lib/learning/application/readModels.test.ts'],
   'lib/learning/application/ports.ts': [],
+  'lib/learning/domain/vocabularyTest.ts': ['tests/lib/learning/domain/vocabularyTest.test.ts'],
+  'lib/learning/application/vocabularyTestSession.ts': [
+    'tests/lib/learning/application/vocabularyTestSession.test.ts',
+    'tests/architecture/cqrs.learning.test.ts',
+    'tests/architecture/immutability.learning.test.ts',
+  ],
 }
 
 /**

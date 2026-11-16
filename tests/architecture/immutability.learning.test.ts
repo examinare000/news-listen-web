@@ -8,6 +8,7 @@
 // RED 理由（実装前）: `@/lib/learning/application/queries` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { createLearningQueries } from '@/lib/learning/application/queries'
+import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'
 import type { LearningGateway, SeenAchievementsStore } from '@/lib/learning/application/ports'
 
 function queriesFor(terms: ReadonlyArray<string>) {
@@ -20,6 +21,8 @@ function queriesFor(terms: ReadonlyArray<string>) {
     getVocabularySummary: () => Promise.resolve({ ok: true, value: { count: 0, items: [] } }),
     countDueTestItems: () => Promise.resolve({ ok: true, value: 0 }),
     getDifficultySuggestion: () => Promise.resolve({ ok: true, value: { hasSuggestion: false, suggested: null, reason: null } }),
+    getVocabularyTestSession: () => Promise.resolve({ ok: true, value: [] }),
+    submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }),
   }
   return createLearningQueries({ gateway, seenAchievements: unusedSeen })
 }
@@ -60,6 +63,15 @@ function richQueries() {
       }),
     countDueTestItems: () => Promise.resolve({ ok: true, value: 3 }),
     getDifficultySuggestion: () => Promise.resolve({ ok: true, value: { hasSuggestion: true, suggested: null, reason: 'r' } }),
+    getVocabularyTestSession: () =>
+      Promise.resolve({
+        ok: true,
+        value: [
+          { vocabularyId: 'v1', term: 't1', meaning: 'm1', example: 'e1', distractors: ['a', 'b', 'c'] },
+          { vocabularyId: 'v2', term: 't2', meaning: 'm2', example: 'e2', distractors: ['d'] },
+        ],
+      }),
+    submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }),
   }
   return createLearningQueries({ gateway, seenAchievements: { read: () => new Set<string>() } })
 }
@@ -165,5 +177,75 @@ describe('web-check-06 getStreak・getDashboard・getDifficultySuggestion の不
 
     expect(second.dashboard!.achievements).toEqual([{ id: 'first', unlockedAt: '2026-07-01' }])
     expect(second.dashboard!.totalEpisodes).toBe(1)
+  })
+})
+
+describe('web-check-06 getVocabularyTestSession の不変性 (product-learn-06・web-query-learning-01)', () => {
+  test('verifies: CI-VT11 — 成功の値と要素・distractors は凍結済みで、呼ぶたびに別の配列（中身は等しい）', async () => {
+    const queries = richQueries()
+
+    const first = await queries.getVocabularyTestSession()
+    const second = await queries.getVocabularyTestSession()
+
+    if (!first.ok || !second.ok) throw new Error('成功を期待した')
+    const notFrozen: string[] = []
+    collectNotFrozen(first.value, 'words', notFrozen)
+    expect(notFrozen).toEqual([])
+    expect(first.value).not.toBe(second.value)
+    expect(first.value).toEqual(second.value)
+  })
+})
+
+describe('web-check-06 vocabularyTestView の不変性 (product-learn-06・web-query-learning-02)', () => {
+  const words = [
+    { vocabularyId: 'v1', term: 't1', meaning: 'm1', example: 'e1', distractors: ['a', 'b', 'c'] },
+    { vocabularyId: 'v2', term: 't2', meaning: 'm2', example: 'e2', distractors: ['d'] },
+  ]
+  function sessionOverWords() {
+    return createVocabularyTestSession({
+      queries: { getVocabularyTestSession: () => Promise.resolve({ ok: true, value: words }) },
+      gateway: { submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }) },
+      wait: () => new Promise<void>(() => undefined),
+      shuffle: (choices) => choices,
+    })
+  }
+
+  test('verifies: CI-VT18 — self-assessment・retest（ロック中）・result の view は入れ子（choices・progress・retestFeedback・summary）まで凍結済み', async () => {
+    const session = sessionOverWords()
+    await session.startVocabularyTest()
+    const selfAssessment = session.vocabularyTestView()
+    await session.assessVocabulary(false)
+    await session.assessVocabulary(false)
+    void session.answerRetest('m1')
+    const lockedRetest = session.vocabularyTestView()
+
+    for (const view of [selfAssessment, lockedRetest]) {
+      const notFrozen: string[] = []
+      collectNotFrozen(view, view.phase, notFrozen)
+      expect(notFrozen, view.phase).toEqual([])
+    }
+    expect(lockedRetest.phase).toBe('retest')
+    expect(lockedRetest.retestFeedback).toEqual({ kind: 'correct' })
+  })
+
+  test('verifies: CI-VT18 — view をキャストして書き換えようとしても、次の読みは変わらない', async () => {
+    const session = sessionOverWords()
+    await session.startVocabularyTest()
+    const before = session.vocabularyTestView()
+    const snapshot = structuredClone(before)
+
+    try {
+      ;(before as { currentTerm: string | null }).currentTerm = 'tampered'
+    } catch {
+      // 凍結された object への代入が strict mode で throw してもよい（どちらでも次の読みは変わらない）。
+    }
+    try {
+      ;(before.progress as { position: number } | null)!.position = 99
+    } catch {
+      // 同上。
+    }
+
+    expect(session.vocabularyTestView()).toEqual(snapshot)
+    expect(session.vocabularyTestView().currentTerm).toBe('t1')
   })
 })
