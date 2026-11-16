@@ -7,12 +7,13 @@ import { NO_INTAKE, PositionIntakeContext } from '@/contexts/PositionIntakeConte
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { createEpisodeGateway } from '@/lib/catalog/infrastructure/episodeGateway'
-import type { Clock, OfflineLibrary, PositionSubject } from '@/lib/playback/application/ports'
+import type { Clock, Foreground, OfflineLibrary, PositionSubject } from '@/lib/playback/application/ports'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import type { PlaybackCommands, PlaybackQueries } from '@/lib/playback/application/coordinator'
 import { createPositionOutbox } from '@/lib/playback/application/positionOutbox'
 import { createPositionReporter } from '@/lib/playback/application/positionReporter'
 import type { PlaybackView } from '@/lib/playback/application/readModels'
+import { createResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'
 import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSpeed } from '@/lib/playback/domain/session'
@@ -84,7 +85,20 @@ function createWiring(
   }
   const clock: Clock = Date.now
   const sync = createPositionSync(gateway)
-  const outbox = createPositionOutbox({ sync, local: localPositions, subject })
+  // 取り込みで端末の記録が置き換わった位置の控え。outbox・reporter・coordinator が同じ 1 つを共有する。
+  const advisor = createResumeAdvisor()
+  const outbox = createPositionOutbox({
+    sync,
+    local: localPositions,
+    subject,
+    // 再生中・一時停止中のその episode だけ控える。ほかの状態や別の episode の取り込みは尋ねる対象にしない。
+    onAdopted: (episodeId, remote) => {
+      const state = session.state()
+      if ((state.status === 'playing' || state.status === 'paused') && state.episode.id === episodeId) {
+        advisor.note(episodeId, remote)
+      }
+    },
+  })
   // 描画のたびに作ると useCatalogQueries の useMemo が作り直され、一覧が取り直される。wiring と同じ寿命で 1 つだけ持つ。
   const intake = { capture: () => outbox.capture() }
   const offline = createOfflineLibrary({
@@ -95,16 +109,19 @@ function createWiring(
     currentUserId,
   })
   const speed = createSpeedHolder(defaultSpeed)
+  const isForeground: Foreground = () => typeof document === 'undefined' || document.visibilityState === 'visible'
   const coordinator = createPlaybackCoordinator({
     session,
     offline,
-    positionReporter: createPositionReporter({ sync, outbox, local: localPositions, clock, subject }),
+    positionReporter: createPositionReporter({ sync, outbox, local: localPositions, clock, subject, advisor }),
     episodes: createEpisodeGateway(gateway),
     localPositions,
     subject,
     positionIntake: outbox,
     isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
     defaultSpeed: speed.get,
+    resumeAdvisor: advisor,
+    isForeground,
   })
   session.setVolume(initialVolume)
   return { session, coordinator, offline, speed, outbox, intake, volume: initialVolume }
@@ -134,6 +151,8 @@ function createServerValue(defaultSpeed: PlaybackSpeed): PlaybackContextValue {
     removeFromQueue: serverError,
     reorder: serverError,
     skipToNext: serverError,
+    requestResume: serverError,
+    chooseResume: serverError,
     stopForSubjectLeave: serverError,
     nowPlaying: () => null,
     upNext: () => [],
@@ -240,6 +259,8 @@ function createOperations(
     removeFromQueue: (id) => coordinator.removeFromQueue(id),
     reorder: (from, toOffset) => coordinator.reorder(from, toOffset),
     skipToNext: () => coordinator.skipToNext(),
+    requestResume: () => coordinator.requestResume(),
+    chooseResume: (choice) => coordinator.chooseResume(choice),
     stopForSubjectLeave: () => coordinator.stopForSubjectLeave(),
     nowPlaying: () => coordinator.nowPlaying(),
     upNext: () => coordinator.upNext(),

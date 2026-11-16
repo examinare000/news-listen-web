@@ -91,6 +91,8 @@ function install(setup: Setup = {}) {
   }
   const calls = {
     play: vi.fn(),
+    requestResume: vi.fn((): unknown => ({ kind: 'resumed' })),
+    chooseResume: vi.fn(),
     pause: vi.fn(),
     seek: vi.fn(),
     seekRelative: vi.fn(),
@@ -108,6 +110,8 @@ function install(setup: Setup = {}) {
     playback,
     volume: setup.volume ?? 1,
     play: calls.play,
+    requestResume: calls.requestResume,
+    chooseResume: calls.chooseResume,
     pause: calls.pause,
     seek: calls.seek,
     seekRelative: calls.seekRelative,
@@ -220,7 +224,7 @@ describe('AudioPlayerBar content', () => {
 describe('Primary button', () => {
   const rows = [
     ['pause', 'playing', '一時停止', 'pause'],
-    ['play', 'paused', '再生', 'play'],
+    ['play', 'paused', '再生', 'requestResume'],
     ['retry', 'errored', '再生', 'retry'],
     ['replay', 'ended', '再生', 'startEpisode'],
     ['none', 'loading', '再生', null],
@@ -233,7 +237,7 @@ describe('Primary button', () => {
 
       await userEvent.click(screen.getByRole('button', { name: label }))
 
-      const all = ['play', 'pause', 'retry', 'startEpisode'] as const
+      const all = ['play', 'requestResume', 'pause', 'retry', 'startEpisode'] as const
       for (const name of all) {
         if (name === expected) expect(fns[name]).toHaveBeenCalledTimes(1)
         else expect(fns[name]).not.toHaveBeenCalled()
@@ -247,8 +251,9 @@ describe('Primary button', () => {
 
     await userEvent.click(screen.getByRole('button', { name: '再生' }))
 
-    expect(fns.play).toHaveBeenCalledTimes(1)
+    expect(fns.requestResume).toHaveBeenCalledTimes(1)
     expect(fns.startEpisode).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   test.each([
@@ -422,5 +427,108 @@ describe('Up next', () => {
     expect(screen.getAllByRole('button', { name: '上へ' })[0]).toBeDisabled()
     expect(screen.getAllByRole('button', { name: '下へ' })[2]).toBeDisabled()
     expect(screen.getAllByRole('button', { name: '上へ' })[1]).toBeEnabled()
+  })
+})
+
+// ==========================================================
+// 再開時の確認（ADR-109 決定 11・12）
+// ==========================================================
+describe('Resume confirmation', () => {
+  const CHOOSE = { kind: 'choose', remoteSeconds: 500, localSeconds: 100 } as const
+  const PAUSED: Setup = { playback: { status: 'paused', primaryAction: 'play', position: 100 } }
+
+  function renderChoose(setup: Setup = PAUSED) {
+    const view = renderBar(setup)
+    fns.requestResume.mockReturnValue(CHOOSE)
+    return view
+  }
+
+  // 状態の値だけ差し替えて再描画する。操作の spy は最初のものを使い続ける
+  function rerenderWith(view: ReturnType<typeof renderBar>, setup: Setup) {
+    const calls = fns
+    install(setup)
+    Object.assign(double.pb as Record<string, unknown>, {
+      play: calls.play,
+      requestResume: calls.requestResume,
+      chooseResume: calls.chooseResume,
+      seek: calls.seek,
+    })
+    view.rerender(
+      <PreferencesProvider store={memoryStore({ default_playback_speed: JSON.stringify(1.5) })}>
+        <AudioPlayerBar />
+        <DefaultSpeedProbe />
+      </PreferencesProvider>,
+    )
+  }
+
+  async function openDialog() {
+    await userEvent.click(screen.getByRole('button', { name: '再生' }))
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  }
+
+  test('shared-sync-12 / shared-sync-13 / ADR-109 決定 11: choose のときダイアログが開き、選択で chooseResume を呼ぶ・閉じるでは呼ばない', async () => {
+    renderChoose()
+
+    await openDialog()
+    expect(screen.getByText('別の端末: 8:20 ／ この端末: 1:40')).toBeInTheDocument()
+    expect(fns.play).not.toHaveBeenCalled()
+    await userEvent.click(screen.getByRole('button', { name: '別の端末の位置から' }))
+    expect(fns.chooseResume.mock.calls).toEqual([['remote']])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await openDialog()
+    await userEvent.click(screen.getByRole('button', { name: 'この端末の位置から' }))
+    expect(fns.chooseResume.mock.calls).toEqual([['remote'], ['local']])
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await openDialog()
+    const buttons = within(screen.getByRole('dialog')).getAllByRole('button')
+    await userEvent.click(buttons[buttons.length - 1])
+    expect(fns.chooseResume).toHaveBeenCalledTimes(2)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test.each([
+    ['loading', { status: 'loading', primaryAction: 'none', position: 0 }, NOW_PLAYING],
+    ['playing', { status: 'playing', primaryAction: 'pause', position: 100 }, NOW_PLAYING],
+    ['別 episode の paused', { status: 'paused', primaryAction: 'play', position: 100 }, { ...NOW_PLAYING, episodeId: 'p2' }],
+    ['nowPlaying が null', { status: 'paused', primaryAction: 'play', position: 100 }, null],
+  ] as const)(
+    'shared-sync-15: 確認を開いた状態で再生が始まる・別の episode になると確認が閉じ、chooseResume・seek を呼ばない (%s)',
+    async (_name, playback, nowPlaying) => {
+      const view = renderChoose()
+      await openDialog()
+
+      rerenderWith(view, { playback, nowPlaying })
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(fns.chooseResume).not.toHaveBeenCalled()
+      expect(fns.seek).not.toHaveBeenCalled()
+    },
+  )
+
+  test('shared-sync-15: paused のまま再描画しても閉じず、loading → 同じ episode の paused に戻しても再表示しない', async () => {
+    const view = renderChoose()
+    await openDialog()
+
+    rerenderWith(view, { playback: { status: 'paused', primaryAction: 'play', position: 120 } })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+
+    rerenderWith(view, { playback: { status: 'loading', primaryAction: 'none', position: 0 } })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    rerenderWith(view, PAUSED)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  test('shared-sync-15: nowPlaying が null の描画を経て同じ episode の paused に戻っても確認を再表示しない', async () => {
+    const view = renderChoose()
+    await openDialog()
+
+    rerenderWith(view, { nowPlaying: null, playback: { status: 'paused', primaryAction: 'play', position: 100 } })
+    expect(screen.queryByTestId('audio-player-bar')).not.toBeInTheDocument()
+    rerenderWith(view, PAUSED)
+
+    expect(screen.getByTestId('audio-player-bar')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 })

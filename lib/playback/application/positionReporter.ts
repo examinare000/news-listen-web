@@ -2,6 +2,7 @@
 // 応答は待たず、再送の経路は outbox の 1 本だけ。失敗は lastSyncFailure() で読める。
 import type { Clock, LocalPositionStore, PositionSubject, PositionSync } from '@/lib/playback/application/ports'
 import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
+import type { ResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackEvent, PlaybackState } from '@/lib/playback/domain/session'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
@@ -16,6 +17,8 @@ export interface PositionReporterDeps {
   readonly local: Pick<LocalPositionStore, 'write'>
   readonly clock: Clock
   readonly subject: PositionSubject
+  /** この端末が記録したら、その episode の控えを外す（出来事の順で決め、時刻は比べない）。 */
+  readonly advisor: Pick<ResumeAdvisor, 'clear'>
 }
 
 export interface PositionReporter {
@@ -23,11 +26,13 @@ export interface PositionReporter {
   detach(): void
   /** 購読は保ったまま、直前の再生を無かったことにする。以降の idle への遷移で位置を書かない（主体離脱の停止）。 */
   reset(): void
+  /** 再生中・一時停止中の今の位置を、今の時刻で記録して送る（「この端末の位置から」の選択）。それ以外では何もしない。 */
+  recordCurrent(): void
   lastSyncFailure(): ApiFailure | null
 }
 
 export function createPositionReporter(deps: PositionReporterDeps): PositionReporter {
-  const { sync, outbox, local, clock, subject } = deps
+  const { sync, outbox, local, clock, subject, advisor } = deps
 
   let unsubscribe: (() => void) | null = null
   let episodeId = ''
@@ -52,6 +57,7 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     const entry = { positionSeconds: seconds, recordedAt: Math.floor(clock()), synced: false }
     const persisted = local.write(user, id, entry)
     track(persisted ? outbox.flush() : outbox.flush({ episodeId: id, record: entry }))
+    advisor.clear(id)
   }
 
   const write = (seconds: number): void => {
@@ -147,6 +153,10 @@ export function createPositionReporter(deps: PositionReporterDeps): PositionRepo
     reset() {
       lastStatus = 'idle'
       episodeId = ''
+    },
+    recordCurrent() {
+      if ((lastStatus !== 'playing' && lastStatus !== 'paused') || episodeId === '') return
+      write(lastKnown)
     },
     lastSyncFailure: () => failure,
   }

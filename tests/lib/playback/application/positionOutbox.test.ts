@@ -120,8 +120,17 @@ function setup(
     recording: options.recording === undefined ? (options.sending === undefined ? 'u-a' : options.sending) : options.recording,
   }
   const subject: PositionSubject = { recording: () => state.recording, sending: () => state.sending }
-  const outbox = createPositionOutbox({ sync: fake.sync, local, subject })
-  return { outbox, local, entries, state, ...fake }
+  // onAdopted の呼出を、呼ばれた時点の保存庫の記録とともに控える（write の後に呼ばれたかを見るため）。
+  const adopted: Array<{ episodeId: string; remote: RemotePosition; stored: StoredPosition | null }> = []
+  const outbox = createPositionOutbox({
+    sync: fake.sync,
+    local,
+    subject,
+    onAdopted: (episodeId, remote) => {
+      adopted.push({ episodeId, remote, stored: local.read(state.sending ?? state.recording ?? '', episodeId) })
+    },
+  })
+  return { outbox, local, entries, state, adopted, ...fake }
 }
 
 const seed = (local: LocalPositionStore, user: string, id: string, positionSeconds: number, recordedAt: number, synced = false) =>
@@ -667,5 +676,150 @@ describe('ADR-109 決定 14（新規）: 位置が小さくても時刻が新し
     await h.outbox.flush()
 
     expect(h.local.read('u-a', 'a')).toEqual({ positionSeconds: 3, recordedAt: T3, synced: true })
+  })
+})
+
+describe('web-dec-165 / shared-dec-39: onAdopted は取り込みで置き換えたときだけ 1 回呼ばれる（PATCH の応答・capture・開始前の再取得）', () => {
+  const replaced = { positionSeconds: 80, recordedAt: T2, synced: true }
+
+  test('adopt（一覧・詳細・開始前の再取得が通る関数）で置き換えると 1 回、(episodeId, remote) で、local.write の後に呼ばれる', () => {
+    const h = setup()
+    seed(h.local, 'u-a', 'a', 30, T1, true)
+
+    h.outbox.adopt('u-a', 'a', { positionSeconds: 80, recordedAt: T2 })
+
+    expect(h.adopted).toEqual([{ episodeId: 'a', remote: { positionSeconds: 80, recordedAt: T2 }, stored: replaced }])
+  })
+
+  test('PATCH の応答が厳密に新しければ、送信済みの印の後に置き換えて 1 回呼ばれる', async () => {
+    const h = setup({ fallback: () => ok(80, T2) })
+    seed(h.local, 'u-a', 'a', 30, T1)
+
+    await h.outbox.flush()
+
+    expect(h.adopted).toEqual([{ episodeId: 'a', remote: { positionSeconds: 80, recordedAt: T2 }, stored: replaced }])
+  })
+
+  test('capture の sink が複数の項目を取り込むと、置き換えた項目の分だけ呼ばれる（記録の無い episode は呼ばない）', () => {
+    const h = setup()
+    seed(h.local, 'u-a', 'a', 30, T1, true)
+
+    const apply = h.outbox.capture()
+    apply([
+      { id: 'a', positionSeconds: 80, recordedAt: T2 },
+      { id: 'none', positionSeconds: 9, recordedAt: T3 },
+    ])
+
+    expect(h.adopted).toEqual([{ episodeId: 'a', remote: { positionSeconds: 80, recordedAt: T2 }, stored: replaced }])
+  })
+
+  test('同じ記録に対する 2 回目の adopt（同時刻）は呼ばない', () => {
+    const h = setup()
+    seed(h.local, 'u-a', 'a', 30, T1, true)
+
+    h.outbox.adopt('u-a', 'a', { positionSeconds: 80, recordedAt: T2 })
+    h.outbox.adopt('u-a', 'a', { positionSeconds: 5, recordedAt: T2 })
+
+    expect(h.adopted).toHaveLength(1)
+  })
+})
+
+describe('web-dec-165 / shared-dec-39: 同時刻・時刻なし・古い・記録なし・恒久失敗・主体が変わったときは onAdopted を呼ばない', () => {
+  type Scenario = { label: string; run: (remote: RemotePosition, withRecord: boolean) => Promise<number> }
+
+  // 同じ remote を 3 つの入口へ渡し、onAdopted が呼ばれた回数を返す。
+  const scenarios: ReadonlyArray<Scenario> = [
+    {
+      label: 'adopt',
+      run: async (remote, withRecord) => {
+        const h = setup()
+        if (withRecord) seed(h.local, 'u-a', 'a', 30, T1, true)
+        h.outbox.adopt('u-a', 'a', remote)
+        return h.adopted.length
+      },
+    },
+    {
+      label: 'PATCH の応答',
+      run: async (remote, withRecord) => {
+        const h = setup({ fallback: () => ({ ok: true, value: remote }) })
+        if (withRecord) seed(h.local, 'u-a', 'a', 30, T1)
+        await h.outbox.flush(withRecord ? undefined : unsentOf('a', 30, T1))
+        return h.adopted.length
+      },
+    },
+    {
+      label: 'capture の sink',
+      run: async (remote, withRecord) => {
+        const h = setup()
+        if (withRecord) seed(h.local, 'u-a', 'a', 30, T1, true)
+        h.outbox.capture()([{ id: 'a', positionSeconds: remote.positionSeconds, recordedAt: remote.recordedAt }])
+        return h.adopted.length
+      },
+    },
+  ]
+
+  const notReplaced: ReadonlyArray<[string, RemotePosition, boolean]> = [
+    ['同時刻', { positionSeconds: 80, recordedAt: T1 }, true],
+    ['時刻なし', { positionSeconds: 80, recordedAt: null }, true],
+    ['古い', { positionSeconds: 80, recordedAt: T0 }, true],
+    ['記録なし', { positionSeconds: 80, recordedAt: T3 }, false],
+  ]
+
+  for (const scenario of scenarios) {
+    test.each(notReplaced)(`${scenario.label}: %s では 0 回`, async (_name, remote, withRecord) => {
+      expect(await scenario.run(remote, withRecord)).toBe(0)
+    })
+
+    test(`${scenario.label}: 正方向の対照（同じ fixture で厳密に新しい時刻なら 1 回）`, async () => {
+      expect(await scenario.run({ positionSeconds: 80, recordedAt: T2 }, true)).toBe(1)
+    })
+  }
+
+  test('恒久失敗（404）の応答では取り込まれず 0 回。同じ fixture で新しい時刻の成功応答なら 1 回（正方向の対照）', async () => {
+    const failed = setup({ scripted: [() => fail({ kind: 'not_found' })] })
+    seed(failed.local, 'u-a', 'a', 30, T1)
+    await failed.outbox.flush()
+    expect(failed.adopted).toHaveLength(0)
+
+    const control = setup({ scripted: [() => ok(80, T2)] })
+    seed(control.local, 'u-a', 'a', 30, T1)
+    await control.outbox.flush()
+    expect(control.adopted).toHaveLength(1)
+  })
+
+  test('応答の時点で主体が変わっていれば 0 回（正方向の対照: 同じ主体なら 1 回）', async () => {
+    const gate = deferred<SyncResult>()
+    const h = setup({ scripted: [() => gate.promise] })
+    seed(h.local, 'u-a', 'a', 10, T1)
+    const running = h.outbox.flush()
+    await settle()
+    h.state.sending = null
+    h.state.recording = null
+    gate.resolve(ok(80, T3))
+    await running
+    expect(h.adopted).toHaveLength(0)
+
+    const sameGate = deferred<SyncResult>()
+    const control = setup({ scripted: [() => sameGate.promise] })
+    seed(control.local, 'u-a', 'a', 10, T1)
+    const controlRunning = control.outbox.flush()
+    await settle()
+    sameGate.resolve(ok(80, T3))
+    await controlRunning
+    expect(control.adopted).toHaveLength(1)
+  })
+
+  test('capture の後に主体が変わった sink は 0 回（正方向の対照: 同じ主体なら 1 回）', () => {
+    const h = setup({ sending: 'u-a' })
+    seed(h.local, 'u-a', 'a', 30, T1, true)
+    const apply = h.outbox.capture()
+    h.state.sending = 'u-b'
+    apply([{ id: 'a', positionSeconds: 80, recordedAt: T2 }])
+    expect(h.adopted).toHaveLength(0)
+
+    const control = setup({ sending: 'u-a' })
+    seed(control.local, 'u-a', 'a', 30, T1, true)
+    control.outbox.capture()([{ id: 'a', positionSeconds: 80, recordedAt: T2 }])
+    expect(control.adopted).toHaveLength(1)
   })
 })

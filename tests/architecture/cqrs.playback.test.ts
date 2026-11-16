@@ -1,6 +1,6 @@
 // @vitest-environment node
 // 再生の command / query の分離（web-check-07）。
-// (a) PlaybackCommands の名前の集合 = 8（web-cmd-playback-01〜07・09）、PlaybackQueries = 5（web-query-playback-01〜05）。
+// (a) PlaybackCommands の名前の集合 = 10（web-cmd-playback-01〜07・09 と、再開時の確認の requestResume・chooseResume）、PlaybackQueries = 5（web-query-playback-01〜05）。
 // (b) 書く port を記録する double を渡し、query 5 つを全部呼んでも変更系の呼出が 0 件。
 // (c) command の戻り値が void（stopForSubjectLeave を含む）・Promise<void>（retry）・Promise<StartResult> で、リードモデルの型でない。
 // 型の等価は `npm run typecheck` が検査する（等価でなければ代入が TS2322 で落ちる）。実行時の検査は vitest が行う。
@@ -11,7 +11,7 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import type { PlaybackCommands, PlaybackQueries } from '@/lib/playback/application/coordinator'
-import type { StartResult } from '@/lib/playback/application/ports'
+import type { ResumeRequest, StartResult } from '@/lib/playback/application/ports'
 import type {
   NowPlaying,
   PlaybackView,
@@ -36,6 +36,8 @@ type CommandNames =
   | 'reorder'
   | 'skipToNext'
   | 'stopForSubjectLeave'
+  | 'requestResume'
+  | 'chooseResume'
 type QueryNames = 'nowPlaying' | 'upNext' | 'queueView' | 'playbackView' | 'savedPosition'
 
 function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): void {
@@ -51,6 +53,8 @@ function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): 
   const reorder: Equals<ReturnType<PlaybackCommands['reorder']>, void> = true
   const skipToNext: Equals<ReturnType<PlaybackCommands['skipToNext']>, Promise<StartResult>> = true
   const stopForSubjectLeave: Equals<ReturnType<PlaybackCommands['stopForSubjectLeave']>, void> = true
+  const requestResume: Equals<ReturnType<PlaybackCommands['requestResume']>, ResumeRequest> = true
+  const chooseResume: Equals<ReturnType<PlaybackCommands['chooseResume']>, void> = true
   // query の戻り値はリードモデル
   const nowPlaying: Equals<ReturnType<PlaybackQueries['nowPlaying']>, NowPlaying | null> = true
   const upNext: Equals<ReturnType<PlaybackQueries['upNext']>, ReadonlyArray<UpNextItem>> = true
@@ -71,6 +75,8 @@ function typeProbes(coordinator: ReturnType<typeof createPlaybackCoordinator>): 
     reorder,
     skipToNext,
     stopForSubjectLeave,
+    requestResume,
+    chooseResume,
     nowPlaying,
     upNext,
     queueView,
@@ -103,6 +109,10 @@ const WRITE_CALLS: ReadonlySet<string> = new Set([
   'positionReporter.attach',
   'positionReporter.detach',
   'positionReporter.reset',
+  'positionReporter.recordCurrent',
+  'resumeAdvisor.note',
+  'resumeAdvisor.clear',
+  'resumeAdvisor.reset',
   ...SESSION_MUTATORS.map((name) => `session.${name}`),
 ])
 
@@ -170,6 +180,7 @@ function harness() {
       attach: () => void calls.push('positionReporter.attach'),
       detach: () => void calls.push('positionReporter.detach'),
       reset: () => void calls.push('positionReporter.reset'),
+      recordCurrent: () => void calls.push('positionReporter.recordCurrent'),
       lastSyncFailure: () => null,
     },
     episodes: {
@@ -192,6 +203,16 @@ function harness() {
     },
     subject: { recording: () => 'u-a', sending: () => 'u-a' },
     positionIntake: { adopt: () => void calls.push('positionIntake.adopt') },
+    resumeAdvisor: {
+      note: () => void calls.push('resumeAdvisor.note'),
+      pending: () => {
+        calls.push('resumeAdvisor.pending')
+        return null
+      },
+      clear: () => void calls.push('resumeAdvisor.clear'),
+      reset: () => void calls.push('resumeAdvisor.reset'),
+    },
+    isForeground: () => true,
     isOnline: () => true,
     defaultSpeed: () => 1,
   }
@@ -216,9 +237,11 @@ describe('web-check-07 (a) command 7 と query 5 は別の名前の集合とし�
       'reorder',
       'skipToNext',
       'stopForSubjectLeave',
+      'requestResume',
+      'chooseResume',
     ]
     const queries: readonly QueryNames[] = ['nowPlaying', 'upNext', 'queueView', 'playbackView', 'savedPosition']
-    expect(commands).toHaveLength(8)
+    expect(commands).toHaveLength(10)
     expect(queries).toHaveLength(5)
     expect(Object.keys(coordinator).sort()).toEqual([...commands, ...queries, 'subscribe'].sort())
     for (const name of [...commands, ...queries, 'subscribe']) {

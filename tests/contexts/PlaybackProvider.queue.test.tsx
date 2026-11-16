@@ -195,7 +195,7 @@ describe('PlaybackProvider の配線', () => {
     expect(cap.pb.playback.position).toBe(7)
   })
 
-  test('usePlayback の key はちょうど 22 個で、PlaybackState (episode・audioUrl) を含まない (verifies: CI-P4-13; T-P4-11)', async () => {
+  test('usePlayback の key はちょうど 24 個で、PlaybackState (episode・audioUrl) を含まない (verifies: CI-P4-13; T-P4-11)', async () => {
     render(tree())
     await startAndPlay('a')
 
@@ -216,6 +216,8 @@ describe('PlaybackProvider の配線', () => {
         'savedPosition',
         'playback',
         'play',
+        'requestResume',
+        'chooseResume',
         'pause',
         'seek',
         'seekRelative',
