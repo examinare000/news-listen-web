@@ -115,3 +115,29 @@ export interface SuggestionView {
   readonly suggested: DifficultyLevel | null
   readonly reason: string | null
 }
+
+export type VocabularyTestPhase = 'loading' | 'empty' | 'self-assessment' | 'retest' | 'submitting' | 'result' | 'error'
+
+/** 単語テストの再テストの正誤の合図。 */
+export type VocabularyTestFeedbackView =
+  | { readonly kind: 'correct' }
+  | { readonly kind: 'incorrect'; readonly correctMeaning: string }
+
+/** 単語テストの画面が読む view（web-query-learning-02）。語の id・回答・再テストの語は載せない。 */
+export interface VocabularyTestView {
+  readonly phase: VocabularyTestPhase
+  readonly errorReason: 'load' | 'submit' | null
+  readonly currentTerm: string | null
+  /** self-assessment のときだけ。 */
+  readonly currentExample: string | null
+  readonly progress: { readonly position: number; readonly total: number } | null
+  /** retest の今の語の選択肢。ほかは空。 */
+  readonly choices: ReadonlyArray<string>
+  readonly isAnswerLocked: boolean
+  readonly retestFeedback: VocabularyTestFeedbackView | null
+  readonly summary: {
+    readonly knownCount: number
+    readonly retestCount: number
+    readonly retestCorrectCount: number
+  } | null
+}

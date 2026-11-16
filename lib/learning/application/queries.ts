@@ -1,8 +1,8 @@
-// Learning の query（web-query-learning-03〜06）: 登録済みの語・ストリーク・ダッシュボード・難易度の提案。読むだけで書かない。
+// Learning の query（web-query-learning-01・03〜06）: 登録済みの語・ストリーク・ダッシュボード・難易度の提案・単語テストの出題。読むだけで書かない。
 import { newlyUnlocked } from '@/lib/learning/domain/achievements'
 import { isOffered } from '@/lib/learning/domain/difficultySuggestion'
 import { increased } from '@/lib/learning/domain/streak'
-import type { LearningGateway, SeenAchievementsStore } from '@/lib/learning/application/ports'
+import type { LearningGateway, SeenAchievementsStore, VocabularyTestWordRecord } from '@/lib/learning/application/ports'
 import type {
   DashboardResult,
   StreakSummary,
@@ -20,6 +20,8 @@ export interface LearningQueries {
   getDashboard(): Promise<DashboardResult>
   /** 提案なし・取得失敗はどちらも null。reject しない。 */
   getDifficultySuggestion(): Promise<SuggestionView | null>
+  /** 失敗は toast に使うので null に畳まず素通しする（web-query-learning-01）。打ち切りは domain。 */
+  getVocabularyTestSession(): Promise<Result<ReadonlyArray<VocabularyTestWordRecord>, ApiFailure>>
 }
 
 export interface LearningQueryDeps {
@@ -85,6 +87,10 @@ export function createLearningQueries({ gateway, seenAchievements }: LearningQue
       const record = await valueOrNull(() => gateway.getDifficultySuggestion())
       if (record === null || !isOffered(record.hasSuggestion)) return null
       return frozenCopy({ suggested: record.suggested, reason: record.reason })
+    },
+    async getVocabularyTestSession() {
+      const result = await gateway.getVocabularyTestSession()
+      return result.ok ? { ok: true, value: frozenCopy(result.value) } : result
     },
   }
 }
