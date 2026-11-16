@@ -1,7 +1,7 @@
 import { describe, test, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import React from 'react'
-import { highlightTerms } from '@/lib/highlightTerms'
+import { highlightTerms } from '@/lib/presentation/highlightTerms'
 
 // WHY render via React.createElement (no JSX) instead of a .test.tsx file: the design doc
 // specifies this file as tests/lib/highlightTerms.test.ts, and highlightTerms returns

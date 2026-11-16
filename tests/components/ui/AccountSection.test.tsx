@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event'
 import React from 'react'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { useAuth } from '@/contexts/AuthProvider'
-import type { PasskeyCredential } from '@/types/index'
+import type { PasskeyCredential } from '@/lib/api/dto'
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'
 

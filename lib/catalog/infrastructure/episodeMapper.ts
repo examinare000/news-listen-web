@@ -7,10 +7,13 @@ import {
   type SourceOrigin,
 } from '@/lib/catalog/domain/episode'
 import { parseRecordedAt } from '@/lib/shared/recordedAt'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
+
+/** DTO の値域（`PodcastStatus`）から外れた古いキャッシュの応答の `partial_failed`（ADR-108）も読めるようにする、この module だけの型。 */
+type ReadableStatus = Podcast['status'] | 'partial_failed'
 
 /** shared-session-09・web-deriv-31: `partial_failed` は再生不可で、domain の値域の外なので `failed` に写す。 */
-export function readStatus(status: Podcast['status']): EpisodeReadout['status'] {
+export function readStatus(status: ReadableStatus): EpisodeReadout['status'] {
   return status === 'partial_failed' ? 'failed' : status
 }
 

@@ -3,7 +3,9 @@ import { render, waitFor } from '@testing-library/react'
 import React from 'react'
 import { ApiClientProvider, useApiClient } from '@/contexts/ApiClientProvider'
 import { createGateway } from '@/lib/api/gateway'
-import type { ApiGateway, ApiFailure, Result } from '@/lib/api/gateway'
+import type { ApiGateway } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 
 // verifies: CI-W1, CI-W2, CI-W3

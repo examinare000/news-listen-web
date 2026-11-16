@@ -10,7 +10,8 @@ import { PreferencesProvider } from '@/contexts/PreferencesProvider'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../../helpers/gatewayDouble'
-import type { ApiFailure, Result } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
   rtlRender(ui, { wrapper: ApiClientProvider, ...options })

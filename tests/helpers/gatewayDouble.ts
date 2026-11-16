@@ -1,11 +1,6 @@
-import type {
-  ApiGateway,
-  ApiFailure,
-  GatewayJsonRequest,
-  GatewayNoContentRequest,
-  GatewayRequest,
-  Result,
-} from '@/lib/api/gateway'
+import type { ApiGateway, GatewayJsonRequest, GatewayNoContentRequest, GatewayRequest } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 // テスト用 double: 呼出を (method, path, body) で記録し、応答を (method, path) で
 // 登録できる。`respondWith` で handler（reject・未解決・外から解決・呼出順）も登録できる。

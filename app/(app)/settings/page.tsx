@@ -25,7 +25,7 @@ import type { WeeklyGoal } from '@/lib/preferences/domain/settings'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { AccountSection } from '@/components/ui/AccountSection'
 import { PushNotificationSection } from '@/components/PushNotificationSection'
-import { formatDuration, formatBytes, formatDate } from '@/lib/format'
+import { formatDuration, formatBytes, formatDate } from '@/lib/presentation/format'
 import type { OfflineEpisodeView, StorageUsageView } from '@/lib/playback/application/readModels'
 
 export default function SettingsPage() {

@@ -5,7 +5,7 @@ import type { ReactElement } from 'react'
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import userEvent from '@testing-library/user-event'
 import { OnboardingSourcesModal } from '@/components/ui/OnboardingSourcesModal'
-import type { FeaturedSource } from '@/types/index'
+import type { FeaturedSource } from '@/lib/api/dto'
 
 import { createGatewayDouble } from '../../helpers/gatewayDouble'
 import type { GatewayDouble } from '../../helpers/gatewayDouble'

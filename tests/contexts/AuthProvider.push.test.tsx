@@ -7,7 +7,7 @@ import type { KeyValueStore } from '@/lib/platform/keyValueStore'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { createFakePushBrowserPort } from '../helpers/fakePushBrowserPort'
 import type { PushBrowserPort } from '@/lib/notifications/application/ports'
-import type { PushSubscriptionJSON } from '@/types/index'
+import type { PushSubscriptionJSON } from '@/lib/api/dto'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
 

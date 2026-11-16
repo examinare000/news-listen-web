@@ -31,7 +31,7 @@ beforeAll(() => {
 
 describe('web-check-03 データモデルの漏れ: 実測 ＝ 許可リスト（多くても少なくても落ちる）', () => {
   test('web-dep-04 (a)(b) の実測の集合 ＝ 許可リストの rule web-dep-04 の行（(a) は層外の lib/*.ts を含める）', () => {
-    const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('types/index.ts'))
+    const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('lib/api/dto.ts'))
     const measured: Row[] = scanFiles.flatMap((file) => {
       const source = readSource(file)
       return [...detectTypesImportRows(file, source), ...detectDomainTypeReferenceRows(file, source, dtoTypeNames)]
@@ -41,7 +41,7 @@ describe('web-check-03 データモデルの漏れ: 実測 ＝ 許可リスト�
   })
 
   test('web-dep-04 (b): DOMAIN の export する宣言に DTO の型名が 0 件（web-temp-06 解消）', () => {
-    const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('types/index.ts'))
+    const dtoTypeNames = collectOwnDeclaredTypeNames(readSource('lib/api/dto.ts'))
     const measured = scanFiles
       .filter((f) => /^lib\/[^/]+\/domain\//.test(f))
       .flatMap((f) => detectDomainTypeReferenceRows(f, readSource(f), dtoTypeNames))
@@ -68,21 +68,22 @@ describe('web-check-03 データモデルの漏れ: 実測 ＝ 許可リスト�
   })
 })
 
-describe('web-check-03 検出器の自己点検: web-dep-04 (a)（INFRA・DOMAIN・APP 以外の @/types の import）', () => {
+describe('web-check-03 検出器の自己点検: web-dep-04 (a)（INFRA・DOMAIN・APP 以外の @/lib/api/dto・@/types の import）', () => {
   const rows = (file: string, source: string): string[] => rowKeys(detectTypesImportRows(file, source))
 
-  test('正例: PRES・ROOT・層外の lib/*.ts が @/types を import する（import type を含む）', () => {
+  test('正例: PRES・ROOT・層外の lib/*.ts が @/lib/api/dto を import する（import type を含む）', () => {
+    expect(rows('components/X.tsx', "import type { Podcast } from '@/lib/api/dto'")).toEqual(['web-dep-04 | components/X.tsx | @/lib/api/dto'])
+    expect(rows('contexts/AudioPlayerContext.tsx', "import { a } from '@/lib/api/dto'")).toEqual(['web-dep-04 | contexts/AudioPlayerContext.tsx | @/lib/api/dto'])
+    expect(rows('lib/audioCache.ts', "import type { Podcast } from '@/lib/api/dto'")).toEqual(['web-dep-04 | lib/audioCache.ts | @/lib/api/dto'])
     expect(rows('components/X.tsx', "import type { Podcast } from '@/types/index'")).toEqual(['web-dep-04 | components/X.tsx | @/types/index'])
-    expect(rows('contexts/AudioPlayerContext.tsx', "import { a } from '@/types'")).toEqual(['web-dep-04 | contexts/AudioPlayerContext.tsx | @/types'])
-    expect(rows('lib/audioCache.ts', "import type { Podcast } from '@/types'")).toEqual(['web-dep-04 | lib/audioCache.ts | @/types'])
   })
 
-  test('負例: INFRA・DOMAIN・APP（web-dep-01・web-dep-02 の行に載せる）・@/types でない import・コメント', () => {
-    expect(rows('lib/api/gateway.ts', "import type { Podcast } from '@/types/index'")).toEqual([])
-    expect(rows('lib/playback/domain/session.ts', "import type { Podcast } from '@/types'")).toEqual([])
-    expect(rows('lib/account/application/passkey.ts', "import type { LoginResponse } from '@/types/index'")).toEqual([])
+  test('負例: INFRA・DOMAIN・APP（web-dep-01・web-dep-02 の行に載せる）・@/lib/api/dto でない import・コメント', () => {
+    expect(rows('lib/api/gateway.ts', "import type { Podcast } from '@/lib/api/dto'")).toEqual([])
+    expect(rows('lib/playback/domain/session.ts', "import type { Podcast } from '@/lib/api/dto'")).toEqual([])
+    expect(rows('lib/account/application/passkey.ts', "import type { LoginResponse } from '@/lib/api/dto'")).toEqual([])
     expect(rows('components/X.tsx', "import { a } from '@/lib/shared/result'")).toEqual([])
-    expect(rows('components/X.tsx', "// import type { Podcast } from '@/types'")).toEqual([])
+    expect(rows('components/X.tsx', "// import type { Podcast } from '@/lib/api/dto'")).toEqual([])
   })
 })
 
@@ -90,7 +91,7 @@ describe('web-check-03 検出器の自己点検: web-dep-04 (b)（DOMAIN・APP �
   const dto = new Set(['Podcast', 'LoginResponse'])
   const rows = (file: string, source: string): string[] => rowKeys(detectDomainTypeReferenceRows(file, source, dto))
 
-  test('types/index.ts が自分で宣言した名前だけを集める（再 export・値の宣言は除く）', () => {
+  test('lib/api/dto.ts が自分で宣言した名前だけを集める（再 export・値の宣言は除く）', () => {
     const names = collectOwnDeclaredTypeNames(
       [
         'export interface Podcast { id: string }',
@@ -117,13 +118,13 @@ describe('web-check-03 検出器の自己点検: web-dep-04 (b)（DOMAIN・APP �
     expect(rows('lib/playback/domain/s.ts', 'export interface E { readonly p: ApiFailure }')).toEqual([])
   })
 
-  test('web-dec-18: そのファイル自身が同名の型を宣言していれば DTO の型名として数えない（export の有無を問わない）。@/types から import した同名は数える', () => {
+  test('web-dec-18: そのファイル自身が同名の型を宣言していれば DTO の型名として数えない（export の有無を問わない）。@/lib/api/dto から import した同名は数える', () => {
     const own = new Set(['QuizQuestion'])
     const ownRows = (file: string, source: string): string[] => rowKeys(detectDomainTypeReferenceRows(file, source, own))
 
-    // 正方向対照: 宣言が無く、@/types から取った名前は漏れとして数える
+    // 正方向対照: 宣言が無く、@/lib/api/dto から取った名前は漏れとして数える
     expect(
-      ownRows('lib/catalog/domain/s.ts', "import type { QuizQuestion } from '@/types'; export interface E { q: QuizQuestion }"),
+      ownRows('lib/catalog/domain/s.ts', "import type { QuizQuestion } from '@/lib/api/dto'; export interface E { q: QuizQuestion }"),
     ).toEqual(['web-dep-04 | lib/catalog/domain/s.ts | QuizQuestion'])
     // export した自前の宣言
     expect(

@@ -10,7 +10,7 @@ import type {
   MetricsRecord,
 } from '@/lib/admin/application/ports'
 
-// page は `@/types` を import できないので、招待の状態の型はここから再 export する。
+// page は `@/lib/api/dto` を import できないので、招待の状態の型はここから再 export する。
 export type { InviteStatus } from '@/lib/admin/application/ports'
 
 export interface AdminUserRow {

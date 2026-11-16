@@ -1,6 +1,6 @@
 // @vitest-environment node
 // Preferences application のリードモデル: ServerPreferencesRecord → ServerPreferencesView（web-model-prefs）。
-// application の unit テスト。DTO（`@/types`）も infrastructure も import しない。record は object literal ＋ `import type` で作る。
+// application の unit テスト。DTO（`@/lib/api/dto`）も infrastructure も import しない。record は object literal ＋ `import type` で作る。
 //
 // RED 理由（実装前）: `@/lib/preferences/application/readModels` が無い（module not found）。
 import { describe, expect, test } from 'vitest'

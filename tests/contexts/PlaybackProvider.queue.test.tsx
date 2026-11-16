@@ -13,7 +13,7 @@ import { MockAudio } from '../helpers/mockAudio'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 // AuthProvider は initialSession で認証済みの A を渡す。AuthProvider が組む API クライアントの gateway だけ double にする（実通信を起こさない）。
 // 再生側の gateway（ApiClientProvider に渡す）とは別の double。

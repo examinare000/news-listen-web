@@ -5,7 +5,7 @@ import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
 import { ResumeChoiceDialog } from '@/components/ui/ResumeChoiceDialog'
-import { formatDuration, formatDate } from '@/lib/format'
+import { formatDuration, formatDate } from '@/lib/presentation/format'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type { PlaybackSpeed } from '@/lib/playback/domain/session'
 

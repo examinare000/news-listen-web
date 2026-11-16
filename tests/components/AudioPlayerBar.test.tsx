@@ -6,7 +6,7 @@ import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { PreferencesProvider, usePreferences } from '@/contexts/PreferencesProvider'
 import { LOCAL_SETTING_BINDINGS } from '@/lib/preferences/infrastructure/localSettingsStore'
 import type { KeyValueStore } from '@/lib/platform/keyValueStore'
-import { formatDate } from '@/lib/format'
+import { formatDate } from '@/lib/presentation/format'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStore = (initial: Record<string, string> = {}): KeyValueStore => {

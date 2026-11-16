@@ -26,7 +26,7 @@ import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import { isPlayableEpisode } from '@/lib/playback/domain/session'
 import type { PlayableEpisode, PlaybackEvent, PlaybackState } from '@/lib/playback/domain/session'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 import { MockAudio } from '../helpers/mockAudio'
 
 // ---------------------------------------------------------------------------

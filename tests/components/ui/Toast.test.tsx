@@ -82,6 +82,20 @@ describe('Toast', () => {
 
     expect(screen.getByText('まだ見える')).toBeInTheDocument()
   })
+
+  test('Given a toast is pending, unmounting the provider leaves no pending timer and time passing does not throw', () => {
+    const before = vi.getTimerCount()
+    const { unmount } = renderWithProvider('消える前に外す')
+    act(() => {
+      screen.getByText('Show Toast').click()
+    })
+    expect(vi.getTimerCount()).toBe(before + 1)
+
+    unmount()
+
+    expect(vi.getTimerCount()).toBe(before)
+    expect(() => vi.advanceTimersByTime(3000)).not.toThrow()
+  })
 })
 
 // ==========================================================

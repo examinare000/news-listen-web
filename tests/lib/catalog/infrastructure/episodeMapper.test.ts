@@ -4,7 +4,8 @@
 // RED 理由（実装前）: `@/lib/catalog/infrastructure/episodeMapper` が無い（module not found）。
 import { describe, expect, test } from 'vitest'
 import { decodeEpisode } from '@/lib/catalog/infrastructure/episodeMapper'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
+import { legacyPartialFailed } from '../../../helpers/legacyPodcast'
 
 function dto(over: Partial<Podcast> = {}): Podcast {
   return {
@@ -63,10 +64,10 @@ const WEB_CONTRACT_14_ROWS: readonly WebContract14Row[] = [
   { status: 'failed', audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
   { status: 'failed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: '' },
   { status: 'failed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: '' },
-  { status: 'partial_failed', audio_url: AUDIO, error_message: null, expected: GEN_FAILED, note: ' shared-session-09' },
-  { status: 'partial_failed', audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' shared-session-09' },
-  { status: 'partial_failed', audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
-  { status: 'partial_failed', audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: '' },
+  { status: legacyPartialFailed(), audio_url: AUDIO, error_message: null, expected: GEN_FAILED, note: ' shared-session-09' },
+  { status: legacyPartialFailed(), audio_url: AUDIO, error_message: ERR, expected: QUOTA_FAILED, note: ' shared-session-09' },
+  { status: legacyPartialFailed(), audio_url: '', error_message: null, expected: GEN_FAILED, note: '' },
+  { status: legacyPartialFailed(), audio_url: '', error_message: ERR, expected: QUOTA_FAILED, note: '' },
 ]
 
 describe('web-contract-14 decodeEpisode: status 4 値 × audio_url × error_message の 16 行', () => {

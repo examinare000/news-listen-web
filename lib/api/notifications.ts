@@ -1,7 +1,7 @@
 import type {
   VapidPublicKeyResponse,
   PushSubscriptionJSON,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 // ── Web Push 通知 ─────────────────────────────────────────────────────

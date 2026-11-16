@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
 import { createGateway } from '@/lib/api/gateway'
-import type { ApiFailure, Result } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 import { starArticle, dismissArticle, unstarArticle } from '@/lib/api/articles'
 import { changePassword } from '@/lib/api/auth'
 import {

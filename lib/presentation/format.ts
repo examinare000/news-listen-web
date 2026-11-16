@@ -1,4 +1,4 @@
-import type { UserRole } from '@/types/index'
+import type { UserRole } from '@/lib/account/domain/role'
 
 /**
  * Formats a duration in seconds to M:SS or H:MM:SS string.

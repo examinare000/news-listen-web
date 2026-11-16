@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 import { describe, expect, test } from 'vitest'
-import { WEB_ROOT, listScanFiles, parseSource, readSource } from '../helpers/architecture'
+import { LEGACY_APP_FILES, WEB_ROOT, isAllowlistEmpty, listScanFiles, parseSource, readSource } from '../helpers/architecture'
 import { evaluateTestIsolation } from '../helpers/architectureDetectors'
 import type {
   IsolationFinding,
@@ -218,6 +218,14 @@ describe('web-check-08 実ツリー: 全テストの分類・全 subject の対�
       'tests/architecture/immutability.catalog.test.ts',
       'tests/architecture/immutability.preferences.test.ts',
     ])
+  })
+
+  test('移行許可は空（web-temp-13 の MIGRATION_ALLOWANCES を解消した）', () => {
+    expect(isAllowlistEmpty(MIGRATION_ALLOWANCES)).toBe(true)
+  })
+
+  test('旧 APP ファイルの暫定表は空（web-temp-13 の LEGACY_APP_FILES を解消した）', () => {
+    expect(isAllowlistEmpty(Object.keys(LEGACY_APP_FILES))).toBe(true)
   })
 
   test('移行許可は形を満たす: 各欄が空でない、removeBy と task が値域の中、file が列挙にある、重複が無い', () => {

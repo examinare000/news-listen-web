@@ -20,7 +20,7 @@ import {
   remove,
   moveUpNext,
 } from '@/lib/playback/domain/queue'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 function pod(id: string): Podcast {
   return {

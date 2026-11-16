@@ -2,7 +2,7 @@ import type {
   PodcastsResponse,
   Podcast,
   QuizAnswerResponse,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 export function getPodcasts(gateway: ApiGateway) {

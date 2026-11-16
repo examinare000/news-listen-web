@@ -1,5 +1,5 @@
 // Catalog application のリードモデル: EpisodeRecord → EpisodeCardView・EpisodeDetailView（web-model-catalog・web-rule-catalog-10）。
-// application の unit テスト。DTO（`@/types`）も infrastructure も import しない。record は object literal ＋ `import type` で作る。
+// application の unit テスト。DTO（`@/lib/api/dto`）も infrastructure も import しない。record は object literal ＋ `import type` で作る。
 // `sourceCredit` だけは値で import する（CC BY-SA の通知の有無は domain の規則が決めるので、期待値の根拠を domain に置く）。
 //
 // RED 理由（実装前）: `@/lib/catalog/application/readModels` が無い（module not found）。

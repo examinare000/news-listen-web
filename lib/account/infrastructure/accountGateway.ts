@@ -25,7 +25,7 @@ import {
 } from '@/lib/api/auth'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
-import type { AuthUser, PasskeyCredential, PasskeyOptionsResponse, Session } from '@/types/index'
+import type { AuthUser, PasskeyCredential, PasskeyOptionsResponse, Session } from '@/lib/api/dto'
 
 function toUser(dto: AuthUser): AuthSessionUser {
   return {

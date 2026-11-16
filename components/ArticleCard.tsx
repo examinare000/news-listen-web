@@ -1,5 +1,5 @@
 import React from 'react'
-import { formatDate, formatRelativeTime } from '@/lib/format'
+import { formatDate, formatRelativeTime } from '@/lib/presentation/format'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { timeFormat } from '@/lib/preferences/domain/settings'
 import { Menu } from '@/components/ui/Menu'

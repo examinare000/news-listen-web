@@ -1,6 +1,6 @@
 import type {
   FeedResponse,
-} from '@/types/index'
+} from '@/lib/api/dto'
 import type { ApiGateway } from '@/lib/api/gateway'
 
 export function getFeed(gateway: ApiGateway) {

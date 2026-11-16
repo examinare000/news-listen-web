@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
-import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter, formatBytes } from '@/lib/format'
-import type { AuthUser } from '@/types/index'
+import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter, formatBytes } from '@/lib/presentation/format'
+import type { AuthUser } from '@/lib/api/dto'
 
 // ==========================================================
 // formatDuration(seconds: number): string

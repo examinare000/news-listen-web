@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { useAuth } from '@/contexts/AuthProvider'
-import { formatAuthUserLabel } from '@/lib/format'
+import { formatAuthUserLabel } from '@/lib/presentation/format'
 import { LogoutButton } from '@/components/ui/LogoutButton'
 
 /**

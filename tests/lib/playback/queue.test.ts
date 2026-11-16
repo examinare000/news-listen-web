@@ -19,7 +19,7 @@ import {
   moveUpNext,
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 // issue #81: 再生キューの純粋ロジック（自動次再生・空キュー停止・並べ替え等）。
 

@@ -2,14 +2,9 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { createGateway } from '@/lib/api/gateway'
-import type {
-  ApiFailure,
-  ApiGateway,
-  GatewayJsonRequest,
-  GatewayNoContentRequest,
-  GatewayRequest,
-  Result,
-} from '@/lib/api/gateway'
+import type { ApiGateway, GatewayJsonRequest, GatewayNoContentRequest, GatewayRequest } from '@/lib/api/gateway'
+import type { Result } from '@/lib/shared/result'
+import type { ApiFailure } from '@/lib/shared/apiFailure'
 
 // SG5「最小注入点」: 1 つの gateway インスタンスを保持し、context/hook から取得させる。
 // リソース別の分割（Playback / Catalog / Account …）は web-slice-gateway-01 では作らない（rejected_overdesign）。

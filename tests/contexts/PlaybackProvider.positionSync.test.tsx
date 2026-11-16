@@ -13,7 +13,7 @@ import { MockAudio } from '../helpers/mockAudio'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
-import type { Podcast } from '@/types'
+import type { Podcast } from '@/lib/api/dto'
 
 // 実の AuthProvider と実の PlaybackProvider を、Audio の stub・localStorage（jsdom）・gateway の double で動かし、
 // 端末の位置の記録・再送・取り込み・主体の離脱が、利用者の操作と起動・接続復帰の契機でどう観測されるかを固定する。
