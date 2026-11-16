@@ -1,53 +1,21 @@
 'use client'
 
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
-import { useApiClient } from '@/contexts/ApiClientProvider'
-import { getVocabularyTestSession, submitVocabularyTestResult } from '@/lib/learning/infrastructure/api'
 import { useSfx } from '@/contexts/SfxProvider'
-import type { VocabularyTestItem, VocabularyTestResultItem } from '@/types/index'
+import { useVocabularyTestSession } from '@/contexts/useVocabularyTestSession'
 
-type Phase = 'loading' | 'self-assessment' | 'retest' | 'submitting' | 'result' | 'empty' | 'error'
-
-interface ResultSummary {
-  reviewed: number
-  retestCount: number
-  correct: number
-}
-
-function buildChoices(item: VocabularyTestItem): string[] {
-  const choices = [item.meaning, ...item.distractors.slice(0, 3)]
-  if (choices.length < 2) return choices
-
-  // Fisher-Yates shuffle
-  const shuffled = [...choices]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  return shuffled
-}
+const LOAD_FAILURE_MESSAGE = '単語テストの読み込みに失敗しました'
+const SUBMIT_FAILURE_MESSAGE = '単語テストの結果送信に失敗しました'
 
 export default function VocabularyTestPage() {
   const { showToast } = useToast()
   const { play: playSfx, prepare: prepareSfx } = useSfx()
-  const gateway = useApiClient()
-  const [phase, setPhase] = useState<Phase>('loading')
-  const [items, setItems] = useState<VocabularyTestItem[]>([])
-  const [assessmentIndex, setAssessmentIndex] = useState(0)
-  const [assessments, setAssessments] = useState<Record<string, boolean>>({})
-  const [retestItems, setRetestItems] = useState<VocabularyTestItem[]>([])
-  const [retestIndex, setRetestIndex] = useState(0)
-  const [retestResults, setRetestResults] = useState<Record<string, boolean>>({})
-  const [showCorrectCheck, setShowCorrectCheck] = useState(false)
-  const [revealedCorrect, setRevealedCorrect] = useState<string | null>(null)
-  const [isAdvancing, setIsAdvancing] = useState(false)
+  const { view, commands } = useVocabularyTestSession()
   const [exitDirection, setExitDirection] = useState<'left' | 'right' | null>(null)
-  const [summary, setSummary] = useState<ResultSummary | null>(null)
   const pointerStartXRef = useRef<number | null>(null)
   const swipeCardRef = useRef<HTMLDivElement | null>(null)
-  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const assessmentHeadingRef = useRef<HTMLHeadingElement>(null)
   const retestHeadingRef = useRef<HTMLHeadingElement>(null)
   const resultHeadingRef = useRef<HTMLHeadingElement>(null)
@@ -55,97 +23,44 @@ export default function VocabularyTestPage() {
 
   useEffect(() => {
     let active = true
-    getVocabularyTestSession(gateway)
-      .then((result) => {
-        if (!active) return
-        if (!result.ok) {
-          setSummary({ reviewed: 0, retestCount: 0, correct: 0 })
-          setPhase('error')
-          showToast('単語テストの読み込みに失敗しました', 'error')
-          return
-        }
-        const session = result.value
-        const boundedItems = session.items.slice(0, 10)
-        setItems(boundedItems)
-        setPhase(boundedItems.length === 0 ? 'empty' : 'self-assessment')
-      })
-      .catch(() => {
-        if (!active) return
-        setSummary({ reviewed: 0, retestCount: 0, correct: 0 })
-        setPhase('error')
-        showToast('単語テストの読み込みに失敗しました', 'error')
-      })
+    void commands.startVocabularyTest().then((result) => {
+      if (active && !result.ok) showToast(LOAD_FAILURE_MESSAGE, 'error')
+    })
     return () => {
       active = false
-      if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current)
     }
-  }, [gateway, showToast])
+  }, [commands, showToast])
 
   // Focus management for phase transitions
   useEffect(() => {
-    if (phase === 'self-assessment' && assessmentHeadingRef.current) {
+    if (view.phase === 'self-assessment' && assessmentHeadingRef.current) {
       assessmentHeadingRef.current.focus()
-    } else if (phase === 'retest' && retestHeadingRef.current) {
+    } else if (view.phase === 'retest' && retestHeadingRef.current) {
       retestHeadingRef.current.focus()
-    } else if (phase === 'result' && resultHeadingRef.current) {
+    } else if (view.phase === 'result' && resultHeadingRef.current) {
       resultHeadingRef.current.focus()
-    } else if (phase === 'error' && errorHeadingRef.current) {
+    } else if (view.phase === 'error' && errorHeadingRef.current) {
       errorHeadingRef.current.focus()
     }
-  }, [phase])
+  }, [view.phase])
 
-  async function submitResults(
-    finalAssessments: Record<string, boolean>,
-    finalRetestResults: Record<string, boolean>,
-  ) {
-    setPhase('submitting')
-    const payload: VocabularyTestResultItem[] = items.map((item) => {
-      const selfKnown = finalAssessments[item.vocabulary_id]
-      return {
-        vocabulary_id: item.vocabulary_id,
-        self_known: selfKnown,
-        retest_correct: selfKnown ? null : (finalRetestResults[item.vocabulary_id] ?? false),
-      }
+  // 正誤の合図の音は、feedback が出た契機で 1 回だけ鳴らす。
+  useEffect(() => {
+    if (view.retestFeedback) playSfx(view.retestFeedback.kind)
+  }, [view.retestFeedback, playSfx])
+
+  function reload() {
+    void commands.startVocabularyTest().then((result) => {
+      if (!result.ok) showToast(LOAD_FAILURE_MESSAGE, 'error')
     })
-    try {
-      const result = await submitVocabularyTestResult(gateway, payload)
-      if (!result.ok) {
-        setPhase('error')
-        showToast('単語テストの結果送信に失敗しました', 'error')
-        return
-      }
-      const retestCount = payload.filter((item) => item.retest_correct !== null).length
-      const correctCount = payload.filter((item) => item.retest_correct === true).length
-      setSummary({
-        reviewed: payload.length,
-        retestCount,
-        correct: correctCount,
-      })
-      setPhase('result')
-    } catch {
-      setPhase('error')
-      showToast('単語テストの結果送信に失敗しました', 'error')
-    }
   }
 
   function recordSelfAssessment(known: boolean) {
-    const item = items[assessmentIndex]
-    if (!item || phase !== 'self-assessment') return
+    if (view.phase !== 'self-assessment') return
     prepareSfx()
-    const nextAssessments = { ...assessments, [item.vocabulary_id]: known }
-    setAssessments(nextAssessments)
-    if (assessmentIndex < items.length - 1) {
-      setAssessmentIndex((index) => index + 1)
-      return
-    }
-
-    const unknown = items.filter((candidate) => nextAssessments[candidate.vocabulary_id] === false)
-    if (unknown.length === 0) {
-      void submitResults(nextAssessments, {})
-      return
-    }
-    setRetestItems(unknown)
-    setPhase('retest')
+    void commands.assessVocabulary(known).then((result) => {
+      if (!result.ok) showToast(SUBMIT_FAILURE_MESSAGE, 'error')
+    })
   }
 
   function prefersReducedMotion(): boolean {
@@ -216,45 +131,16 @@ export default function VocabularyTestPage() {
   }
 
   function handleRetestChoice(choice: string) {
-    const item = retestItems[retestIndex]
-    if (!item || isAdvancing) return
+    if (view.phase !== 'retest' || view.isAnswerLocked) return
     prepareSfx()
-    setIsAdvancing(true)
-
-    // Clear existing timer if any
-    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current)
-
-    const correct = choice === item.meaning
-    const nextResults = { ...retestResults, [item.vocabulary_id]: correct }
-    setRetestResults(nextResults)
-    if (correct) {
-      playSfx('correct')
-      setShowCorrectCheck(true)
-    } else {
-      // 罰的な赤・バツは使わず、正解肢の提示で学習機会を残す（ADR-088 原則）。
-      playSfx('incorrect')
-      setRevealedCorrect(item.meaning)
-    }
-
-    feedbackTimerRef.current = setTimeout(() => {
-      setShowCorrectCheck(false)
-      setRevealedCorrect(null)
-      if (retestIndex < retestItems.length - 1) {
-        setRetestIndex((index) => index + 1)
-        setIsAdvancing(false)
-      } else {
-        void submitResults(assessments, nextResults)
-      }
-    }, 800)
+    void commands.answerRetest(choice).then((result) => {
+      if (!result.ok) showToast(SUBMIT_FAILURE_MESSAGE, 'error')
+    })
   }
 
-  const currentAssessment = items[assessmentIndex]
-  const currentRetest = retestItems[retestIndex]
-  // 同一問題の表示中に選択肢が並び替わらないよう、問題単位でメモ化する
-  const retestChoices = useMemo(
-    () => (currentRetest ? buildChoices(currentRetest) : []),
-    [currentRetest],
-  )
+  // 罰的な赤・バツは使わず、正解肢の提示で学習機会を残す（ADR-088 原則）。
+  const revealedCorrect = view.retestFeedback?.kind === 'incorrect' ? view.retestFeedback.correctMeaning : null
+  const showCorrectCheck = view.retestFeedback?.kind === 'correct'
 
   return (
     <>
@@ -267,11 +153,11 @@ export default function VocabularyTestPage() {
       </div>
 
       <div className="content-area content-narrow vocabulary-test-page">
-        {phase === 'loading' ? (
+        {view.phase === 'loading' ? (
           <div className="vocabulary-test-status" role="status">単語を準備しています</div>
         ) : null}
 
-        {phase === 'empty' ? (
+        {view.phase === 'empty' ? (
           <div className="empty-state">
             <p className="empty-state-title">いま復習する単語はありません</p>
             <p className="empty-state-desc">次の学習タイミングで、またここに単語が届きます。</p>
@@ -279,9 +165,9 @@ export default function VocabularyTestPage() {
           </div>
         ) : null}
 
-        {phase === 'self-assessment' && currentAssessment ? (
+        {view.phase === 'self-assessment' && view.currentTerm !== null ? (
           <section aria-labelledby="assessment-term">
-            <div className="vocabulary-test-progress" aria-live="polite" aria-atomic="true">{assessmentIndex + 1} / {items.length}</div>
+            <div className="vocabulary-test-progress" aria-live="polite" aria-atomic="true">{view.progress?.position} / {view.progress?.total}</div>
             <div
               ref={swipeCardRef}
               className={`vocabulary-swipe-card${exitDirection ? ` swipe-exit-${exitDirection}` : ''}`}
@@ -313,8 +199,8 @@ export default function VocabularyTestPage() {
               }}
             >
               <p className="vocabulary-test-kicker">この単語を知っていますか？</p>
-              <h2 id="assessment-term" ref={assessmentHeadingRef} tabIndex={-1}>{currentAssessment.term}</h2>
-              <p>{currentAssessment.example}</p>
+              <h2 id="assessment-term" ref={assessmentHeadingRef} tabIndex={-1}>{view.currentTerm}</h2>
+              <p>{view.currentExample}</p>
               <p className="vocabulary-gesture-hint">← まだ　／　知ってる →</p>
             </div>
             <div className="vocabulary-answer-actions">
@@ -339,18 +225,18 @@ export default function VocabularyTestPage() {
           </section>
         ) : null}
 
-        {phase === 'retest' && currentRetest ? (
+        {view.phase === 'retest' && view.currentTerm !== null ? (
           <section className="vocabulary-retest" aria-labelledby="retest-term">
-            <div className="vocabulary-test-progress" aria-live="polite" aria-atomic="true">{retestIndex + 1} / {retestItems.length}</div>
+            <div className="vocabulary-test-progress" aria-live="polite" aria-atomic="true">{view.progress?.position} / {view.progress?.total}</div>
             <p className="vocabulary-test-kicker">意味を選んでください</p>
-            <h2 id="retest-term" ref={retestHeadingRef} tabIndex={-1}>{currentRetest.term}</h2>
+            <h2 id="retest-term" ref={retestHeadingRef} tabIndex={-1}>{view.currentTerm}</h2>
             <div className="vocabulary-choice-list">
-              {retestChoices.map((choice, index) => (
+              {view.choices.map((choice, index) => (
                 <button
                   key={`${choice}-${index}`}
                   type="button"
                   className={`vocabulary-choice${revealedCorrect === choice ? ' is-correct-reveal' : ''}`}
-                  disabled={isAdvancing}
+                  disabled={view.isAnswerLocked}
                   onClick={() => handleRetestChoice(choice)}
                 >
                   {choice}
@@ -384,15 +270,15 @@ export default function VocabularyTestPage() {
           </section>
         ) : null}
 
-        {phase === 'submitting' ? (
+        {view.phase === 'submitting' ? (
           <div className="vocabulary-test-status" role="status">結果を記録しています</div>
         ) : null}
 
-        {phase === 'result' && summary ? (
+        {view.phase === 'result' && view.summary ? (
           <section className="vocabulary-result" aria-labelledby="vocabulary-result-title">
             <p className="vocabulary-test-kicker">今回の記録</p>
-            <h2 id="vocabulary-result-title" ref={resultHeadingRef} tabIndex={-1}>知ってる {summary.reviewed - summary.retestCount} 語</h2>
-            {summary.retestCount === 0 ? (
+            <h2 id="vocabulary-result-title" ref={resultHeadingRef} tabIndex={-1}>知ってる {view.summary.knownCount} 語</h2>
+            {view.summary.retestCount === 0 ? (
               <>
                 <p>すべて知っている単語でした</p>
                 <p>復習の間隔は自動で調整されます。</p>
@@ -400,7 +286,7 @@ export default function VocabularyTestPage() {
             ) : (
               <>
                 <p>
-                  再確認 {summary.retestCount} 語中 <strong>{summary.correct}</strong> 正解
+                  再確認 {view.summary.retestCount} 語中 <strong>{view.summary.retestCorrectCount}</strong> 正解
                 </p>
                 <p>復習の間隔は自動で調整されます。</p>
               </>
@@ -409,32 +295,7 @@ export default function VocabularyTestPage() {
               <button
                 type="button"
                 className="btn btn-primary"
-                onClick={() => {
-                  setPhase('loading')
-                  setItems([])
-                  setAssessmentIndex(0)
-                  setAssessments({})
-                  setRetestItems([])
-                  setRetestIndex(0)
-                  setRetestResults({})
-                  setSummary(null)
-                  getVocabularyTestSession(gateway)
-                    .then((result) => {
-                      if (!result.ok) {
-                        setPhase('error')
-                        showToast('単語テストの読み込みに失敗しました', 'error')
-                        return
-                      }
-                      const session = result.value
-                      const boundedItems = session.items.slice(0, 10)
-                      setItems(boundedItems)
-                      setPhase(boundedItems.length === 0 ? 'empty' : 'self-assessment')
-                    })
-                    .catch(() => {
-                      setPhase('error')
-                      showToast('単語テストの読み込みに失敗しました', 'error')
-                    })
-                }}
+                onClick={reload}
               >
                 もう一度テスト
               </button>
@@ -444,9 +305,9 @@ export default function VocabularyTestPage() {
           </section>
         ) : null}
 
-        {phase === 'error' ? (
+        {view.phase === 'error' ? (
           <section className="vocabulary-result" aria-labelledby="vocabulary-error-title">
-            {Object.keys(assessments).length === 0 ? (
+            {view.errorReason === 'load' ? (
               <>
                 <p className="vocabulary-test-kicker">読み込みに失敗しました</p>
                 <h2 id="vocabulary-error-title" ref={errorHeadingRef} tabIndex={-1}>もう一度試す</h2>
@@ -454,27 +315,7 @@ export default function VocabularyTestPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => {
-                    setPhase('loading')
-                    getVocabularyTestSession(gateway)
-                      .then((result) => {
-                        if (!result.ok) {
-                          showToast('単語テストの読み込みに失敗しました', 'error')
-                          return
-                        }
-                        const session = result.value
-                        const boundedItems = session.items.slice(0, 10)
-                        setItems(boundedItems)
-                        setAssessments({})
-                        setRetestItems([])
-                        setRetestIndex(0)
-                        setRetestResults({})
-                        setPhase(boundedItems.length === 0 ? 'empty' : 'self-assessment')
-                      })
-                      .catch(() => {
-                        showToast('単語テストの読み込みに失敗しました', 'error')
-                      })
-                  }}
+                  onClick={reload}
                 >
                   リロードする
                 </button>
@@ -488,7 +329,11 @@ export default function VocabularyTestPage() {
                 <button
                   type="button"
                   className="btn btn-primary"
-                  onClick={() => void submitResults(assessments, retestResults)}
+                  onClick={() => {
+                    void commands.submitVocabularyTest().then((result) => {
+                      if (!result.ok) showToast(SUBMIT_FAILURE_MESSAGE, 'error')
+                    })
+                  }}
                 >
                   送信を再試行する
                 </button>
