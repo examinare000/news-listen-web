@@ -59,6 +59,12 @@ function isPresPlaybackValueImport(imp: ImportRecord): boolean {
   return !onlySpeeds
 }
 
+/** PRES が単語テストの domain・session から値を import する違反か（web-dec-179。型だけの import は許す）。 */
+function isPresVocabularyTestValueImport(imp: ImportRecord): boolean {
+  if (imp.resolved === null || imp.typeOnly) return false
+  return imp.resolved === 'lib/learning/domain/vocabularyTest' || imp.resolved === 'lib/learning/application/vocabularyTestSession'
+}
+
 const isDomainOrAppModule = (resolved: string): boolean => {
   const layer = layerOf(resolved)
   return layer === 'DOMAIN' || layer === 'APP'
@@ -111,7 +117,9 @@ export function detectImportRows(file: string, source: string): Row[] {
       add('web-dep-02', specifier)
     } else if (layer === 'PRES') {
       if (resolved === null) continue
-      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp)) add('web-dep-05', specifier)
+      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp) || isPresVocabularyTestValueImport(imp)) {
+        add('web-dep-05', specifier)
+      }
     } else if (file.startsWith('contexts/')) {
       if (resolved !== null && (resolved === 'components' || resolved.startsWith('components/'))) {
         add('web-dep-06', specifier)
@@ -601,6 +609,11 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
       { label: 'slice(0, 3)', find: (ctx) => regexStarts(ctx.body, /\.slice\(0,\s*3\)/) },
       { label: 'retest_correct', find: (ctx) => regexStarts(ctx.body, /\bretest_correct\b/) },
     ],
+  },
+  {
+    rule: 'web-rule-learning-07',
+    allowed: only('lib/learning/domain/vocabularyTest.ts', 'lib/learning/infrastructure/learningGateway.ts'),
+    patterns: [{ label: 'self_known', find: (ctx) => regexStarts(ctx.body, /\bself_known\b/) }],
   },
   {
     rule: 'web-rule-admin-02',

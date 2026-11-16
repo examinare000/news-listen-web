@@ -24,6 +24,7 @@ const SNAPSHOT = {
 }
 const SUMMARY = { count: 1, items: [{ id: 'v1', term: 't', meaning: 'm', registeredAt: '2026-07-05T00:00:00Z', registeredDay: '2026-07-05' }] }
 const FAILURE: ApiFailure = { kind: 'network' }
+type TestWord = { vocabularyId: string; term: string; meaning: string; example: string; distractors: ReadonlyArray<string> }
 
 // 戻りの Result を返す・reject する・同期 throw する、の 3 種の失敗と成功を 1 つの型で表す。
 type Outcome<T> =
@@ -47,6 +48,7 @@ function harness(
     due?: Outcome<number>
     suggestion?: Outcome<{ hasSuggestion: boolean; suggested: 'toeic_600' | null; reason: string | null }>
     seen?: ReadonlyArray<string>
+    testSession?: Outcome<ReadonlyArray<TestWord>>
   } = {},
 ) {
   let listCalls = 0
@@ -78,6 +80,14 @@ function harness(
     getDifficultySuggestion: () => {
       calls.push('getDifficultySuggestion')
       return play(overrides.suggestion ?? { kind: 'ok', value: { hasSuggestion: true, suggested: 'toeic_600', reason: 'r' } })
+    },
+    getVocabularyTestSession: () => {
+      calls.push('getVocabularyTestSession')
+      return play(overrides.testSession ?? { kind: 'ok', value: [] })
+    },
+    submitVocabularyTestResults: () => {
+      calls.push('submitVocabularyTestResults')
+      return Promise.resolve({ ok: true, value: undefined })
     },
   }
   const seenAchievements = {
@@ -206,6 +216,8 @@ describe('getDashboard (web-query-learning-06・web-dec-174・product-learn-04�
       getVocabularySummary: () => hold('summary', SUMMARY),
       countDueTestItems: () => hold('due', 1),
       getDifficultySuggestion: () => Promise.resolve({ ok: true, value: { hasSuggestion: false, suggested: null, reason: null } }),
+      getVocabularyTestSession: () => Promise.resolve({ ok: true, value: [] }),
+      submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }),
     }
     const queries = createLearningQueries({
       gateway,
@@ -249,5 +261,58 @@ describe('getDifficultySuggestion (web-query-learning-05・web-rule-learning-06�
     const { queries } = harness(undefined, { suggestion: { kind } })
 
     await expect(queries.getDifficultySuggestion()).resolves.toBeNull()
+  })
+})
+
+describe('getVocabularyTestSession (web-query-learning-01・product-learn-06)', () => {
+  const words = (count: number): TestWord[] =>
+    Array.from({ length: count }, (_, i) => ({
+      vocabularyId: `v${i}`,
+      term: `t${i}`,
+      meaning: `m${i}`,
+      example: `e${i}`,
+      distractors: [`d${i}`],
+    }))
+
+  test('verifies: CI-VT11 — 成功の値は gateway の record の中身そのもの。12 語を打ち切らない', async () => {
+    const { queries } = harness(undefined, { testSession: { kind: 'ok', value: words(12) } })
+
+    const result = await queries.getVocabularyTestSession()
+
+    if (!result.ok) throw new Error('成功を期待した')
+    expect(result.value).toHaveLength(12)
+    expect(result.value[0]).toEqual({ vocabularyId: 'v0', term: 't0', meaning: 'm0', example: 'e0', distractors: ['d0'] })
+  })
+
+  test('verifies: CI-VT11 — 失敗の Result を null に畳まず素通しする（toast に使うため）', async () => {
+    const { queries } = harness(undefined, { testSession: { kind: 'fail' } })
+
+    expect(await queries.getVocabularyTestSession()).toEqual({ ok: false, failure: FAILURE })
+  })
+
+  test('verifies: CI-VT11 — 成功の値は配列も要素も distractors も凍結済みで、呼ぶたびに別の配列', async () => {
+    const source = words(2)
+    const { queries } = harness(undefined, { testSession: { kind: 'ok', value: source } })
+
+    const first = await queries.getVocabularyTestSession()
+    const second = await queries.getVocabularyTestSession()
+
+    if (!first.ok || !second.ok) throw new Error('成功を期待した')
+    expect(Object.isFrozen(first.value)).toBe(true)
+    for (const record of first.value) {
+      expect(Object.isFrozen(record)).toBe(true)
+      expect(Object.isFrozen(record.distractors)).toBe(true)
+    }
+    expect(first.value).not.toBe(second.value)
+    expect(first.value).toEqual(second.value)
+  })
+
+  test('verifies: CI-VT11 — 読むだけで、gateway の書き込み（submitVocabularyTestResults）・既読の write・clear は呼ばない', async () => {
+    const { queries, store, calls } = harness(undefined, { testSession: { kind: 'ok', value: words(1) } })
+
+    await queries.getVocabularyTestSession()
+
+    expect(calls).toEqual(['getVocabularyTestSession'])
+    expect(store).toEqual([])
   })
 })

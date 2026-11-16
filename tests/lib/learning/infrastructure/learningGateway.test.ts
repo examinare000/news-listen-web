@@ -342,3 +342,70 @@ describe('createLearningGateway の新しい 5 メソッドの失敗 (web-dec-16
     expect(await learning.getDifficultySuggestion()).toEqual(failed)
   })
 })
+
+const TEST_RESULT_PATH = '/api/backend/vocabulary/test-result'
+
+describe('createLearningGateway.getVocabularyTestSession (product-learn-06・web-query-learning-01)', () => {
+  test('verifies: CI-VT20 — GET /vocabulary/test-session を 1 回呼び、items を camelCase の record に順に写す。distractors は応答と別の配列。12 語を打ち切らない', async () => {
+    const gateway = createGatewayDouble()
+    const items = Array.from({ length: 12 }, (_, i) => ({
+      vocabulary_id: `v${i}`,
+      term: `t${i}`,
+      meaning: `m${i}`,
+      example: `e${i}`,
+      distractors: [`d${i}a`, `d${i}b`],
+    }))
+    gateway.respond('GET', TEST_SESSION_PATH, { ok: true, value: { items } })
+
+    const result = await createLearningGateway(gateway).getVocabularyTestSession()
+
+    expect(gateway.calls).toEqual([{ method: 'GET', path: TEST_SESSION_PATH, body: undefined }])
+    if (!result.ok) throw new Error('成功を期待した')
+    expect(result.value).toHaveLength(12)
+    expect(result.value[0]).toEqual({ vocabularyId: 'v0', term: 't0', meaning: 'm0', example: 'e0', distractors: ['d0a', 'd0b'] })
+    expect(result.value[11].vocabularyId).toBe('v11')
+    expect(Object.keys(result.value[0]).sort()).toEqual(['distractors', 'example', 'meaning', 'term', 'vocabularyId'])
+    expect(result.value[0].distractors).not.toBe(items[0].distractors)
+  })
+
+  test('verifies: CI-VT20 — 失敗はそのまま返す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('GET', TEST_SESSION_PATH, { ok: false, failure: { kind: 'network' } })
+
+    expect(await createLearningGateway(gateway).getVocabularyTestSession()).toEqual({ ok: false, failure: { kind: 'network' } })
+  })
+})
+
+describe('createLearningGateway.submitVocabularyTestResults (product-learn-06・shared-dec-25・web-rule-learning-07)', () => {
+  test('verifies: CI-VT21 — POST /vocabulary/test-result に { vocabulary_id, self_known, retest_correct } の裸の配列を送る。retest_correct: null を保ち、応答の updated を捨てる', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', TEST_RESULT_PATH, { ok: true, value: { updated: 2 } })
+
+    const result = await createLearningGateway(gateway).submitVocabularyTestResults([
+      { vocabularyId: 'v1', selfKnown: true, retestCorrect: null },
+      { vocabularyId: 'v2', selfKnown: false, retestCorrect: false },
+      { vocabularyId: 'v3', selfKnown: false, retestCorrect: true },
+    ])
+
+    expect(gateway.calls).toEqual([
+      {
+        method: 'POST',
+        path: TEST_RESULT_PATH,
+        body: [
+          { vocabulary_id: 'v1', self_known: true, retest_correct: null },
+          { vocabulary_id: 'v2', self_known: false, retest_correct: false },
+          { vocabulary_id: 'v3', self_known: false, retest_correct: true },
+        ],
+      },
+    ])
+    expect(Array.isArray(gateway.calls[0].body)).toBe(true)
+    expect(result).toEqual({ ok: true, value: undefined })
+  })
+
+  test('verifies: CI-VT21 — 失敗はそのまま返す', async () => {
+    const gateway = createGatewayDouble()
+    gateway.respond('POST', TEST_RESULT_PATH, { ok: false, failure: { kind: 'network' } })
+
+    expect(await createLearningGateway(gateway).submitVocabularyTestResults([])).toEqual({ ok: false, failure: { kind: 'network' } })
+  })
+})

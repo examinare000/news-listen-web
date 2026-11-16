@@ -148,6 +148,16 @@ const presSpec = {
       allowImportNames: ['PLAYBACK_SPEEDS'],
       message: 'PRES は再生 domain の値を import しない（web-dep-05。PLAYBACK_SPEEDS を除く）',
     },
+    {
+      name: '@/lib/learning/domain/vocabularyTest',
+      allowTypeImports: true,
+      message: 'PRES は単語テストの domain の値を import しない（web-dep-05。page は contexts/useVocabularyTestSession を経由する）',
+    },
+    {
+      name: '@/lib/learning/application/vocabularyTestSession',
+      allowTypeImports: true,
+      message: 'PRES は単語テストの session の値を import しない（web-dep-05。page は contexts/useVocabularyTestSession を経由する）',
+    },
   ],
 }
 

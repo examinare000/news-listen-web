@@ -43,6 +43,8 @@ function harness(overrides: {
     getVocabularySummary: () => Promise.resolve({ ok: true, value: { count: 0, items: [] } }),
     countDueTestItems: () => Promise.resolve({ ok: true, value: 0 }),
     getDifficultySuggestion: () => Promise.resolve({ ok: true, value: { hasSuggestion: false, suggested: null, reason: null } }),
+    getVocabularyTestSession: () => Promise.resolve({ ok: true, value: [] }),
+    submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }),
   }
   const seenAchievements = {
     read: (): ReadonlySet<string> => new Set<string>(),
@@ -65,6 +67,8 @@ function seenHarness(stored: ReadonlyArray<string>) {
     getVocabularySummary: () => Promise.resolve({ ok: true, value: { count: 0, items: [] } }),
     countDueTestItems: () => Promise.resolve({ ok: true, value: 0 }),
     getDifficultySuggestion: () => Promise.resolve({ ok: true, value: { hasSuggestion: false, suggested: null, reason: null } }),
+    getVocabularyTestSession: () => Promise.resolve({ ok: true, value: [] }),
+    submitVocabularyTestResults: () => Promise.resolve({ ok: true, value: undefined }),
   }
   const seenAchievements = {
     read: (): ReadonlySet<string> => {

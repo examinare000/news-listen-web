@@ -180,4 +180,83 @@ describe('VocabularyTestPage', () => {
 
     expect(await screen.findByText('いま復習する単語はありません')).toBeInTheDocument()
   })
+
+  test('product-learn-06 verifies: CI-VT23 — 送信失敗の後に「送信を再試行する」で同じ body を再送し、結果に進む。toast は 1 回', async () => {
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: [ITEMS[0]] } })
+    let posts = 0
+    gw.respondWith('POST', RESULT_PATH, () => {
+      posts += 1
+      return Promise.resolve(posts === 1 ? { ok: false, failure: { kind: 'network' } } : { ok: true, value: { updated: 1 } })
+    })
+    render(<VocabularyTestPage />)
+    await screen.findByRole('heading', { name: 'accelerate' })
+
+    await userEvent.click(screen.getByRole('button', { name: '知ってる' }))
+    expect(await screen.findByRole('heading', { name: 'もう一度送信する' })).toBeInTheDocument()
+    expect(showToast).toHaveBeenCalledTimes(1)
+    expect(showToast).toHaveBeenCalledWith('単語テストの結果送信に失敗しました', 'error')
+
+    await userEvent.click(screen.getByRole('button', { name: '送信を再試行する' }))
+
+    expect(await screen.findByText('すべて知っている単語でした')).toBeInTheDocument()
+    const posted = callsTo('POST', RESULT_PATH)
+    expect(posted).toHaveLength(2)
+    expect(posted[1].body).toEqual(posted[0].body)
+    expect(posted[0].body).toEqual([{ vocabulary_id: 'v1', self_known: true, retest_correct: null }])
+  })
+
+  test('product-learn-06 web-dec-156 verifies: CI-VT23 — B1: 読み込みが 2 回とも失敗すると、「リロードする」の後も error の画面に戻り、toast を 2 回出す', async () => {
+    gw.respond('GET', SESSION_PATH, { ok: false, failure: { kind: 'network' } })
+    render(<VocabularyTestPage />)
+    await screen.findByRole('heading', { name: 'もう一度試す' })
+
+    await userEvent.click(screen.getByRole('button', { name: 'リロードする' }))
+
+    await waitFor(() => expect(callsTo('GET', SESSION_PATH)).toHaveLength(2))
+    expect(await screen.findByRole('heading', { name: 'もう一度試す' })).toBeInTheDocument()
+    expect(showToast).toHaveBeenCalledTimes(2)
+    expect(showToast).toHaveBeenNthCalledWith(2, '単語テストの読み込みに失敗しました', 'error')
+  })
+
+  test('product-learn-06 web-dec-156 verifies: CI-VT23 — B2: 再テストを 1 周した後の「もう一度テスト」で、2 周目の選択肢を押せて進む', async () => {
+    gw.respond('GET', SESSION_PATH, { ok: true, value: { items: [ITEMS[0]] } })
+    gw.respond('POST', RESULT_PATH, { ok: true, value: { updated: 1 } })
+    const user = userEvent.setup()
+    render(<VocabularyTestPage />)
+    await screen.findByRole('heading', { name: 'accelerate' })
+    await user.click(screen.getByRole('button', { name: 'まだ' }))
+    await user.click(await screen.findByRole('button', { name: '加速する' }))
+    const again = await screen.findByRole('button', { name: 'もう一度テスト' }, { timeout: 3000 })
+
+    await user.click(again)
+    await screen.findByRole('heading', { name: 'accelerate' })
+    await user.click(screen.getByRole('button', { name: 'まだ' }))
+
+    const choice = await screen.findByRole('button', { name: '加速する' })
+    expect(choice).not.toBeDisabled()
+    await user.click(choice)
+    expect(await screen.findByRole('button', { name: 'もう一度テスト' }, { timeout: 3000 })).toBeInTheDocument()
+    expect(callsTo('POST', RESULT_PATH)).toHaveLength(2)
+  })
+
+  test('product-learn-06 web-dec-176 verifies: CI-VT23 — 取得中に unmount → 再 mount し、2 つ目が成功した後に 1 つ目が失敗で完了しても、toast は出ず 2 つ目の語が出る', async () => {
+    let resolveFirst: (value: { ok: false; failure: { kind: 'network' } }) => void = () => undefined
+    let gets = 0
+    gw.respondWith('GET', SESSION_PATH, () => {
+      gets += 1
+      if (gets === 1) return new Promise((resolve) => { resolveFirst = resolve })
+      return Promise.resolve({ ok: true, value: { items: [ITEMS[1]] } })
+    })
+    const first = render(<VocabularyTestPage />)
+    await waitFor(() => expect(gets).toBe(1))
+    first.unmount()
+
+    render(<VocabularyTestPage />)
+    expect(await screen.findByRole('heading', { name: 'resilient' })).toBeInTheDocument()
+    resolveFirst({ ok: false, failure: { kind: 'network' } })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(showToast).not.toHaveBeenCalled()
+    expect(screen.getByRole('heading', { name: 'resilient' })).toBeInTheDocument()
+  })
 })

@@ -2,7 +2,7 @@
 import type { LearningGateway } from '@/lib/learning/application/ports'
 import type { QuizReceipt } from '@/lib/learning/application/commands'
 import type { ApiGateway } from '@/lib/api/gateway'
-import { getVocabulary, getVocabularyTestSession, saveVocabulary } from '@/lib/api/vocabulary'
+import { getVocabulary, getVocabularyTestSession, saveVocabulary, submitVocabularyTestResult } from '@/lib/api/vocabulary'
 import { getDifficultySuggestion, getLearningDashboard, getListeningStreak } from '@/lib/api/users'
 import { submitQuizAnswers } from '@/lib/api/podcasts'
 import type { DashboardSnapshot, StreakSummary, VocabularySummary } from '@/lib/learning/application/readModels'
@@ -132,6 +132,24 @@ export function createLearningGateway(gateway: ApiGateway): LearningGateway {
       if (!result.ok) return result
       const { has_suggestion, suggested, reason } = result.value
       return { ok: true, value: Object.freeze({ hasSuggestion: has_suggestion, suggested, reason }) }
+    },
+    async getVocabularyTestSession() {
+      const result = await getVocabularyTestSession(gateway)
+      if (!result.ok) return result
+      const words = result.value.items.map((item) => ({
+        vocabularyId: item.vocabulary_id,
+        term: item.term,
+        meaning: item.meaning,
+        example: item.example,
+        distractors: [...item.distractors],
+      }))
+      return { ok: true, value: words }
+    },
+    async submitVocabularyTestResults(results) {
+      // DTO の key（snake_case）はここだけが持つ（web-rule-learning-03・web-rule-learning-07）。
+      const payload = results.map((r) => ({ vocabulary_id: r.vocabularyId, self_known: r.selfKnown, retest_correct: r.retestCorrect }))
+      const result = await submitVocabularyTestResult(gateway, payload)
+      return result.ok ? { ok: true, value: undefined } : result
     },
   }
 }

@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（18 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（19 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -26,6 +26,7 @@ const EXPECTED_RULES = [
   'web-rule-learning-01',
   'web-rule-learning-02',
   'web-rule-learning-03',
+  'web-rule-learning-07',
   'web-rule-admin-02',
   'web-dep-08',
 ]
@@ -37,7 +38,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 18 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 19 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -65,6 +66,17 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
     expect(rows(F, 'const a = item.registered_at.slice(0, 10)')).toEqual([])
     expect(rows(F, 'const a = items.slice(0, 3)')).toEqual([`web-rule-learning-03 | ${F} | slice(0, 3)`])
     expect(rows(F, 'const a = r.retest_correct')).toEqual([`web-rule-learning-03 | ${F} | retest_correct`])
+  })
+
+  test('web-rule-learning-07・shared-dec-25: self_known を出てよいファイルの外で拾い、出てよい 2 ファイル・selfKnown・コメントの中の self_known は拾わない', () => {
+    expect(rows(F, 'const a = { self_known: true }')).toEqual([`web-rule-learning-07 | ${F} | self_known`])
+    expect(rows('lib/learning/application/vocabularyTestSession.ts', 'const a = r.self_known')).toEqual([
+      'web-rule-learning-07 | lib/learning/application/vocabularyTestSession.ts | self_known',
+    ])
+    expect(rows('lib/learning/domain/vocabularyTest.ts', 'const a = { self_known: true }')).toEqual([])
+    expect(rows('lib/learning/infrastructure/learningGateway.ts', 'const a = { self_known: true }')).toEqual([])
+    expect(rows(F, 'const a = { selfKnown: true }')).toEqual([])
+    expect(rows(F, '// self_known はコメント')).toEqual([])
   })
 
   test('web-rule-admin-02・web-dec-135: Math.max(...) と order !== を拾い、Math.max(a, b)・コメントの中・border !== x・出てよい featuredOrder.ts は拾わない', () => {

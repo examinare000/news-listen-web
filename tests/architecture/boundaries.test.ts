@@ -163,9 +163,14 @@ describe('web-temp-04 許可リスト architecture/boundaries.allowlist.json の
     expect(rows.filter((r) => r.removeBy === 'web-slice-learning-01')).toHaveLength(0)
   })
 
-  test('removeBy が web-slice-learning-03 の行は 0 件（web-slice-learning-03 で消した。web-slice-learning-02 の行は残る）', () => {
+  test('removeBy が web-slice-learning-03 の行は 0 件（web-slice-learning-03 で消した。web-slice-learning-02 の行は web-slice-learning-02 で消した）', () => {
     const rows = readAllowlistRowsStrict()
     expect(rows.filter((r) => r.removeBy === 'web-slice-learning-03')).toHaveLength(0)
+  })
+
+  test('removeBy が web-slice-learning-02 の行は 0 件（web-slice-learning-02 で消した）', () => {
+    const rows = readAllowlistRowsStrict()
+    expect(rows.filter((r) => r.removeBy === 'web-slice-learning-02')).toHaveLength(0)
   })
 })
 
@@ -488,6 +493,51 @@ const importCases: readonly ImportCase[] = [
     ].join('\n'),
     expected: ['web-dep-07 | lib/platform/errorReporter.ts | @/lib/platform/application/errorReporting'],
   },
+  // web-dep-05（PRES は単語テストの domain・session の値を import しない。型を除く。web-dec-179）
+  {
+    name: 'web-dep-05 正例: PRES が単語テストの domain の reduce を値で import する（web-dec-179）',
+    file: 'app/(app)/vocabulary-test/page.tsx',
+    source: "import { reduce } from '@/lib/learning/domain/vocabularyTest'",
+    expected: ['web-dep-05 | app/(app)/vocabulary-test/page.tsx | @/lib/learning/domain/vocabularyTest'],
+  },
+  {
+    name: 'web-dep-05 正例: PRES が単語テストの session の値・名前空間・副作用だけの import をする（web-dec-179）',
+    file: 'app/(app)/vocabulary-test/page.tsx',
+    source: [
+      "import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'",
+      "import * as S from '@/lib/learning/application/vocabularyTestSession'",
+      "import '@/lib/learning/application/vocabularyTestSession'",
+    ].join('\n'),
+    expected: ['web-dep-05 | app/(app)/vocabulary-test/page.tsx | @/lib/learning/application/vocabularyTestSession'],
+  },
+  {
+    name: 'web-dep-05 負例: PRES が単語テストの domain・session を import type・import { type X } だけで import する',
+    file: 'app/(app)/vocabulary-test/page.tsx',
+    source: [
+      "import type { VocabularyTestState } from '@/lib/learning/domain/vocabularyTest'",
+      "import { type VocabularyTestEvent } from '@/lib/learning/domain/vocabularyTest'",
+      "import type { VocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'",
+    ].join('\n'),
+    expected: [],
+  },
+  {
+    name: 'web-dep-05 負例: PRES が learning のほかの module（quiz の domain・readModels）の値を import する',
+    file: 'app/(app)/vocabulary-test/page.tsx',
+    source: [
+      "import { canSubmit } from '@/lib/learning/domain/quiz'",
+      "import { toGlossaryViews } from '@/lib/learning/application/readModels'",
+    ].join('\n'),
+    expected: [],
+  },
+  {
+    name: 'web-dep-05 負例: ROOT（contexts/useVocabularyTestSession.ts）は単語テストの domain・session の値を import してよい',
+    file: 'contexts/useVocabularyTestSession.ts',
+    source: [
+      "import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'",
+      "import { reduce } from '@/lib/learning/domain/vocabularyTest'",
+    ].join('\n'),
+    expected: [],
+  },
 ]
 
 describe('web-check-02 検出器の自己点検: import の向き（正例を拾い、負例を拾わない）', () => {
@@ -623,7 +673,6 @@ describe('web-check-01 eslint の境界の規則と、層の判定の一致', ()
     '許可リストの行を持つファイル（[id]・(app) を含む path を含む）で、その specifier だけが規則から外れ、同じファイルのほかの禁止は残る',
     async () => {
       const rows = readAllowlistRowsStrict().filter((r) => (WEB_CHECK_02_RULES as readonly string[]).includes(r.rule))
-      expect(rows.length, '許可リストに web-dep-01・D2・D3・D5・D6・D7・D12 の行が無い').toBeGreaterThan(0)
       const byFile = new Map<string, AllowlistRow[]>()
       for (const row of rows) byFile.set(row.file, [...(byFile.get(row.file) ?? []), row])
 
@@ -643,6 +692,25 @@ describe('web-check-01 eslint の境界の規則と、層の判定の一致', ()
       expect(problems).toEqual([])
     },
     300_000,
+  )
+
+  test(
+    '行に頼らない対照: 許可リストの行を持たない実在の PRES ファイルで、許可リストに無い禁止（infrastructure の import）が eslint の境界規則で指摘される',
+    async () => {
+      const file = 'app/(app)/vocabulary-test/page.tsx'
+      expect(scanFiles, '[precondition] 対照のファイルが実在しない').toContain(file)
+      expect(
+        readAllowlistRowsStrict().filter((r) => r.file === file),
+        '[precondition] 対照のファイルに許可リストの行がある',
+      ).toEqual([])
+      const control = controlImportFor(file)
+      expect(control).toBe("import '@/lib/platform/cacheStore'")
+
+      const byLine = await lintLines(file, [control])
+
+      expect(byLine.get(1) ?? []).toContain(BOUNDARY_RULE)
+    },
+    180_000,
   )
 })
 
@@ -705,6 +773,11 @@ const lintExamples: readonly LintExample[] = [
   { name: 'web-dec-146 負例: 専用 root が gateway を import する（PRES なら禁止になる import）', filePath: 'app/global-error.tsx', source: "import { createGateway } from '@/lib/api/gateway'", flagged: false },
   { name: 'web-dec-149 正例: 表示 component が内側 APP の型を import type で import する', filePath: 'components/ErrorFallback.tsx', source: "import type { ReportClientError } from '@/lib/platform/application/errorReporting'", flagged: true },
   { name: 'web-dec-149 負例: 表示 component が contexts 経由の型を import type で import する', filePath: 'components/GlobalErrorFallback.tsx', source: "import type { ReportClientError } from '@/contexts/ErrorReportingProvider'", flagged: false },
+  { name: 'web-dep-05 正例: 単語テストの page が domain の値を import する（web-dec-179）', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import { reduce } from '@/lib/learning/domain/vocabularyTest'", flagged: true },
+  { name: 'web-dep-05 正例: 単語テストの page が session の値を import する（web-dec-179）', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'", flagged: true },
+  { name: 'web-dep-05 負例: 単語テストの page が import type で import する', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import type { VocabularyTestState } from '@/lib/learning/domain/vocabularyTest'", flagged: false },
+  { name: 'web-dep-05 負例: 単語テストの page が learning のほかの domain（quiz）の値を import する', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import { canSubmit } from '@/lib/learning/domain/quiz'", flagged: false },
+  { name: 'web-dep-05 負例: contexts/useLearningQueries.ts（ROOT）が session の値を import する', filePath: 'contexts/useLearningQueries.ts', source: "import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'", flagged: false },
 ]
 
 describe('web-check-01 eslint の禁止項目の効き目（反例を実際に lint に通す）', () => {
