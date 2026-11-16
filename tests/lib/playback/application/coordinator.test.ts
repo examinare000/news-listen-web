@@ -5,7 +5,15 @@
 import { describe, expect, test, vi } from 'vitest'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import { createPositionReporter } from '@/lib/playback/application/positionReporter'
-import type { EpisodeSource, LocalPositionStore, OfflineLibrary, PositionSync } from '@/lib/playback/application/ports'
+import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
+import type {
+  EpisodeSource,
+  LocalPositionStore,
+  OfflineLibrary,
+  PositionSubject,
+  PositionSync,
+  StoredPosition,
+} from '@/lib/playback/application/ports'
 import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
 import type { Episode, PlayableEpisode } from '@/lib/catalog/domain/episode'
@@ -34,6 +42,12 @@ function deferred<T>(): Deferred<T> {
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 40; i += 1) await Promise.resolve()
 }
+
+// 時計の基準（記録時刻）。resume の候補表は T1 < T2 の相対で書く。
+const T0 = 1_000_000
+const T1 = 2_000_000
+const T2 = 3_000_000
+const USER = 'u-a'
 
 const NETWORK_FAILURE: ApiFailure = { kind: 'network' }
 const OK_VOID: Result<void, ApiFailure> = { ok: true, value: undefined }
@@ -77,12 +91,19 @@ function createWorld(options: { readonly online?: boolean } = {}) {
   const play = vi.fn((): Promise<void> => real.play())
   const session: PlaybackSession = { ...real, start, fail, play }
 
-  const env = { online: options.online ?? true, speed: 1.0 as PlaybackSpeed }
+  const env = {
+    online: options.online ?? true,
+    speed: 1.0 as PlaybackSpeed,
+    now: T0,
+    recording: USER as string | null,
+    sending: USER as string | null,
+  }
   const saved = new Set<string>()
   const catalog = new Map<string, Episode>()
   const fetchFailures = new Set<string>()
   const nullGets = new Set<string>()
-  const positions = new Map<string, number>()
+  // 端末の記録。key は `${userId}:${episodeId}`。
+  const positions = new Map<string, StoredPosition>()
   const fetchHolds = new Map<string, Deferred<Result<Episode, ApiFailure>>[]>()
   const getHolds = new Map<string, Deferred<PlayableEpisode | null>[]>()
   const releases = new Map<string, ReturnType<typeof vi.fn<() => void>>>()
@@ -123,14 +144,28 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     usage: vi.fn<OfflineLibrary['usage']>(() => Promise.resolve(null)),
   }
 
-  const updatePosition = vi.fn<PositionSync['updatePosition']>(() => Promise.resolve(OK_VOID))
+  const updatePosition = vi.fn<PositionSync['updatePosition']>(() =>
+    Promise.resolve({ ok: true, value: { positionSeconds: 0, recordedAt: null } }),
+  )
   const markCompleted = vi.fn<PositionSync['markCompleted']>(() => Promise.resolve(OK_VOID))
-  const read = vi.fn<LocalPositionStore['read']>((id) => positions.get(id) ?? null)
-  const write = vi.fn<LocalPositionStore['write']>()
-  const clearAll = vi.fn<LocalPositionStore['clearAll']>()
+  const read = vi.fn<LocalPositionStore['read']>((user, id) => positions.get(`${user}:${id}`) ?? null)
+  const write = vi.fn<LocalPositionStore['write']>(() => true)
+  const unsent = vi.fn<LocalPositionStore['unsent']>(() => [])
+  const markSynced = vi.fn<LocalPositionStore['markSynced']>()
+  const clearSubject = vi.fn<LocalPositionStore['clearSubject']>()
+  const reclaim = vi.fn<LocalPositionStore['reclaim']>()
+  const discardLegacy = vi.fn<LocalPositionStore['discardLegacy']>()
+  const localPositions: LocalPositionStore = { read, write, unsent, markSynced, clearSubject, reclaim, discardLegacy }
+  // outbox は手書きの fake（実物は値で import しない）。送信の経路を flush の呼出で観測する。
+  const flush = vi.fn<PositionOutbox['flush']>(() => Promise.resolve(OK_VOID))
+  const adopt = vi.fn<PositionOutbox['adopt']>()
+  const subject: PositionSubject = { recording: () => env.recording, sending: () => env.sending }
   const positionReporter = createPositionReporter({
     sync: { updatePosition, markCompleted },
-    local: { read, write, clearAll },
+    outbox: { flush },
+    local: localPositions,
+    clock: () => env.now,
+    subject,
   })
 
   const coordinator = createPlaybackCoordinator({
@@ -138,7 +173,9 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     offline,
     positionReporter,
     episodes: { fetch },
-    localPositions: { read, write, clearAll },
+    localPositions,
+    subject,
+    positionIntake: { adopt },
     isOnline: () => env.online,
     defaultSpeed: () => env.speed,
   })
@@ -167,6 +204,12 @@ function createWorld(options: { readonly online?: boolean } = {}) {
     markCompleted,
     read,
     write,
+    markSynced,
+    clearSubject,
+    reclaim,
+    discardLegacy,
+    flush,
+    adopt,
     notified,
     releaseOf,
     cached,
@@ -208,6 +251,13 @@ const upNextIds = (w: World): string[] => w.coordinator.upNext().map((item) => i
 const calledIds = (mock: { readonly mock: { readonly calls: ReadonlyArray<ReadonlyArray<unknown>> } }): unknown[] =>
   mock.mock.calls.map((call) => call[0])
 const startedIds = (w: World): string[] => w.start.mock.calls.map((call) => call[0].id)
+/** Reporter が記録した episode の id（`local.write(user, id, record)` の第 2 引数）。 */
+const writtenIds = (w: World): unknown[] => w.write.mock.calls.map((call) => call[1])
+const record = (positionSeconds: number, recordedAt: number, synced = true): StoredPosition => ({
+  positionSeconds,
+  recordedAt,
+  synced,
+})
 
 /** shared-inv-01: session が idle でなければ、その episode の id が current の id。id だけの errored は current を観測できないので対象外。 */
 async function expectSharedInvariant(w: World): Promise<void> {
@@ -352,22 +402,116 @@ describe('startEpisode', () => {
     await expectSharedInvariant(w)
   })
 
-  test.each([
-    ['server > 0 は端末の位置に勝つ', 120, 50, 120],
-    ['server 0 なら端末の位置', 0, 50, 50],
-    ['server 0・端末に無ければ 0', 0, null, 0],
-    ['server が末尾 2 秒以内なら 0', 299, null, 0],
-    ['端末の位置が末尾 2 秒以内でも 0', 0, 299, 0],
-  ])('resume の合成: %s (verifies: CI-T26; web-rule-playback-05)', async (_name, server, local, expected) => {
+  describe('resume の候補: 時刻の新しい方（verifies: web-rule-playback-05・ADR-109 決定 10）', () => {
+    // [名前, 端末の記録, サーバーの値, 期待する開始位置]。duration 300。結果は末尾 2 秒窓を通した後。
+    test.each<[string, StoredPosition | null, { position: number; at?: number }, number]>([
+      ['端末が新しければ端末', record(50, T2), { position: 120, at: T1 }, 50],
+      ['サーバーが新しければサーバー', record(50, T1), { position: 120, at: T2 }, 120],
+      ['サーバーの時刻が無ければ端末（時刻なしは最古）', record(50, T1), { position: 120 }, 50],
+      ['同時刻なら端末', record(50, T1), { position: 120, at: T1 }, 50],
+      ['端末に無ければサーバー（時刻なしでも）', null, { position: 120 }, 120],
+      ['端末に無く、サーバーが 0 なら 0', null, { position: 0 }, 0],
+      ['新しい端末の位置が末尾 2 秒以内なら 0（窓）', record(299, T2), { position: 0, at: T1 }, 0],
+    ])('%s', async (_name, device, server, expected) => {
+      const w = createWorld()
+      w.catalog.set(
+        'r',
+        playable('r', {
+          durationSeconds: 300,
+          serverPositionSeconds: server.position,
+          ...(server.at === undefined ? {} : { serverPositionRecordedAt: server.at }),
+        }),
+      )
+      if (device !== null) w.positions.set(`${USER}:r`, device)
+
+      await w.coordinator.startEpisode('r')
+
+      expect(w.start).toHaveBeenCalledTimes(1)
+      expect(w.start.mock.calls[0][1]).toBe(expected)
+      await expectSharedInvariant(w)
+    })
+
+    test('記録の主体が null なら端末の記録は候補にしない（主体の記録も読まない）', async () => {
+      const w = createWorld()
+      w.catalog.set('r', playable('r', { durationSeconds: 300, serverPositionSeconds: 120 }))
+      w.positions.set(`${USER}:r`, record(50, T2))
+      w.env.recording = null
+
+      await w.coordinator.startEpisode('r')
+
+      expect(w.start.mock.calls[0][1]).toBe(120)
+      expect(w.read).not.toHaveBeenCalled()
+    })
+
+    test('端末の記録は記録の主体のものだけを読む（別主体の新しい記録は候補にしない）', async () => {
+      const w = createWorld()
+      w.catalog.set('r', playable('r', { durationSeconds: 300, serverPositionSeconds: 120 }))
+      w.positions.set('u-b:r', record(50, T2))
+
+      await w.coordinator.startEpisode('r')
+
+      expect(w.read).toHaveBeenCalledWith(USER, 'r')
+      expect(w.start.mock.calls[0][1]).toBe(120)
+    })
+  })
+
+  test('shared-sync-07: 開始前の再取得（network 経路）の位置を adopt へ渡し、保存済みの経路は渡さない', async () => {
     const w = createWorld()
-    w.catalog.set('r', playable('r', { durationSeconds: 300, serverPositionSeconds: server }))
-    if (local !== null) w.positions.set('r', local)
+    w.catalog.set('n', playable('n', { serverPositionSeconds: 80, serverPositionRecordedAt: T2 }))
+    w.catalog.set('m', playable('m', { serverPositionSeconds: 30 }))
 
-    await w.coordinator.startEpisode('r')
+    expect(await w.coordinator.startEpisode('n')).toEqual({ ok: true })
+    expect(w.adopt).toHaveBeenCalledTimes(1)
+    expect(w.adopt).toHaveBeenLastCalledWith(USER, 'n', { positionSeconds: 80, recordedAt: T2 })
 
-    expect(w.start).toHaveBeenCalledTimes(1)
-    expect(w.start.mock.calls[0][1]).toBe(expected)
+    // 時刻の無いサーバー値は recordedAt: null で渡す（取り込み側が最古として扱う）。
+    expect(await w.coordinator.startEpisode('m')).toEqual({ ok: true })
+    expect(w.adopt).toHaveBeenCalledTimes(2)
+    expect(w.adopt).toHaveBeenLastCalledWith(USER, 'm', { positionSeconds: 30, recordedAt: null })
+
+    // 保存済みの経路（offline.get）は入口でない。
+    w.adopt.mockClear()
+    w.saved.add('s')
+    expect(await w.coordinator.startEpisode('s')).toEqual({ ok: true })
+    expect(calledIds(w.get)).toEqual(['s'])
+    expect(w.adopt).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
+  })
+
+  test('shared-leave-14 / shared-sync-07: 開始前の再取得の応答の時点で送信の主体が変わっていれば adopt へ渡さない', async () => {
+    const w = createWorld()
+    w.catalog.set('n', playable('n', { serverPositionSeconds: 80, serverPositionRecordedAt: T2 }))
+    const held = w.holdFetch('n')
+
+    const starting = w.coordinator.startEpisode('n')
+    await settle()
+    w.env.sending = 'u-b'
+    held.resolve({ ok: true, value: w.catalog.get('n') as Episode })
+    await starting
+    await settle()
+
+    expect(w.adopt).not.toHaveBeenCalled()
+
+    // 正方向の対照: 主体が変わらなければ同じ経路で渡る。
+    const control = createWorld()
+    control.catalog.set('n', playable('n', { serverPositionSeconds: 80, serverPositionRecordedAt: T2 }))
+    const heldControl = control.holdFetch('n')
+    const controlStarting = control.coordinator.startEpisode('n')
+    await settle()
+    heldControl.resolve({ ok: true, value: control.catalog.get('n') as Episode })
+    await controlStarting
+    expect(control.adopt).toHaveBeenCalledTimes(1)
+    expect(control.adopt).toHaveBeenCalledWith(USER, 'n', { positionSeconds: 80, recordedAt: T2 })
+  })
+
+  test('shared-leave-14 / shared-sync-07: 送信の主体が無い（null）間の再取得は adopt へ渡さない', async () => {
+    const w = createWorld()
+    w.catalog.set('n', playable('n', { serverPositionSeconds: 80, serverPositionRecordedAt: T2 }))
+    w.env.sending = null
+
+    expect(await w.coordinator.startEpisode('n')).toEqual({ ok: true })
+
+    expect(w.adopt).not.toHaveBeenCalled()
   })
 
   test('すべての開始で defaultSpeed() の値を使う。session の速度は引き継がない (verifies: CI-T37; shared-session-10)', async () => {
@@ -643,7 +787,7 @@ describe('onEnded', () => {
   test('送信が未決着でも次の開始は進む (verifies: CI-T35, CI-T29; shared-session-07)', async () => {
     const w = createWorld()
     w.markCompleted.mockReturnValue(new Promise(() => undefined))
-    w.updatePosition.mockReturnValue(new Promise(() => undefined))
+    w.flush.mockReturnValue(new Promise(() => undefined))
     await playingWithQueue(w, 'a', 'c')
 
     await endPlayback(w)
@@ -689,15 +833,17 @@ describe('retry', () => {
 })
 
 describe('skipToNext', () => {
-  test('b が再生可能なら a の位置を 1 回送り、完聴を送らずに b を開始する (verifies: CI-T31; shared-session-14)', async () => {
+  test('b が再生可能なら a の位置を 1 回記録して送り、完聴を送らずに b を開始する (verifies: CI-T31; shared-session-14)', async () => {
     const w = createWorld()
     await playingWithQueue(w, 'a', 'b')
     w.audio.fireTimeUpdate(7)
 
     expect(await w.coordinator.skipToNext()).toEqual({ ok: true })
 
-    expect(w.updatePosition).toHaveBeenCalledTimes(1)
-    expect(w.updatePosition).toHaveBeenCalledWith('a', 7)
+    expect(w.write).toHaveBeenCalledTimes(1)
+    expect(w.write).toHaveBeenCalledWith(USER, 'a', { positionSeconds: 7, recordedAt: T0, synced: false })
+    expect(w.flush).toHaveBeenCalledTimes(1)
+    expect(w.updatePosition).not.toHaveBeenCalled()
     expect(w.markCompleted).not.toHaveBeenCalled()
     expect(startedIds(w)).toEqual(['a', 'b'])
     expect(currentId(w)).toBe('b')
@@ -732,7 +878,7 @@ describe('skipToNext', () => {
 
     expect(w.session.state()).toBe(before)
     expect(w.fetch).not.toHaveBeenCalled()
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
   })
 
@@ -1025,10 +1171,11 @@ describe('query と subscribe', () => {
     const w = createWorld()
     await playingWithQueue(w, 'a', 'c')
     w.audio.fireTimeUpdate(7)
-    w.positions.set('a', 42)
+    w.positions.set(`${USER}:a`, record(42, T0))
     const stateBefore = w.session.state()
     w.write.mockClear()
-    w.updatePosition.mockClear()
+    w.adopt.mockClear()
+    w.flush.mockClear()
 
     const nowPlaying = {
       episodeId: 'a',
@@ -1048,13 +1195,32 @@ describe('query と subscribe', () => {
       primaryAction: 'pause',
       failure: null,
     })
-    expect(w.coordinator.savedPosition('a')).toBe(42)
-    expect(w.coordinator.savedPosition('zz')).toBeNull()
+    expect(w.coordinator.savedPosition('a', undefined)).toBe(42)
+    expect(w.coordinator.savedPosition('zz', undefined)).toBeNull()
 
     expect(w.session.state()).toBe(stateBefore)
     expect(w.write).not.toHaveBeenCalled()
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.markSynced).not.toHaveBeenCalled()
+    expect(w.adopt).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
+  })
+
+  test('savedPosition は記録の位置に末尾 2 秒窓を通し、0 より大きいときだけ値を返す。主体が無ければ null（書かない）', () => {
+    const w = createWorld()
+    w.positions.set(`${USER}:a`, record(42, T0))
+    w.positions.set(`${USER}:near-end`, record(299, T0))
+    w.positions.set(`${USER}:zero`, record(0, T0))
+
+    expect(w.coordinator.savedPosition('a', 100)).toBe(42)
+    expect(w.coordinator.savedPosition('near-end', 300)).toBeNull()
+    expect(w.coordinator.savedPosition('near-end', undefined)).toBe(299)
+    expect(w.coordinator.savedPosition('zero', 300)).toBeNull()
+
+    w.env.recording = null
+    expect(w.coordinator.savedPosition('a', 100)).toBeNull()
+    expect(w.write).not.toHaveBeenCalled()
+    expect(w.adopt).not.toHaveBeenCalled()
   })
 
   test('購読者はキューの変化と session の事象で引数なしに呼ばれ、解除後は呼ばれない (verifies: CI-T36; web-deriv-05)', async () => {
@@ -1244,7 +1410,7 @@ describe('開始の後の自動再生', () => {
     await settle()
 
     expect(stateOf(w).status).toBe('playing')
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
   })
 
   test('loadedmetadata から入れ子で通知されるとき、Coordinator の購読者が最後に読む playbackView().status は playing (verifies: CI-P4-07; web-dec-40, T-P4-07)', async () => {
@@ -1267,7 +1433,7 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     const w = createWorld()
     await playingWithQueue(w, 'a', 'b', 'c')
     w.audio.fireTimeUpdate(7)
-    w.updatePosition.mockClear()
+    w.flush.mockClear()
     w.write.mockClear()
     const notifiedBefore = w.notified.mock.calls.length
 
@@ -1278,7 +1444,7 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     expect(upNextIds(w)).toEqual([])
     expect(w.coordinator.nowPlaying()).toBeNull()
     expect(w.notified.mock.calls.length).toBeGreaterThan(notifiedBefore)
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
     expect(w.markCompleted).not.toHaveBeenCalled()
     expect(w.write).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
@@ -1290,7 +1456,8 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     w.saved.add('b')
     const heldB = w.holdGet('b')
     await endPlayback(w)
-    w.updatePosition.mockClear()
+    w.flush.mockClear()
+    w.write.mockClear()
     w.markCompleted.mockClear()
 
     w.coordinator.stopForSubjectLeave()
@@ -1302,7 +1469,8 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     expect(stateOf(w)).toEqual({ status: 'idle', id: null })
     expect(startedIds(w)).toEqual(['a'])
     expect(w.releaseOf('b')).toHaveBeenCalledTimes(1)
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
+    expect(w.write).not.toHaveBeenCalled()
     expect(w.markCompleted).not.toHaveBeenCalled()
     await expectSharedInvariant(w)
   })
@@ -1332,16 +1500,18 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     await playingWithQueue(w, 'a', 'b')
     w.audio.fireTimeUpdate(7)
     w.coordinator.stopForSubjectLeave()
-    w.updatePosition.mockClear()
+    w.flush.mockClear()
+    w.write.mockClear()
     w.markCompleted.mockClear()
 
     await startPlaying(w, 'd')
     w.audio.fireTimeUpdate(30)
     w.session.pause()
 
-    expect(w.updatePosition).toHaveBeenCalledTimes(1)
-    expect(w.updatePosition).toHaveBeenCalledWith('d', 30)
-    expect(calledIds(w.updatePosition)).not.toContain('a')
+    expect(w.write).toHaveBeenCalledTimes(1)
+    expect(w.write).toHaveBeenCalledWith(USER, 'd', { positionSeconds: 30, recordedAt: T0, synced: false })
+    expect(w.flush).toHaveBeenCalledTimes(1)
+    expect(writtenIds(w)).not.toContain('a')
     expect(w.markCompleted).not.toHaveBeenCalled()
   })
 
@@ -1349,14 +1519,16 @@ describe('stopForSubjectLeave（web-cmd-playback-09・web-deriv-30）', () => {
     const w = createWorld()
     await playingWithQueue(w, 'a', 'b')
     w.audio.fireTimeUpdate(7)
-    w.updatePosition.mockClear()
+    w.flush.mockClear()
+    w.write.mockClear()
 
     w.coordinator.stopForSubjectLeave()
     w.coordinator.stopForSubjectLeave()
 
     expect(stateOf(w)).toEqual({ status: 'idle', id: null })
     expect(upNextIds(w)).toEqual([])
-    expect(w.updatePosition).not.toHaveBeenCalled()
+    expect(w.flush).not.toHaveBeenCalled()
+    expect(w.write).not.toHaveBeenCalled()
     expect(w.markCompleted).not.toHaveBeenCalled()
   })
 })

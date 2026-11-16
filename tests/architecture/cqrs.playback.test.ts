@@ -95,10 +95,14 @@ const WRITE_CALLS: ReadonlySet<string> = new Set([
   'offline.remove',
   'offline.clear',
   'localPositions.write',
+  'localPositions.markSynced',
+  'localPositions.clearSubject',
+  'localPositions.reclaim',
+  'localPositions.discardLegacy',
+  'positionIntake.adopt',
   'positionReporter.attach',
   'positionReporter.detach',
   'positionReporter.reset',
-  'localPositions.clearAll',
   ...SESSION_MUTATORS.map((name) => `session.${name}`),
 ])
 
@@ -176,9 +180,18 @@ function harness() {
     },
     localPositions: {
       read: () => null,
-      write: () => void calls.push('localPositions.write'),
-      clearAll: () => void calls.push('localPositions.clearAll'),
+      write: () => {
+        calls.push('localPositions.write')
+        return true
+      },
+      unsent: () => [],
+      markSynced: () => void calls.push('localPositions.markSynced'),
+      clearSubject: () => void calls.push('localPositions.clearSubject'),
+      reclaim: () => void calls.push('localPositions.reclaim'),
+      discardLegacy: () => void calls.push('localPositions.discardLegacy'),
     },
+    subject: { recording: () => 'u-a', sending: () => 'u-a' },
+    positionIntake: { adopt: () => void calls.push('positionIntake.adopt') },
     isOnline: () => true,
     defaultSpeed: () => 1,
   }

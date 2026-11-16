@@ -594,7 +594,17 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
           return Promise.resolve({ ok: true, value: fetched })
         },
       },
-      localPositions: { read: () => null, write: () => undefined, clearAll: () => undefined },
+      localPositions: {
+        read: () => null,
+        write: () => true,
+        unsent: () => [],
+        markSynced: () => undefined,
+        clearSubject: () => undefined,
+        reclaim: () => undefined,
+        discardLegacy: () => undefined,
+      },
+      subject: { recording: () => 'u-a', sending: () => 'u-a' },
+      positionIntake: { adopt: () => undefined },
       isOnline: () => true,
       defaultSpeed: () => 1,
     })

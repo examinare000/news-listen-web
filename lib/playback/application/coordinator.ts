@@ -10,9 +10,11 @@ import type {
   EpisodeSource,
   LocalPositionStore,
   OfflineLibrary,
+  PositionSubject,
   QueueEntryInput,
   StartResult,
 } from '@/lib/playback/application/ports'
+import type { PositionOutbox } from '@/lib/playback/application/positionOutbox'
 import type { PositionReporter } from '@/lib/playback/application/positionReporter'
 import { toNowPlaying, toPlaybackView, toQueueView, toUpNextItems } from '@/lib/playback/application/readModels'
 import type { NowPlaying, PlaybackView, QueueView, UpNextItem } from '@/lib/playback/application/readModels'
@@ -30,6 +32,7 @@ import {
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
 import { queueEntryOf } from '@/lib/playback/domain/queueEntry'
+import { pickCandidate } from '@/lib/playback/domain/positionRecord'
 import { resolveResumePosition } from '@/lib/playback/domain/resume'
 import { resolvePlaybackSource } from '@/lib/playback/domain/source'
 import type { PlaybackErrorReason } from '@/lib/playback/domain/session'
@@ -41,6 +44,8 @@ export interface PlaybackCoordinatorDeps {
   readonly positionReporter: PositionReporter
   readonly episodes: EpisodeSource
   readonly localPositions: LocalPositionStore
+  readonly subject: PositionSubject
+  readonly positionIntake: Pick<PositionOutbox, 'adopt'>
   readonly isOnline: Connectivity
   readonly defaultSpeed: DefaultSpeedSource
 }
@@ -62,7 +67,7 @@ export interface PlaybackQueries {
   upNext(): ReadonlyArray<UpNextItem>
   queueView(): QueueView
   playbackView(): PlaybackView
-  savedPosition(id: string): number | null
+  savedPosition(id: string, durationSeconds?: number): number | null
 }
 
 export interface PlaybackSubscription {
@@ -81,7 +86,7 @@ type Resolution =
 const OK: StartResult = Object.freeze({ ok: true })
 
 export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): PlaybackCoordinator {
-  const { session, offline, positionReporter, episodes, localPositions, isOnline, defaultSpeed } = deps
+  const { session, offline, positionReporter, episodes, localPositions, subject, positionIntake, isOnline, defaultSpeed } = deps
 
   let queue: QueueState<QueuedEpisode> = emptyQueue
   // 開始の世代。解決を始める利用者の開始・自動の側を捨てるとき・次がある onEnded で 1 つ進める。比較は等値だけ。
@@ -128,8 +133,17 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
       if (stored === null) return { ok: false, notice: 'fetch_failed' }
       episode = stored
     } else {
+      // 応答の時点の主体が要求の時点と同じときだけ取り込む（遅い応答で別主体の記録を書き換えない）。
+      const requester = subject.sending()
       const fetched = await episodes.fetch(id)
       if (!fetched.ok) return { ok: false, notice: 'fetch_failed', failure: fetched.failure }
+      const responder = subject.sending()
+      if (fetched.value.kind === 'playable' && requester !== null && responder === requester) {
+        positionIntake.adopt(requester, id, {
+          positionSeconds: fetched.value.serverPositionSeconds,
+          recordedAt: fetched.value.serverPositionRecordedAt ?? null,
+        })
+      }
       episode = fetched.value
     }
     return episode.kind === 'playable' ? { ok: true, episode } : { ok: false, notice: 'not_playable' }
@@ -137,8 +151,12 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
 
   // 「開始」: 再開位置を合成して Session を始める。合成はここだけ。
   function begin(episode: PlayableEpisode): void {
-    const candidate = episode.serverPositionSeconds > 0 ? episode.serverPositionSeconds : (localPositions.read(episode.id) ?? 0)
-    session.start(episode, resolveResumePosition(candidate, episode.durationSeconds), defaultSpeed())
+    const user = subject.recording()
+    const stored = user === null ? null : localPositions.read(user, episode.id)
+    const device = stored === null ? null : { positionSeconds: stored.positionSeconds, recordedAt: stored.recordedAt }
+    const server = { positionSeconds: episode.serverPositionSeconds, recordedAt: episode.serverPositionRecordedAt ?? null }
+    const candidate = pickCandidate(device, server)
+    session.start(episode, resolveResumePosition(candidate?.positionSeconds ?? 0, episode.durationSeconds), defaultSpeed())
     playWhenLoaded(episode.id)
   }
 
@@ -340,7 +358,14 @@ export function createPlaybackCoordinator(deps: PlaybackCoordinatorDeps): Playba
     upNext,
     queueView: () => toQueueView(nowPlaying(), upNext()),
     playbackView: () => toPlaybackView(session.state(), nowPlaying(), defaultSpeed()),
-    savedPosition: (id) => localPositions.read(id),
+    savedPosition(id, durationSeconds) {
+      const user = subject.recording()
+      if (user === null) return null
+      const stored = localPositions.read(user, id)
+      if (stored === null) return null
+      const resolved = resolveResumePosition(stored.positionSeconds, durationSeconds ?? 0)
+      return resolved > 0 ? resolved : null
+    },
 
     subscribe(listener) {
       listeners.add(listener)
