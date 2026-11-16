@@ -4,6 +4,7 @@ import React, { useState } from 'react'
 import { usePlayback } from '@/contexts/PlaybackProvider'
 import { usePlaybackActions } from '@/components/PlaybackToasts'
 import { DifficultyBadge } from '@/components/ui/DifficultyBadge'
+import { ResumeChoiceDialog } from '@/components/ui/ResumeChoiceDialog'
 import { formatDuration, formatDate } from '@/lib/format'
 import { PLAYBACK_SPEEDS } from '@/lib/playback/domain/session'
 import type { PlaybackSpeed } from '@/lib/playback/domain/session'
@@ -21,6 +22,21 @@ export function AudioPlayerBar() {
   const queue = pb.queueView()
   // 再生待ちキューパネルの開閉（issue #81）。
   const [showQueue, setShowQueue] = useState(false)
+  // 再開時の確認（ADR-109 決定 11）。尋ねるかの判定は coordinator が持ち、ここは表示だけを持つ。
+  const [confirm, setConfirm] = useState<{
+    readonly episodeId: string
+    readonly remoteSeconds: number
+    readonly localSeconds: number
+  } | null>(null)
+
+  // 確認の対象が一時停止でなくなった・別の episode になった・bar が消えたら閉じる（shared-dec-44）。
+  // effect ではなく render の中で判定する。早期 return より前に置くので、nowPlaying が null の間も判定が動く。
+  if (
+    confirm !== null &&
+    (playback.status !== 'paused' || nowPlaying === null || nowPlaying.episodeId !== confirm.episodeId)
+  ) {
+    setConfirm(null)
+  }
 
   if (nowPlaying === null) return null
 
@@ -33,7 +49,16 @@ export function AudioPlayerBar() {
         pb.pause()
         return
       case 'play':
-        void pb.play()
+        {
+          const request = pb.requestResume()
+          if (request.kind === 'choose') {
+            setConfirm({
+              episodeId: nowPlaying.episodeId,
+              remoteSeconds: request.remoteSeconds,
+              localSeconds: request.localSeconds,
+            })
+          }
+        }
         return
       case 'retry':
         void actions.retry()
@@ -253,6 +278,20 @@ export function AudioPlayerBar() {
           ))}
         </select>
       </div>
+      <ResumeChoiceDialog
+        isOpen={confirm !== null}
+        remoteSeconds={confirm?.remoteSeconds ?? 0}
+        localSeconds={confirm?.localSeconds ?? 0}
+        onChooseRemote={() => {
+          pb.chooseResume('remote')
+          setConfirm(null)
+        }}
+        onChooseLocal={() => {
+          pb.chooseResume('local')
+          setConfirm(null)
+        }}
+        onClose={() => setConfirm(null)}
+      />
     </footer>
   )
 }

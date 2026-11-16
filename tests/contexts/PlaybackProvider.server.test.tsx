@@ -27,6 +27,8 @@ const OPERATIONS: Readonly<Record<string, (pb: Playback) => unknown>> = {
   skipToNext: (pb) => pb.skipToNext(),
   stopForSubjectLeave: (pb) => pb.stopForSubjectLeave(),
   play: (pb) => pb.play(),
+  requestResume: (pb) => pb.requestResume(),
+  chooseResume: (pb) => pb.chooseResume('remote'),
   pause: (pb) => pb.pause(),
   seek: (pb) => pb.seek(1),
   seekRelative: (pb) => pb.seekRelative(1),
