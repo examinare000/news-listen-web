@@ -376,6 +376,48 @@ const importCases: readonly ImportCase[] = [
       'web-dep-05 | components/Y.tsx | @/lib/platform/cacheStore',
     ],
   },
+  // web-dep-05（PRES は再開の判定・控えの値を import しない。型だけ許す。web-dec-185）
+  {
+    name: 'web-dep-05 正例: PRES が再開の判定（needsResumeChoice）を値で import する（web-dec-185）',
+    file: 'components/AudioPlayerBar.tsx',
+    source: "import { needsResumeChoice } from '@/lib/playback/domain/resumeConfirmation'",
+    expected: ['web-dep-05 | components/AudioPlayerBar.tsx | @/lib/playback/domain/resumeConfirmation'],
+  },
+  {
+    name: 'web-dep-05 正例: PRES が控え（createResumeAdvisor）の値・名前空間・副作用だけを import する（web-dec-185）',
+    file: 'components/AudioPlayerBar.tsx',
+    source: [
+      "import { createResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'",
+      "import * as Advisor from '@/lib/playback/application/resumeAdvisor'",
+      "import '@/lib/playback/application/resumeAdvisor'",
+    ].join('\n'),
+    expected: ['web-dep-05 | components/AudioPlayerBar.tsx | @/lib/playback/application/resumeAdvisor'],
+  },
+  {
+    name: 'web-dep-05 負例: PRES が再開の module を import type・import { type X } だけで import する（web-dec-185）',
+    file: 'components/AudioPlayerBar.tsx',
+    source: [
+      "import type { ResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'",
+      "import { type ResumeAdvisor as A2 } from '@/lib/playback/application/resumeAdvisor'",
+      "import type { RESUME_CONFIRM_THRESHOLD_SECONDS } from '@/lib/playback/domain/resumeConfirmation'",
+    ].join('\n'),
+    expected: [],
+  },
+  {
+    name: 'web-dep-05 負例: ROOT（contexts/PlaybackProvider.tsx）は再開の module の値を import できる（web-dec-185）',
+    file: 'contexts/PlaybackProvider.tsx',
+    source: "import { createResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'",
+    expected: [],
+  },
+  {
+    name: 'web-dep-05 負例: PRES が ports の型と @/lib/format を import する（web-dec-185）',
+    file: 'components/AudioPlayerBar.tsx',
+    source: [
+      "import type { ResumeRequest, ResumeChoice } from '@/lib/playback/application/ports'",
+      "import { formatDuration } from '@/lib/format'",
+    ].join('\n'),
+    expected: [],
+  },
   // web-dep-01・web-dep-12（DOMAIN）
   {
     name: 'web-dep-01 正例: DOMAIN が @/types・API・フレームワークを import する。同じ dir・shared・他のパッケージは許す',
@@ -778,6 +820,11 @@ const lintExamples: readonly LintExample[] = [
   { name: 'web-dep-05 負例: 単語テストの page が import type で import する', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import type { VocabularyTestState } from '@/lib/learning/domain/vocabularyTest'", flagged: false },
   { name: 'web-dep-05 負例: 単語テストの page が learning のほかの domain（quiz）の値を import する', filePath: 'app/(app)/vocabulary-test/page.tsx', source: "import { canSubmit } from '@/lib/learning/domain/quiz'", flagged: false },
   { name: 'web-dep-05 負例: contexts/useLearningQueries.ts（ROOT）が session の値を import する', filePath: 'contexts/useLearningQueries.ts', source: "import { createVocabularyTestSession } from '@/lib/learning/application/vocabularyTestSession'", flagged: false },
+  { name: 'web-dep-05 正例: 再生バーが再開の判定の値を import する（web-dec-185）', filePath: 'components/AudioPlayerBar.tsx', source: "import { needsResumeChoice } from '@/lib/playback/domain/resumeConfirmation'", flagged: true },
+  { name: 'web-dep-05 正例: 再生バーが控えの値を import する（web-dec-185）', filePath: 'components/AudioPlayerBar.tsx', source: "import { createResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'", flagged: true },
+  { name: 'web-dep-05 負例: 再生バーが再開の module を import type で import する（web-dec-185）', filePath: 'components/AudioPlayerBar.tsx', source: "import type { ResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'", flagged: false },
+  { name: 'web-dep-05 負例: 再生バーが PLAYBACK_SPEEDS だけを import する（web-dec-185）', filePath: 'components/AudioPlayerBar.tsx', source: `import { PLAYBACK_SPEEDS } from '${SESSION}'`, flagged: false },
+  { name: 'web-dep-05 負例: ROOT（contexts/PlaybackProvider.tsx）が createResumeAdvisor の値を import する（web-dec-185）', filePath: 'contexts/PlaybackProvider.tsx', source: "import { createResumeAdvisor } from '@/lib/playback/application/resumeAdvisor'", flagged: false },
 ]
 
 describe('web-check-01 eslint の禁止項目の効き目（反例を実際に lint に通す）', () => {

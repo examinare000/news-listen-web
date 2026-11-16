@@ -158,6 +158,16 @@ const presSpec = {
       allowTypeImports: true,
       message: 'PRES は単語テストの session の値を import しない（web-dep-05。page は contexts/useVocabularyTestSession を経由する）',
     },
+    {
+      name: '@/lib/playback/domain/resumeConfirmation',
+      allowTypeImports: true,
+      message: 'PRES は確認の判定の値を import しない（web-dep-05。確認は coordinator の requestResume を経由する）',
+    },
+    {
+      name: '@/lib/playback/application/resumeAdvisor',
+      allowTypeImports: true,
+      message: 'PRES は控えの値を import しない（web-dep-05。確認は coordinator の requestResume を経由する）',
+    },
   ],
 }
 

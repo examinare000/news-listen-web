@@ -20,6 +20,7 @@ import {
   upNext,
 } from '@/lib/playback/domain/queue'
 import type { QueueState } from '@/lib/playback/domain/queue'
+import type { RemotePosition } from '@/lib/playback/application/ports'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import { createPlaybackSession } from '@/lib/playback/application/session'
 import type { PlaybackSession } from '@/lib/playback/application/session'
@@ -568,8 +569,8 @@ describe('web-check-06 4(d) Session の fail は ref と reason の写しを深�
 // web-check-06 4(e): Coordinator の query が返すリードモデル（観点 2・3）と、addToQueue の入力の隔離
 // ---------------------------------------------------------------------------
 describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済みで毎回新しい。addToQueue の入力を後で書き換えても upNext() は変わらない', () => {
-  function makeCoordinator() {
-    const coordinatorSession = createPlaybackSession(new MockAudio())
+  function makeCoordinator(options: { readonly session?: PlaybackSession; readonly advice?: RemotePosition | null } = {}) {
+    const coordinatorSession = options.session ?? createPlaybackSession(new MockAudio())
     const coordinator = createPlaybackCoordinator({
       session: coordinatorSession,
       offline: {
@@ -585,6 +586,7 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
         attach: () => undefined,
         detach: () => undefined,
         reset: () => undefined,
+        recordCurrent: () => undefined,
         lastSyncFailure: () => null,
       },
       episodes: {
@@ -605,6 +607,13 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
       },
       subject: { recording: () => 'u-a', sending: () => 'u-a' },
       positionIntake: { adopt: () => undefined },
+      resumeAdvisor: {
+        note: () => undefined,
+        pending: () => options.advice ?? null,
+        clear: () => undefined,
+        reset: () => undefined,
+      },
+      isForeground: () => true,
       isOnline: () => true,
       defaultSpeed: () => 1,
     })
@@ -650,6 +659,26 @@ describe('web-check-06 4(e) Coordinator の query の結果は深く凍結済み
       expect(second).toEqual(first)
     }
     expect(coordinator.upNext()[0]).not.toBe(coordinator.upNext()[0])
+  })
+
+  test('web-check-06: requestResume の choose の戻り値は深く凍結済み（shared-sync-10）', async () => {
+    const audio = new MockAudio()
+    const resumeSession = createPlaybackSession(audio)
+    const coordinator = makeCoordinator({
+      session: resumeSession,
+      advice: { positionSeconds: 500, recordedAt: 2_000_000 },
+    })
+    await coordinator.startEpisode('a')
+    audio.fireLoadedMetadata(600)
+    for (let i = 0; i < 40; i += 1) await Promise.resolve()
+    audio.fireTimeUpdate(100)
+    resumeSession.pause()
+    expect(coordinator.playbackView().status).toBe('paused')
+
+    const result = coordinator.requestResume()
+
+    expect(result).toEqual({ kind: 'choose', remoteSeconds: 500, localSeconds: 100 })
+    expectDeeplyFrozen('requestResume()', result)
   })
 
   test('verifies: CI-T39 (web-check-06) — addToQueue の後で入力の field を書き換えても upNext() は変わらず、入力は凍結されない', async () => {

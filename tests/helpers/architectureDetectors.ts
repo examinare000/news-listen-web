@@ -65,6 +65,12 @@ function isPresVocabularyTestValueImport(imp: ImportRecord): boolean {
   return imp.resolved === 'lib/learning/domain/vocabularyTest' || imp.resolved === 'lib/learning/application/vocabularyTestSession'
 }
 
+/** PRES が再開時の確認の判定・控えから値を import する違反か（web-dec-185。型だけの import は許す）。 */
+function isPresResumeValueImport(imp: ImportRecord): boolean {
+  if (imp.resolved === null || imp.typeOnly) return false
+  return imp.resolved === 'lib/playback/domain/resumeConfirmation' || imp.resolved === 'lib/playback/application/resumeAdvisor'
+}
+
 const isDomainOrAppModule = (resolved: string): boolean => {
   const layer = layerOf(resolved)
   return layer === 'DOMAIN' || layer === 'APP'
@@ -117,7 +123,7 @@ export function detectImportRows(file: string, source: string): Row[] {
       add('web-dep-02', specifier)
     } else if (layer === 'PRES') {
       if (resolved === null) continue
-      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp) || isPresVocabularyTestValueImport(imp)) {
+      if (isPresForbiddenInfrastructure(resolved) || isPresPlaybackValueImport(imp) || isPresVocabularyTestValueImport(imp) || isPresResumeValueImport(imp)) {
         add('web-dep-05', specifier)
       }
     } else if (file.startsWith('contexts/')) {
