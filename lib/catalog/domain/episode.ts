@@ -50,6 +50,8 @@ export interface PlayableEpisode {
   readonly difficulty: DifficultyLevel
   readonly createdAt: string
   readonly serverPositionSeconds: number
+  /** サーバーが位置を受けた記録時刻（epoch ms）。読めない・無いときはキーごと無い。 */
+  readonly serverPositionRecordedAt?: number
   readonly transcript?: ReadonlyArray<TranscriptLine>
   readonly vocabulary?: ReadonlyArray<GlossaryEntry>
   readonly quiz?: ReadonlyArray<QuizQuestion>
@@ -104,6 +106,7 @@ export interface EpisodeReadout {
   readonly createdAt: string
   readonly durationSeconds: number
   readonly serverPositionSeconds: number
+  readonly serverPositionRecordedAt?: number
   readonly transcript: ReadonlyArray<TranscriptLine>
   readonly vocabulary: ReadonlyArray<GlossaryEntry>
   readonly quiz: ReadonlyArray<QuizQuestion>
@@ -217,6 +220,7 @@ export function classifyEpisode(input: EpisodeReadout): Episode {
         difficulty: input.difficulty,
         createdAt: input.createdAt,
         serverPositionSeconds: input.serverPositionSeconds,
+        ...(input.serverPositionRecordedAt === undefined ? {} : { serverPositionRecordedAt: input.serverPositionRecordedAt }),
         transcript: input.transcript,
         vocabulary: input.vocabulary,
         quiz: input.quiz,

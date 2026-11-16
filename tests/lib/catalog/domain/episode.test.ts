@@ -149,6 +149,21 @@ describe('web-rule-catalog-01 classifyEpisode: variant ごとの field の集合
     })
   })
 
+  test('shared-sync-09: serverPositionRecordedAt があるときだけ Playable にキーが増え、無いとき（undefined を含む）はキーが無い', () => {
+    const base = Object.keys(classifyEpisode(readout())).sort()
+    const withTime = classifyEpisode(readout({ serverPositionRecordedAt: 1_700_000_000_000 }))
+    expect(withTime).toMatchObject({ kind: 'playable', serverPositionRecordedAt: 1_700_000_000_000 })
+    expect(Object.keys(withTime).sort()).toEqual([...base, 'serverPositionRecordedAt'].sort())
+
+    for (const over of [{}, { serverPositionRecordedAt: undefined }]) {
+      expect(Object.keys(classifyEpisode(readout(over))).sort()).toEqual(base)
+    }
+  })
+
+  test('shared-sync-09: 時刻 0 も値として写す（無いことと区別する）', () => {
+    expect(classifyEpisode(readout({ serverPositionRecordedAt: 0 }))).toMatchObject({ serverPositionRecordedAt: 0 })
+  })
+
   test('Generating は kind・id・title・difficulty・createdAt だけを持つ', () => {
     const episode = classifyEpisode(readout({ status: 'processing' }))
     expect(Object.keys(episode).sort()).toEqual(['createdAt', 'difficulty', 'id', 'kind', 'title'])

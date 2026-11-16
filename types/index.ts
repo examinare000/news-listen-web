@@ -106,6 +106,8 @@ export interface Podcast {
   status: PodcastStatus
   error_message: string | null
   playback_position_seconds: number
+  /** 位置を記録した時刻（RFC 3339）。未対応 backend では欠落・null。 */
+  playback_position_recorded_at?: string | null
 }
 
 export interface PodcastsResponse {

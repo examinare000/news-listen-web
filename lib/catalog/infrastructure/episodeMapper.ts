@@ -6,6 +6,7 @@ import {
   type FailureReason,
   type SourceOrigin,
 } from '@/lib/catalog/domain/episode'
+import { parseRecordedAt } from '@/lib/shared/recordedAt'
 import type { Podcast } from '@/types'
 
 /** shared-session-09・web-deriv-31: `partial_failed` は再生不可で、domain の値域の外なので `failed` に写す。 */
@@ -25,7 +26,12 @@ export function readSourceOrigin(sourceKind: Podcast['source_kind']): SourceOrig
   return sourceKind === 'user' ? 'user' : 'unknown'
 }
 
+function readRecordedAt(value: Podcast['playback_position_recorded_at']): number | null {
+  return typeof value === 'string' ? parseRecordedAt(value) : null
+}
+
 export function decodeEpisode(dto: Podcast): Episode {
+  const recordedAt = readRecordedAt(dto.playback_position_recorded_at)
   return classifyEpisode({
     id: dto.id,
     title: dto.title ?? null,
@@ -37,6 +43,7 @@ export function decodeEpisode(dto: Podcast): Episode {
     createdAt: dto.created_at,
     durationSeconds: dto.duration_seconds,
     serverPositionSeconds: dto.playback_position_seconds,
+    ...(recordedAt === null ? {} : { serverPositionRecordedAt: recordedAt }),
     transcript: (dto.segments ?? []).map((s) => ({ speaker: s.speaker, text: s.text })),
     vocabulary: (dto.vocabulary ?? []).map((v) => ({ term: v.term, meaningJa: v.meaning_ja, example: v.example })),
     quiz: (dto.quiz ?? []).map((q) => ({ question: q.question, options: q.options })),

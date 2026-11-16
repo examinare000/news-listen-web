@@ -13,12 +13,14 @@ export function getPodcast(gateway: ApiGateway, id: string) {
   return gateway.request<Podcast>(`/api/backend/podcasts/${id}`, { method: 'GET' })
 }
 
-export function updatePosition(gateway: ApiGateway, id: string, positionSeconds: number) {
+export function updatePosition(gateway: ApiGateway, id: string, positionSeconds: number, recordedAt?: string) {
   return gateway.request<Podcast>(
     `/api/backend/podcasts/${id}/position`,
     {
       method: 'PATCH',
-      body: { position_seconds: positionSeconds },
+      body: recordedAt === undefined
+        ? { position_seconds: positionSeconds }
+        : { position_seconds: positionSeconds, recorded_at: recordedAt },
     },
   )
 }
