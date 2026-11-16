@@ -10,7 +10,7 @@ import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { AudioPlayerBar } from '@/components/AudioPlayerBar'
 import { PlaybackErrorToaster, usePlaybackActions } from '@/components/PlaybackToasts'
 import { ToastProvider } from '@/components/ui/Toast'
-import { podcastPositionKey } from '@/lib/config'
+import { positionRecordKey } from '@/lib/playback/infrastructure/localPositionStore'
 import { MockAudio } from '../helpers/mockAudio'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
@@ -136,7 +136,11 @@ beforeEach(() => {
   for (const id of ['a', 'b']) {
     gateway.respond('GET', `/api/backend/podcasts/${id}`, { ok: true, value: pod(id) })
     gateway.respond('POST', `/api/backend/podcasts/${id}/completed`, { ok: true, value: undefined })
-    gateway.respond('PATCH', `/api/backend/podcasts/${id}/position`, { ok: true, value: undefined })
+    // WHY Podcast の形: 応答の形が違うと送信が失敗扱いで未送信のまま残る。時刻なしは取り込みが起きない形
+    gateway.respond('PATCH', `/api/backend/podcasts/${id}/position`, {
+      ok: true,
+      value: { ...pod(id), playback_position_recorded_at: null },
+    })
   }
 })
 
@@ -234,9 +238,14 @@ describe('一時停止での位置の保存 (web-dec-07)', () => {
     })
 
     expect(callsTo('PATCH', '/api/backend/podcasts/a/position')).toEqual([
-      { method: 'PATCH', path: '/api/backend/podcasts/a/position', body: { position_seconds: 12 } },
+      { method: 'PATCH', path: '/api/backend/podcasts/a/position', body: { position_seconds: 12, recorded_at: expect.any(String) } },
     ])
-    expect(localStorage.getItem(podcastPositionKey('a'))).toBe('12')
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem(positionRecordKey('user-test', 'a')) ?? 'null')).toMatchObject({
+        position: 12,
+        synced: true,
+      }),
+    )
   })
 })
 

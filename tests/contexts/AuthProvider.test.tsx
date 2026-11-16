@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import type { ApiFailure, Result } from '@/lib/api/gateway'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
 import type { GatewayDouble } from '../helpers/gatewayDouble'
+import { positionRecordKey } from '@/lib/playback/infrastructure/localPositionStore'
 
 // 設定の保存先は、テストごとに新しい in-memory の KeyValueStore
 const memoryStoreWithData = (initial: Record<string, string> = {}) => {
@@ -300,6 +301,12 @@ const AUTH_B = (userId?: string) => ({
   user: { ...(userId === undefined ? {} : { user_id: userId }), username: 'bob', role: 'user', display_name: 'Bob' },
 })
 
+const seedPositionRecord = (userId: string, episodeId: string, position: number, synced = false) =>
+  localStorage.setItem(
+    positionRecordKey(userId, episodeId),
+    JSON.stringify({ position, recorded_at: 1000, synced }),
+  )
+
 const lastKeep = (): (() => string | null) => {
   const calls = reclaimAudioCaches.mock.calls
   return calls[calls.length - 1][1] as () => string | null
@@ -427,6 +434,103 @@ describe('web-dec-85 回収を保留したまま B が確立する', () => {
     })
     expect(reclaimAudioCaches).toHaveBeenCalledTimes(1)
   })
+
+  test('shared-leave-12: 音声の回収が未決着・reject でも位置の回収は起動時に走る', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    const audioReclaims: Array<() => Promise<void>> = [
+      () => new Promise<void>(() => {}),
+      () => Promise.reject(new Error('reclaim failed')),
+    ]
+    for (const audioReclaim of audioReclaims) {
+      localStorage.clear()
+      reclaimAudioCaches.mockImplementation(audioReclaim)
+      seedPositionRecord('u-b', 'x', 10)
+      seedPositionRecord('u-a', 'y', 20)
+      const view = renderAuth()
+
+      await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-b', 'x'))).toBeNull())
+      expect(localStorage.getItem(positionRecordKey('u-a', 'y'))).not.toBeNull()
+      view.unmount()
+    }
+  })
+})
+
+describe('位置の記録の主体離脱と起動時の回収 (verifies: shared-leave-11, shared-leave-12, shared-leave-13)', () => {
+  test('shared-leave-11 / ADR-109 決定 13（新規）: 失効（refreshMe の 401）で A の記録が消える', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    seedPositionRecord('u-a', 'p1', 12)
+    seedPositionRecord('u-a', 'p2', 34)
+    localStorage.setItem('unrelated_key', 'keep')
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+
+    await act(async () => {
+      await auth.refreshMe()
+    })
+
+    expect(screen.getByTestId('kind').textContent).toBe('anonymous')
+    expect(localStorage.getItem(positionRecordKey('u-a', 'p1'))).toBeNull()
+    expect(localStorage.getItem(positionRecordKey('u-a', 'p2'))).toBeNull()
+    expect(localStorage.getItem('unrelated_key')).toBe('keep')
+    // 失効では音声を消さない（web-dec-83）
+    expect(deleteSubjectAudio).not.toHaveBeenCalled()
+  })
+
+  test('shared-leave-11 / ADR-109 決定 13（新規）: 直接交代で A の記録が消え、B の記録は残る', async () => {
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    gw.respond('POST', LOGIN_PATH, { ok: true, value: AUTH_B('u-b') })
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('authenticated'))
+    seedPositionRecord('u-a', 'p1', 12)
+    seedPositionRecord('u-b', 'q1', 56)
+
+    await userEvent.click(screen.getByText('login'))
+
+    await waitFor(() => expect(auth.currentUserId()).toBe('u-b'))
+    await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-a', 'p1'))).toBeNull())
+    expect(localStorage.getItem(positionRecordKey('u-b', 'q1'))).not.toBeNull()
+  })
+
+  test('shared-leave-12 / ADR-109 追記（新規）: 起動時に別主体の記録だけを回収する', async () => {
+    seedPositionRecord('u-b', 'x', 10)
+    seedPositionRecord('u-a', 'y', 20)
+    localStorage.setItem('unrelated_key', 'keep')
+    gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
+    renderAuth()
+
+    await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-b', 'x'))).toBeNull())
+    expect(localStorage.getItem(positionRecordKey('u-a', 'y'))).not.toBeNull()
+    expect(localStorage.getItem('unrelated_key')).toBe('keep')
+  })
+
+  test('shared-leave-12: 未認証に確定したら全部回収する', async () => {
+    seedPositionRecord('u-b', 'x', 10)
+    seedPositionRecord('u-a', 'y', 20)
+    localStorage.setItem('unrelated_key', 'keep')
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'unauthorized' } })
+    renderAuth()
+
+    await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-b', 'x'))).toBeNull())
+    expect(localStorage.getItem(positionRecordKey('u-a', 'y'))).toBeNull()
+    expect(localStorage.getItem('unrelated_key')).toBe('keep')
+  })
+
+  test('shared-leave-13: unavailable の間は回収しない', async () => {
+    seedPositionRecord('u-b', 'x', 10)
+    seedPositionRecord('u-a', 'y', 20)
+    gw.respond('GET', ME_PATH, { ok: false, failure: { kind: 'network' } })
+    renderAuth()
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('unavailable'))
+
+    // 回収が走るなら非同期でも拾えるよう、1 回 retry の失敗まで進めてから確かめる
+    await userEvent.click(screen.getByText('retry'))
+    await waitFor(() => expect(callsTo('GET', ME_PATH)).toHaveLength(2))
+    await waitFor(() => expect(screen.getByTestId('kind').textContent).toBe('unavailable'))
+
+    expect(localStorage.getItem(positionRecordKey('u-b', 'x'))).not.toBeNull()
+    expect(localStorage.getItem(positionRecordKey('u-a', 'y'))).not.toBeNull()
+  })
 })
 
 describe('logout の後始末 (verifies: shared-leave-01, web-dec-79, web-dec-84)', () => {
@@ -437,13 +541,15 @@ describe('logout の後始末 (verifies: shared-leave-01, web-dec-79, web-dec-84
       theme: 'light',
       sfx_enabled: 'false',
     })
-    localStorage.setItem('podcast_position:p1', '12')
-    localStorage.setItem('podcast_position:p2', '34')
-    localStorage.setItem('unrelated_key', 'keep')
     gw.respond('GET', ME_PATH, { ok: true, value: ME_A })
     gw.respond('POST', LOGOUT_PATH, { ok: true, value: { status: 'ok' } })
     renderAuth(prefs.store)
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('authenticated'))
+    // WHY 確定の後に seed: 起動時の回収は確定の時点で走るので、先に置くと回収が消してしまい、
+    // logout の後始末が消したことを確かめられない
+    seedPositionRecord('u-a', 'p1', 12)
+    seedPositionRecord('u-a', 'p2', 34)
+    localStorage.setItem('unrelated_key', 'keep')
 
     await userEvent.click(screen.getByText('logout'))
 
@@ -453,8 +559,8 @@ describe('logout の後始末 (verifies: shared-leave-01, web-dec-79, web-dec-84
     expect(prefs.data.has('seen_achievement_ids')).toBe(false)
     expect(prefs.data.get('theme')).toBe('light')
     expect(prefs.data.get('sfx_enabled')).toBe('false')
-    await waitFor(() => expect(localStorage.getItem('podcast_position:p1')).toBeNull())
-    expect(localStorage.getItem('podcast_position:p2')).toBeNull()
+    await waitFor(() => expect(localStorage.getItem(positionRecordKey('u-a', 'p1'))).toBeNull())
+    expect(localStorage.getItem(positionRecordKey('u-a', 'p2'))).toBeNull()
     expect(localStorage.getItem('unrelated_key')).toBe('keep')
   })
 

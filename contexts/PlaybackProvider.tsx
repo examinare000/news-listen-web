@@ -3,12 +3,14 @@
 import React, { createContext, useContext, useEffect, useReducer, useState } from 'react'
 import { useApiClient } from '@/contexts/ApiClientProvider'
 import { useAuth } from '@/contexts/AuthProvider'
+import { NO_INTAKE, PositionIntakeContext } from '@/contexts/PositionIntakeContext'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import type { ApiGateway } from '@/lib/api/gateway'
 import { createEpisodeGateway } from '@/lib/catalog/infrastructure/episodeGateway'
-import type { OfflineLibrary } from '@/lib/playback/application/ports'
+import type { Clock, OfflineLibrary, PositionSubject } from '@/lib/playback/application/ports'
 import { createPlaybackCoordinator } from '@/lib/playback/application/coordinator'
 import type { PlaybackCommands, PlaybackQueries } from '@/lib/playback/application/coordinator'
+import { createPositionOutbox } from '@/lib/playback/application/positionOutbox'
 import { createPositionReporter } from '@/lib/playback/application/positionReporter'
 import type { PlaybackView } from '@/lib/playback/application/readModels'
 import { createPlaybackSession } from '@/lib/playback/application/session'
@@ -19,6 +21,7 @@ import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPos
 import { createOfflineLibrary } from '@/lib/playback/infrastructure/offlineLibrary'
 import { createBrowserAudioElement } from '@/lib/platform/audioElement'
 import { createBrowserCacheStore } from '@/lib/platform/cacheStore'
+import { createBrowserConnectivityEvents } from '@/lib/platform/connectivityEvents'
 import { createBrowserKeyValueStore } from '@/lib/platform/keyValueStore'
 import { createBrowserObjectUrl } from '@/lib/platform/objectUrl'
 import { createBrowserStorageEstimate } from '@/lib/platform/storageEstimate'
@@ -52,15 +55,38 @@ function createSpeedHolder(initial: PlaybackSpeed): { get: () => PlaybackSpeed; 
   }
 }
 
+// 描画のたびに書く認証の種類だけを持つ。userId は持たない（直接交代で lastSubject が同期に替わった後、再描画の前でも sending が新しい主体を返すため）。
+function createSendingHolder(): { get: () => boolean; set: (next: boolean) => void } {
+  let current = false
+  return {
+    get: () => current,
+    set: (next) => {
+      current = next
+    },
+  }
+}
+
 function createWiring(
   gateway: ApiGateway,
   defaultSpeed: PlaybackSpeed,
   initialVolume: number,
   currentUserId: () => string | null,
+  authenticated: () => boolean,
 ) {
   const session = createPlaybackSession(createBrowserAudioElement())
   const kv = createBrowserKeyValueStore()
   const localPositions = createLocalPositionStore(kv)
+  // 旧い形の記録は取り込まずに捨てる。毎起動で冪等。
+  localPositions.discardLegacy()
+  const subject: PositionSubject = {
+    recording: currentUserId,
+    sending: () => (authenticated() ? currentUserId() : null),
+  }
+  const clock: Clock = Date.now
+  const sync = createPositionSync(gateway)
+  const outbox = createPositionOutbox({ sync, local: localPositions, subject })
+  // 描画のたびに作ると useCatalogQueries の useMemo が作り直され、一覧が取り直される。wiring と同じ寿命で 1 つだけ持つ。
+  const intake = { capture: () => outbox.capture() }
   const offline = createOfflineLibrary({
     cacheStore: createBrowserCacheStore(),
     gateway,
@@ -72,14 +98,16 @@ function createWiring(
   const coordinator = createPlaybackCoordinator({
     session,
     offline,
-    positionReporter: createPositionReporter({ sync: createPositionSync(gateway), local: localPositions }),
+    positionReporter: createPositionReporter({ sync, outbox, local: localPositions, clock, subject }),
     episodes: createEpisodeGateway(gateway),
     localPositions,
+    subject,
+    positionIntake: outbox,
     isOnline: () => typeof navigator === 'undefined' || navigator.onLine,
     defaultSpeed: speed.get,
   })
   session.setVolume(initialVolume)
-  return { session, coordinator, offline, speed, volume: initialVolume }
+  return { session, coordinator, offline, speed, outbox, intake, volume: initialVolume }
 }
 
 type Wiring = ReturnType<typeof createWiring>
@@ -135,11 +163,16 @@ function createServerValue(defaultSpeed: PlaybackSpeed): PlaybackContextValue {
 export function PlaybackProvider({ children }: { children: React.ReactNode }) {
   const gateway = useApiClient()
   const { get, set } = usePreferences()
-  const { currentUserId, registerSubjectLeaveStep } = useAuth()
+  const { currentUserId, registerSubjectLeaveStep, view: authView } = useAuth()
   const defaultSpeed = get(defaultPlaybackSpeed)
   // 音量は wiring の生成時に 1 回だけ読み、以後は変更を set で書くだけにする。
+  // 送信の主体は認証の確定後だけ値を持つ。wiring は 1 回しか作らないので、最新の認証の種類を入れ物経由で渡す。
+  const [sendingHolder] = useState(() => createSendingHolder())
+  sendingHolder.set(authView.kind === 'authenticated')
   const [wiring] = useState<Wiring | null>(() =>
-    typeof window === 'undefined' ? null : createWiring(gateway, defaultSpeed, get(volumeSetting), currentUserId),
+    typeof window === 'undefined'
+      ? null
+      : createWiring(gateway, defaultSpeed, get(volumeSetting), currentUserId, sendingHolder.get),
   )
   const [volume, setVolume] = useState(() => wiring?.volume ?? DEFAULT_VOLUME)
   // 関数の同一性を保つため、操作の束は 1 回だけ作る。
@@ -162,14 +195,35 @@ export function PlaybackProvider({ children }: { children: React.ReactNode }) {
     return registerSubjectLeaveStep(() => wiring.coordinator.stopForSubjectLeave())
   }, [wiring, registerSubjectLeaveStep])
 
+  // 認証の確定（起動・再確立・直接交代）で未送信を送る。
+  const authenticatedUser = authView.kind === 'authenticated' ? currentUserId() : null
+  useEffect(() => {
+    if (wiring === null || authenticatedUser === null) return
+    void wiring.outbox.flush()
+  }, [wiring, authenticatedUser])
+
+  // 回線の復帰で再送する。タイマーでは再試行しない。
+  useEffect(() => {
+    if (wiring === null) return undefined
+    return createBrowserConnectivityEvents().onOnline(() => {
+      void wiring.outbox.flush()
+    })
+  }, [wiring])
+
   // 描画のたびに最新の既定速度を渡す。effect で更新すると 1 描画遅れる。
   wiring?.speed.set(defaultSpeed)
+
+  const intake = wiring === null ? NO_INTAKE : wiring.intake
 
   const value: PlaybackContextValue =
     wiring === null || operations === null
       ? createServerValue(defaultSpeed)
       : { ...operations, playback: wiring.coordinator.playbackView(), volume }
-  return <PlaybackContext.Provider value={value}>{children}</PlaybackContext.Provider>
+  return (
+    <PlaybackContext.Provider value={value}>
+      <PositionIntakeContext.Provider value={intake}>{children}</PositionIntakeContext.Provider>
+    </PlaybackContext.Provider>
+  )
 }
 
 function createOperations(
@@ -191,7 +245,7 @@ function createOperations(
     upNext: () => coordinator.upNext(),
     queueView: () => coordinator.queueView(),
     playbackView: () => coordinator.playbackView(),
-    savedPosition: (id) => coordinator.savedPosition(id),
+    savedPosition: (id, durationSeconds) => coordinator.savedPosition(id, durationSeconds),
     play: () => session.play(),
     pause: () => session.pause(),
     seek: (seconds) => session.seek(seconds),

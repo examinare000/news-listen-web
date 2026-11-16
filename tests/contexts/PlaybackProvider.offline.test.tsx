@@ -7,7 +7,7 @@ import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { AuthProvider, useAuth } from '@/contexts/AuthProvider'
 import { PlaybackProvider, usePlayback } from '@/contexts/PlaybackProvider'
 import { ToastProvider } from '@/components/ui/Toast'
-import { podcastPositionKey } from '@/lib/config'
+import { positionRecordKey } from '@/lib/playback/infrastructure/localPositionStore'
 import { MockAudio } from '../helpers/mockAudio'
 import { setupMockCaches } from '../helpers/mockCaches'
 import { createGatewayDouble } from '../helpers/gatewayDouble'
@@ -61,6 +61,11 @@ function pod(id: string, over: Partial<Podcast> = {}): Podcast {
     playback_position_seconds: 0,
     ...over,
   }
+}
+
+// 端末の位置の記録を新形式で置く。未送信だと認証の確定のときの送信が PATCH を増やすので、既定は送信済み
+function seedRecord(raw: unknown, recordedAt = Date.now(), synced = true): void {
+  localStorage.setItem(positionRecordKey('user-test', 'a'), JSON.stringify({ position: raw, recorded_at: recordedAt, synced }))
 }
 
 let cap: ReturnType<typeof usePlayback>
@@ -147,7 +152,11 @@ beforeEach(() => {
   holder.gw = authGw
   gateway = createGatewayDouble()
   gateway.respond('GET', '/api/backend/podcasts/a', { ok: true, value: pod('a', { playback_position_seconds: 0 }) })
-  gateway.respond('PATCH', '/api/backend/podcasts/a/position', { ok: true, value: undefined })
+  // WHY Podcast の形: 応答の形が違うと送信が失敗扱いで未送信のまま残る。時刻なしは取り込みが起きない形
+  gateway.respond('PATCH', '/api/backend/podcasts/a/position', {
+    ok: true,
+    value: { ...pod('a'), playback_position_recorded_at: null },
+  })
 })
 
 afterEach(() => {
@@ -211,7 +220,9 @@ describe('PlaybackProvider のオフライン', () => {
     ['x', null],
     [null, null],
   ])('savedPosition は端末の保存値 %s を %s として返す (verifies: CI-P4-18; T-P4-16)', (stored, expected) => {
-    if (stored !== null) localStorage.setItem(podcastPositionKey('a'), stored)
+    // 'x' は壊れた JSON の記録そのもの、数の行は position がその値の記録
+    if (stored === 'x') localStorage.setItem(positionRecordKey('user-test', 'a'), 'x')
+    else if (stored !== null) seedRecord(Number(stored))
 
     renderProvider()
 
@@ -277,7 +288,7 @@ describe('末尾 2 秒窓の resume (shared-dec-27)', () => {
   ])('端末の位置が %s (%s) なら再生位置は %s (verifies: CI-P4-46; T-P4-17, shared-resume-03, shared-resume-04, shared-resume-05)', async (_name, stored, expected) => {
     renderProvider()
     await saveA()
-    localStorage.setItem(podcastPositionKey('a'), stored)
+    seedRecord(Number(stored))
 
     await act(async () => {
       await cap.startEpisode('a')
@@ -287,5 +298,34 @@ describe('末尾 2 秒窓の resume (shared-dec-27)', () => {
     })
 
     expect(audio.currentTime).toBe(expected)
+  })
+})
+
+describe('保存済み episode と端末の記録の合成 (verifies: web-rule-playback-05, shared-dec-32)', () => {
+  const RECORDED_AT = Date.parse('2026-11-16T00:00:00.000Z')
+
+  async function resumeFromSavedEntry(entryOver: Partial<Podcast>): Promise<number> {
+    gateway.respond('GET', '/api/backend/podcasts/a', { ok: true, value: pod('a', entryOver) })
+    renderProvider()
+    await saveA()
+    seedRecord(20, RECORDED_AT)
+    await act(async () => {
+      await cap.startEpisode('a')
+    })
+    await act(async () => {
+      audio.fireLoadedMetadata(60)
+    })
+    return audio.currentTime
+  }
+
+  test('ADR-109 決定 10（新規）: 保存済み episode の時刻が無いとき、端末の記録が勝つ', async () => {
+    expect(await resumeFromSavedEntry({ playback_position_seconds: 30 })).toBe(20)
+  })
+
+  test('ADR-109 決定 10（新規）: 保存済み episode にサーバーの時刻があり端末の記録より新しいときは、サーバーの位置から再開する', async () => {
+    const serverAt = new Date(RECORDED_AT + 1000).toISOString()
+    expect(
+      await resumeFromSavedEntry({ playback_position_seconds: 30, playback_position_recorded_at: serverAt }),
+    ).toBe(30)
   })
 })

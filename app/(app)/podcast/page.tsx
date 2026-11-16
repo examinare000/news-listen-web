@@ -190,7 +190,7 @@ export default function PodcastPage() {
     return (
       <div className="podcast-grid">
         {podcasts.map((view) => {
-          const position = playback.savedPosition(view.id)
+          const position = playback.savedPosition(view.id, view.durationSeconds)
           return (
             <PodcastCard
               key={view.id}
