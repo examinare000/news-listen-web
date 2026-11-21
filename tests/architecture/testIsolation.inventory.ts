@@ -88,6 +88,7 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/preferences/application/commands.test.ts',
   'tests/lib/preferences/application/queries.test.ts',
   'tests/lib/preferences/application/readModels.test.ts',
+  'tests/lib/preferences/application/localSettings.test.ts',
   'tests/lib/preferences/domain/settings.test.ts',
   'tests/lib/shared/difficulty.test.ts',
   'tests/lib/shared/recordedAt.test.ts',
@@ -414,7 +415,11 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
     'tests/lib/preferences/application/queries.test.ts',
   ],
   'lib/preferences/application/readModels.ts': ['tests/lib/preferences/application/readModels.test.ts'],
-  'lib/preferences/domain/settings.ts': ['tests/lib/preferences/domain/settings.test.ts'],
+  'lib/preferences/application/localSettings.ts': ['tests/lib/preferences/application/localSettings.test.ts'],
+  'lib/preferences/domain/settings.ts': [
+    'tests/lib/preferences/application/localSettings.test.ts',
+    'tests/lib/preferences/domain/settings.test.ts',
+  ],
   'lib/notifications/application/commands.ts': [
     'tests/architecture/cqrs.notifications.test.ts',
     'tests/lib/notifications/application/commands.test.ts',
