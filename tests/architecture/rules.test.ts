@@ -1,5 +1,5 @@
 // @vitest-environment node
-// 規則の置き場の検査（web-check-04）。規則の表（19 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
+// 規則の置き場の検査（web-check-04）。規則の表（20 行）の式に当たる出現（出てよいファイル以外）の実測 ＝ 許可リスト。
 // 正本: docs/design/modules/web/2026-09-30-implementation-spec-target-architecture.md §7 web-check-04 の規則の表。
 //
 // RED 理由（実装前）: architecture/boundaries.allowlist.json が無い。検出器の正例・負例は helper だけで決まるので green。
@@ -19,6 +19,7 @@ const EXPECTED_RULES = [
   'web-rule-catalog-10',
   'web-rule-catalog-11',
   'web-rule-account-03',
+  'web-rule-account-01',
   'web-rule-account-04',
   'web-rule-account-06',
   'web-rule-playback-02',
@@ -38,7 +39,7 @@ beforeAll(() => {
 })
 
 describe('web-check-04 規則の表', () => {
-  test('規則の表は 19 行で、rule の集合が正本の表と一致する', () => {
+  test('規則の表は 20 行で、rule の集合が正本の表と一致する', () => {
     expect(RULE_DEFINITIONS.map((d) => d.rule)).toEqual(EXPECTED_RULES)
   })
 
@@ -96,6 +97,20 @@ describe('web-check-04 検出器の自己点検: 正例を拾い、負例を拾�
       `web-rule-account-03 | ${F} | PASSWORD_MIN_LENGTH`,
       `web-rule-account-03 | ${F} | countPasswordCharacterClasses`,
     ])
+  })
+
+  test("web-rule-account-01・web-dec-67: type: 'unauthorized' と .type === 'unauthorized' を拾い、kind の比較・case・コメントの中・出てよい 2 ファイルは拾わない", () => {
+    expect(rows(F, "const e = { type: 'unauthorized' }")).toEqual([`web-rule-account-01 | ${F} | type: 'unauthorized'`])
+    expect(rows(F, "if (e.type === 'unauthorized') {}")).toEqual([`web-rule-account-01 | ${F} | .type === 'unauthorized'`])
+    expect(rows(F, "if (e.type !== 'unauthorized') {}")).toEqual([`web-rule-account-01 | ${F} | .type === 'unauthorized'`])
+    // 負例: 失敗の kind の比較・case・コメントの中
+    expect(rows(F, "if (failure.kind === 'unauthorized') {}")).toEqual([])
+    expect(rows(F, "case 'unauthorized':")).toEqual([])
+    expect(rows(F, "// type: 'unauthorized' はコメント")).toEqual([])
+    // 出てよい 2 ファイル
+    const source = "const e = { type: 'unauthorized' }"
+    expect(rows('lib/account/domain/authSession.ts', source)).toEqual([])
+    expect(rows('lib/account/application/accountSession.ts', source)).toEqual([])
   })
 
   test('web-rule-account-04: {2,31}・username.length・USERNAME_MIN_LENGTH は 1 行ずつ拾い、コメントの中と出てよい username.ts は拾わない', () => {
