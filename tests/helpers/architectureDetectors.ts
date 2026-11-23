@@ -554,6 +554,14 @@ export const RULE_DEFINITIONS: readonly RuleDefinition[] = [
     ],
   },
   {
+    rule: 'web-rule-account-01',
+    allowed: only('lib/account/domain/authSession.ts', 'lib/account/application/accountSession.ts'),
+    patterns: [
+      { label: "type: 'unauthorized'", find: (ctx) => regexStarts(ctx.body, /\btype\s*:\s*'unauthorized'/) },
+      { label: ".type === 'unauthorized'", find: (ctx) => regexStarts(ctx.body, /\.type\s*[!=]==?\s*'unauthorized'/) },
+    ],
+  },
+  {
     rule: 'web-rule-account-04',
     allowed: only('lib/account/domain/username.ts'),
     patterns: [

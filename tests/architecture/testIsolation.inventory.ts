@@ -12,13 +12,16 @@ import type { MigrationAllowance, TestInventoryEntry } from '../helpers/architec
 
 const UNIT_TESTS: readonly string[] = [
   'tests/architecture/cqrs.account.test.ts',
+  'tests/architecture/cqrs.accountSession.test.ts',
   'tests/architecture/cqrs.admin.test.ts',
   'tests/architecture/cqrs.playback.test.ts',
   'tests/architecture/immutability.account.test.ts',
+  'tests/architecture/immutability.accountSession.test.ts',
   'tests/architecture/immutability.admin.test.ts',
   'tests/architecture/immutability.playback.test.ts',
   'tests/architecture/readonly.types.test.ts',
   'tests/lib/account/adminAccess.test.ts',
+  'tests/lib/account/application/accountSession.test.ts',
   'tests/lib/account/application/commands.test.ts',
   'tests/lib/account/application/passkey.test.ts',
   'tests/lib/account/application/queries.test.ts',
@@ -89,6 +92,7 @@ const UNIT_TESTS: readonly string[] = [
   'tests/lib/preferences/application/queries.test.ts',
   'tests/lib/preferences/application/readModels.test.ts',
   'tests/lib/preferences/application/localSettings.test.ts',
+  'tests/lib/preferences/application/subjectSpeedCopy.test.ts',
   'tests/lib/preferences/domain/settings.test.ts',
   'tests/lib/shared/difficulty.test.ts',
   'tests/lib/shared/recordedAt.test.ts',
@@ -327,6 +331,12 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
     'tests/lib/account/domain/password.test.ts',
   ],
   'lib/account/application/subjectCleanup.ts': ['tests/lib/account/application/subjectCleanup.test.ts'],
+  'lib/account/application/accountSession.ts': [
+    'tests/architecture/cqrs.accountSession.test.ts',
+    'tests/architecture/immutability.accountSession.test.ts',
+    'tests/lib/account/application/accountSession.test.ts',
+  ],
+  'lib/preferences/application/subjectSpeedCopy.ts': ['tests/lib/preferences/application/subjectSpeedCopy.test.ts'],
   'lib/account/domain/role.ts': [],
   'lib/account/domain/subject.ts': ['tests/lib/account/domain/subject.test.ts'],
   'lib/catalog/domain/episode.ts': [
@@ -418,6 +428,7 @@ export const SUBJECT_INVENTORY: Readonly<Record<string, readonly string[]>> = {
   'lib/preferences/application/localSettings.ts': ['tests/lib/preferences/application/localSettings.test.ts'],
   'lib/preferences/domain/settings.ts': [
     'tests/lib/preferences/application/localSettings.test.ts',
+    'tests/lib/preferences/application/subjectSpeedCopy.test.ts',
     'tests/lib/preferences/domain/settings.test.ts',
   ],
   'lib/notifications/application/commands.ts': [
