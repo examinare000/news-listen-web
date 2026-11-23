@@ -1,11 +1,5 @@
 import type { SettingDescriptor } from '@/lib/preferences/domain/settings'
-
-/** 設定の保存先の port。key・codec は infrastructure が持ち、application は値だけを扱う。 */
-export interface LocalSettingsStorage {
-  readonly read: <T>(setting: SettingDescriptor<T>) => T
-  readonly write: <T>(setting: SettingDescriptor<T>, value: T) => T
-  readonly clearSubjectScoped: () => void
-}
+import type { LocalSettingsStorage } from './ports'
 
 export interface LocalSettings {
   readonly get: <T>(setting: SettingDescriptor<T>) => T

@@ -27,7 +27,7 @@ interface Harness {
 function harness(handlers: Handlers = {}): Harness {
   const calls: Array<{ name: string; args: readonly unknown[] }> = []
   const base = {
-    getMe: () => Promise.resolve({ ok: true as const, value: { username: 'u', role: 'user' as const, display_name: 'U', userId: null } }),
+    getMe: () => Promise.resolve({ ok: true as const, value: { username: 'u', role: 'user' as const, displayName: 'U', userId: null } }),
     login: () => Promise.reject(new Error('login を想定していない')),
     register: () => Promise.reject(new Error('register を想定していない')),
     logout: () => Promise.resolve(OK),

@@ -24,7 +24,7 @@ type Me = Result<AuthSessionUser, ApiFailure>
 const user = (userId: string | null): AuthSessionUser => ({
   username: 'alice',
   role: 'user',
-  display_name: 'Alice',
+  displayName: 'Alice',
   userId,
 })
 const okMe = (userId: string | null): Me => ({ ok: true, value: user(userId) })

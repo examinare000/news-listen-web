@@ -6,7 +6,7 @@ import { createFakeWebAuthnBrowserPort } from '../../../helpers/fakeWebAuthnBrow
 const FAKE_OPTIONS_STR = JSON.stringify({ challenge: 'test-challenge', rp: { name: 'test' } })
 const FAKE_CHALLENGE_ID = 'challenge-abc-123'
 const FAKE_CREDENTIAL = { id: 'cred-id', rawId: 'cred-id', type: 'public-key', response: {} }
-const FAKE_USER = { username: 'alice', role: 'user' as const, display_name: 'Alice' }
+const FAKE_USER = { username: 'alice', role: 'user' as const, displayName: 'Alice' }
 const FAKE_LOGIN_RESPONSE = { token: 'token-xyz', user: FAKE_USER }
 
 // passkey.ts に DI するクライアントのファクトリ
@@ -144,7 +144,7 @@ describe('loginWithPasskey', () => {
   })
 
   test('戻り値のユーザー情報が正確に返る', async () => {
-    const user = { username: 'bob', role: 'admin' as const, display_name: 'Bob' }
+    const user = { username: 'bob', role: 'admin' as const, displayName: 'Bob' }
     const client = makeFakeClient({
       verifyPasskeyLogin: vi.fn().mockResolvedValue({ ok: true, value: { token: 'tok2', user } }),
     })

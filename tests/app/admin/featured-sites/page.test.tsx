@@ -45,7 +45,7 @@ function callsTo(method: string, path: string) {
 }
 
 const authOverride = vi.hoisted(() => ({
-  current: { username: 'admin', role: 'admin', display_name: 'Admin' },
+  current: { username: 'admin', role: 'admin', displayName: 'Admin' },
 }))
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({ status: 'authenticated', user: authOverride.current, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   gw = createGatewayDouble()
   holder.gw = gw
-  authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
+  authOverride.current = { username: 'admin', role: 'admin', displayName: 'Admin' }
   gw.respond('GET', SITES_PATH, {
     ok: true,
     value: {
@@ -286,7 +286,7 @@ describe('AdminFeaturedSitesPage', () => {
   })
 
   test('non-admin sees a forbidden message', async () => {
-    authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
+    authOverride.current = { username: 'bob', role: 'user', displayName: 'Bob' }
     renderPage()
     expect(screen.getByText(/管理者のみ利用できます/)).toBeInTheDocument()
     expect(callsTo('GET', SITES_PATH)).toHaveLength(0)
@@ -305,7 +305,7 @@ describe('AdminFeaturedSitesPage', () => {
     // 非admin で改めてマウントした場合は一覧取得しないことを確認する
     vi.clearAllMocks()
     const callsBefore = callsTo('GET', SITES_PATH).length
-    authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
+    authOverride.current = { username: 'bob', role: 'user', displayName: 'Bob' }
     renderPage()
     expect(callsTo('GET', SITES_PATH)).toHaveLength(callsBefore)
   })

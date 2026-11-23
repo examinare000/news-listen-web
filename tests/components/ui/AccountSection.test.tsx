@@ -43,7 +43,7 @@ vi.mock('@/lib/platform/webauthn', async () => {
   }
 })
 
-const MOCK_USER = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
+const MOCK_USER = { username: 'alice', role: 'user' as const, displayName: 'Alice', userId: 'u-alice' }
 
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
@@ -738,9 +738,9 @@ describe('AccountSection — admin metrics link (ADR-075)', () => {
 
   test('admin ユーザーには計測ダッシュボードへのリンクが表示される', async () => {
     vi.mocked(useAuth).mockReturnValue({
-      session: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin', userId: 'u-admin' } },
+      session: { kind: 'authenticated', user: { username: 'admin', role: 'admin', displayName: 'Admin', userId: 'u-admin' } },
       retry: vi.fn(),
-      view: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin', userId: 'u-admin' } },
+      view: { kind: 'authenticated', user: { username: 'admin', role: 'admin', displayName: 'Admin', userId: 'u-admin' } },
       login: vi.fn(),
       logout: mockLogout,
       register: vi.fn(),

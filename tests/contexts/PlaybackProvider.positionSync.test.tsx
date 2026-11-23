@@ -119,7 +119,7 @@ function tree(options: { readonly initialSession?: boolean; readonly children?: 
           initialSession
             ? {
                 kind: 'authenticated',
-                user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-a' },
+                user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-a' },
               }
             : undefined
         }

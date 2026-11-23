@@ -80,7 +80,7 @@ function renderAuth(initial: 'authenticated' | 'resolving' = 'authenticated') {
         initialSession={
           initial === 'resolving'
             ? undefined
-            : { kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } }
+            : { kind: 'authenticated', user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-alice' } }
         }
       >
         <Consumer />

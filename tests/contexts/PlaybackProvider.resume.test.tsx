@@ -109,7 +109,7 @@ function Harness() {
       <AuthProvider
         initialSession={{
           kind: 'authenticated',
-          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-a' },
+          user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-a' },
         }}
       >
         <ToastProvider>
