@@ -6,20 +6,28 @@ import { claimUnnotifiedAchievements } from '@/contexts/seenAchievementsSession'
 import { useLearningCommands } from '@/contexts/useLearningCommands'
 import { useLearningQueries } from '@/contexts/useLearningQueries'
 import { useSfx } from '@/contexts/SfxProvider'
+import { ACHIEVEMENT_IDS } from '@/lib/learning/domain/achievements'
+import type { AchievementId } from '@/lib/learning/domain/achievements'
 import { progress } from '@/lib/learning/domain/weeklyGoal'
 import type { DashboardView, VocabularySummary } from '@/lib/learning/application/readModels'
 import { DIFFICULTY_LABELS } from '@/components/ui/DifficultyBadge'
 import { useToast } from '@/components/ui/Toast'
 
-const ACHIEVEMENT_CATALOG = [
-  { id: 'first_episode_completed', name: '初回エピソード完聴', description: 'はじめてエピソードを最後まで聴く' },
-  { id: 'first_quiz_correct', name: '初回クイズ正解', description: 'はじめて理解度クイズに正解する' },
-  { id: 'streak_7', name: '7 日連続聴取', description: '7 日間連続で聴く' },
-  { id: 'streak_30', name: '30 日連続聴取', description: '30 日間連続で聴く' },
-  { id: 'streak_100', name: '100 日連続聴取', description: '100 日間連続で聴く' },
-  { id: 'completed_10', name: '累計 10 本完聴', description: 'エピソードを累計 10 本聴き終える' },
-  { id: 'completed_50', name: '累計 50 本完聴', description: 'エピソードを累計 50 本聴き終える' },
-] as const
+// id の集合と順は domain の ACHIEVEMENT_IDS が持つ。ここは id → 表示文言の対応だけで、Record の型が key の過不足を検査する。
+const ACHIEVEMENT_TEXTS: Readonly<Record<AchievementId, { readonly name: string; readonly description: string }>> = {
+  first_episode_completed: { name: '初回エピソード完聴', description: 'はじめてエピソードを最後まで聴く' },
+  first_quiz_correct: { name: '初回クイズ正解', description: 'はじめて理解度クイズに正解する' },
+  streak_7: { name: '7 日連続聴取', description: '7 日間連続で聴く' },
+  streak_30: { name: '30 日連続聴取', description: '30 日間連続で聴く' },
+  streak_100: { name: '100 日連続聴取', description: '100 日間連続で聴く' },
+  completed_10: { name: '累計 10 本完聴', description: 'エピソードを累計 10 本聴き終える' },
+  completed_50: { name: '累計 50 本完聴', description: 'エピソードを累計 50 本聴き終える' },
+}
+
+// 通知の id はサーバー由来の string。未知の id は従来どおり toast を出さない（自身の key だけを見て prototype の key を除く）。
+function achievementTextOf(id: string): { readonly name: string; readonly description: string } | undefined {
+  return Object.prototype.hasOwnProperty.call(ACHIEVEMENT_TEXTS, id) ? ACHIEVEMENT_TEXTS[id as AchievementId] : undefined
+}
 
 // 正答率（0-1）を四捨五入した % 表記へ整形する（ADR-072: quiz.averageCorrectRate / trend 用）。
 // 小さな用途のため lib/presentation/format.ts に切り出さず、このページに閉じる。
@@ -47,9 +55,9 @@ export default function DashboardPage() {
       if (newlyUnlocked.length > 0) {
         play('achievement')
         for (const id of newlyUnlocked) {
-          const catalogEntry = ACHIEVEMENT_CATALOG.find((item) => item.id === id)
-          if (catalogEntry) {
-            showToast(`実績を解錠しました：${catalogEntry.name}`, 'success')
+          const text = achievementTextOf(id)
+          if (text) {
+            showToast(`実績を解錠しました：${text.name}`, 'success')
           }
         }
         await commands.markAchievementsSeen(newlyUnlocked)
@@ -225,16 +233,17 @@ export default function DashboardPage() {
           <h2 className="settings-section-title">実績</h2>
         </div>
         <div className="achievement-list">
-          {ACHIEVEMENT_CATALOG.map((catalogItem) => {
-            const unlocked = unlockedById.get(catalogItem.id)
+          {ACHIEVEMENT_IDS.map((id) => {
+            const unlocked = unlockedById.get(id)
+            const text = ACHIEVEMENT_TEXTS[id]
             return (
               <article
-                key={catalogItem.id}
+                key={id}
                 className={unlocked ? 'achievement-item unlocked' : 'achievement-item locked'}
               >
                 <div>
-                  <h3>{catalogItem.name}</h3>
-                  <p>{catalogItem.description}</p>
+                  <h3>{text.name}</h3>
+                  <p>{text.description}</p>
                 </div>
                 {unlocked && <span>解錠: {unlocked.unlockedAt}</span>}
               </article>
