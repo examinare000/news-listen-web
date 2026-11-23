@@ -27,7 +27,7 @@ export function authView(session: AuthSession): AuthView {
       ? Object.freeze({
           username: session.user.username,
           role: session.user.role,
-          display_name: session.user.display_name,
+          displayName: session.user.displayName,
           userId: session.user.userId,
         })
       : null

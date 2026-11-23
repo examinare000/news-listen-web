@@ -81,7 +81,7 @@ const ALL_METHODS = [
 
 const SESSION: SessionRow = { id: 's1', deviceLabel: 'Chrome', createdAt: '2026-01-01T00:00:00Z', lastUsedAt: null, isCurrent: true }
 const PASSKEY: PasskeyRow = { credentialId: 'c1', name: 'MacBook', createdAt: '2026-02-01T00:00:00Z', lastUsedAt: null }
-const USER = { username: 'u', role: 'user', display_name: 'U', userId: 'u-1' } as const
+const USER = { username: 'u', role: 'user', displayName: 'U', userId: 'u-1' } as const
 const OK_VOID = { ok: true, value: undefined } as const
 
 function harness() {

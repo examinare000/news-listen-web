@@ -6,7 +6,7 @@
 // RED 理由（実装前）: `@/lib/preferences/application/localSettings` が無い（module not found）。
 import { describe, expect, test, vi } from 'vitest'
 import { createLocalSettings } from '@/lib/preferences/application/localSettings'
-import type { LocalSettingsStorage } from '@/lib/preferences/application/localSettings'
+import type { LocalSettingsStorage } from '@/lib/preferences/application/ports'
 import {
   defaultPlaybackSpeed,
   theme,

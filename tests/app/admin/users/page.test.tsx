@@ -43,7 +43,7 @@ function callsTo(method: string, path: string) {
 }
 
 const authOverride = vi.hoisted(() => ({
-  current: { username: 'admin', role: 'admin', display_name: 'Admin' },
+  current: { username: 'admin', role: 'admin', displayName: 'Admin' },
 }))
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({ view: { kind: 'authenticated', user: authOverride.current }, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), refreshMe: vi.fn() }),
@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   gw = createGatewayDouble()
   holder.gw = gw
-  authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
+  authOverride.current = { username: 'admin', role: 'admin', displayName: 'Admin' }
   gw.respond('GET', USERS_PATH, {
     ok: true,
     value: {
@@ -168,7 +168,7 @@ describe('AdminUsersPage', () => {
   })
 
   test('non-admin sees a forbidden message', async () => {
-    authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
+    authOverride.current = { username: 'bob', role: 'user', displayName: 'Bob' }
     renderPage()
     expect(screen.getByText(/管理者のみ利用できます/)).toBeInTheDocument()
     expect(callsTo('GET', USERS_PATH)).toHaveLength(0)

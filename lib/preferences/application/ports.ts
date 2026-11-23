@@ -21,6 +21,14 @@ export type PreferencesPatch =
   | { readonly kind: 'weeklyGoal'; readonly value: WeeklyGoalChoice }
   | { readonly kind: 'defaultPlaybackSpeed'; readonly value: PlaybackSpeed }
 
+/** 設定の保存先の port。key・codec は infrastructure が持ち、application は値だけを扱う。 */
+export interface LocalSettingsStorage {
+  readonly read: <T>(setting: SettingDescriptor<T>) => T
+  readonly write: <T>(setting: SettingDescriptor<T>, value: T) => T
+  /** 主体依存の key だけを消す。既定値は書き戻さない（shared-dec-02）。 */
+  readonly clearSubjectScoped: () => void
+}
+
 /** 端末設定への書込の port。実装は composition root が registry の get・set で渡す。 */
 export interface LocalSettingsPort {
   get<T>(setting: SettingDescriptor<T>): T

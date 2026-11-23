@@ -59,7 +59,7 @@ vi.mock('@/contexts/PlaybackProvider', () => ({
 // AccountSection が useAuth を使うためモックする（管理者ユーザーでログイン中とする）。
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({
-    view: { kind: 'authenticated', user: { username: 'admin', role: 'admin', display_name: 'Admin' } },
+    view: { kind: 'authenticated', user: { username: 'admin', role: 'admin', displayName: 'Admin' } },
     login: vi.fn(),
     logout: vi.fn(),
     refreshMe: vi.fn(),

@@ -31,7 +31,7 @@ function toUser(dto: AuthUser): AuthSessionUser {
   return {
     username: dto.username,
     role: dto.role,
-    display_name: dto.display_name,
+    displayName: dto.display_name,
     userId: subjectOf(dto.user_id).userId,
   }
 }

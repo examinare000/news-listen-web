@@ -51,7 +51,7 @@ export function AccountSection() {
   const supportsPasskey = usePasskeySupport()
   const router = useRouter()
 
-  const [displayName, setDisplayName] = useState(view.user?.display_name ?? '')
+  const [displayName, setDisplayName] = useState(view.user?.displayName ?? '')
   const [profileMsg, setProfileMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null)
 
   const [currentPassword, setCurrentPassword] = useState('')

@@ -13,7 +13,7 @@ const SESSIONS: Record<AuthSession['kind'], AuthSession> = {
   unavailable: { kind: 'unavailable', failure: { reason: 'network' } },
   authenticated: {
     kind: 'authenticated',
-    user: { username: 'u', role: 'user', display_name: 'U', userId: 'id-1' },
+    user: { username: 'u', role: 'user', displayName: 'U', userId: 'id-1' },
   },
 }
 const KINDS: ReadonlyArray<AuthSession['kind']> = ['resolving', 'anonymous', 'unavailable', 'authenticated']

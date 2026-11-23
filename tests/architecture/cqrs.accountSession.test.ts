@@ -65,7 +65,7 @@ void typeProbes
 // ---------------------------------------------------------------------------
 // 呼出を記録する fake（query が副作用を起こせば記録に残る）
 // ---------------------------------------------------------------------------
-const USER: AuthSessionUser = { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-1' }
+const USER: AuthSessionUser = { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-1' }
 const unused = (): never => {
   throw new Error('この test では使わない')
 }

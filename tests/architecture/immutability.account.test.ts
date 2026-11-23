@@ -53,41 +53,41 @@ describe('reduce: authenticated の user は入力の複製で、入れ子まで
     const user = {
       username: 'alice',
       role: 'user' as 'admin' | 'user',
-      display_name: 'Alice',
+      displayName: 'Alice',
       userId: 'u-alice' as string | null,
     }
     const next = reduce(RESOLVING_SESSION, { type: 'resolved', user })
 
     user.username = 'mallory'
     user.role = 'admin'
-    user.display_name = 'Mallory'
+    user.displayName = 'Mallory'
     user.userId = 'u-mallory'
 
     expect(next).toEqual({
       kind: 'authenticated',
-      user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
+      user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-alice' },
     })
     expectDeeplyFrozen('resolved', next)
   })
 
   test('signedIn(user) も入力の複製で凍結される', () => {
-    const user = { username: 'bob', role: 'admin' as 'admin' | 'user', display_name: 'Bob', userId: 'u-bob' }
+    const user = { username: 'bob', role: 'admin' as 'admin' | 'user', displayName: 'Bob', userId: 'u-bob' }
     const next = reduce(RESOLVING_SESSION, { type: 'signedIn', user })
 
     user.role = 'user'
 
     expect(next).toEqual({
       kind: 'authenticated',
-      user: { username: 'bob', role: 'admin', display_name: 'Bob', userId: 'u-bob' },
+      user: { username: 'bob', role: 'admin', displayName: 'Bob', userId: 'u-bob' },
     })
     expectDeeplyFrozen('signedIn', next)
   })
 
-  test('user の余分な property は複製に含めない（username・role・display_name・userId の 4 つだけ）', () => {
+  test('user の余分な property は複製に含めない（username・role・displayName・userId の 4 つだけ）', () => {
     const user = {
       username: 'alice',
       role: 'user' as const,
-      display_name: 'Alice',
+      displayName: 'Alice',
       userId: 'u-alice',
       password: 'leak',
       extra: 1,
@@ -96,13 +96,13 @@ describe('reduce: authenticated の user は入力の複製で、入れ子まで
 
     expect(next.kind).toBe('authenticated')
     if (next.kind !== 'authenticated') return
-    expect(Object.keys(next.user).sort()).toEqual(['display_name', 'role', 'userId', 'username'])
+    expect(Object.keys(next.user).sort()).toEqual(['displayName', 'role', 'userId', 'username'])
   })
 
   test('web-dec-78: userId を含む user を書き換えようとしても次の読みは変わらない（null の userId も複製する）', () => {
     const next = reduce(RESOLVING_SESSION, {
       type: 'resolved',
-      user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' },
+      user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-alice' },
     })
     expect(next.kind).toBe('authenticated')
     if (next.kind !== 'authenticated') return
@@ -113,13 +113,13 @@ describe('reduce: authenticated の user は入力の複製で、入れ子まで
 
     const noSubject = reduce(RESOLVING_SESSION, {
       type: 'signedIn',
-      user: { username: 'bob', role: 'user', display_name: 'Bob', userId: null },
+      user: { username: 'bob', role: 'user', displayName: 'Bob', userId: null },
     })
     expect(noSubject.kind === 'authenticated' && noSubject.user.userId).toBeNull()
   })
 
   test('戻り値を書き換えようとしても次の呼出結果は変わらない', () => {
-    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
+    const user = { username: 'alice', role: 'user' as const, displayName: 'Alice', userId: 'u-alice' }
     const first = reduce(RESOLVING_SESSION, { type: 'resolved', user })
     expect(() => {
       ;(first as unknown as { kind: string }).kind = 'anonymous'
@@ -175,7 +175,7 @@ describe('validatePassword の戻り値は凍結済み (verifies: ADR-101)', () 
 
 describe('authView は呼ぶたびに別の凍結済みの値で、入力と参照を共有しない (verifies: web-check-06, web-query-account-01)', () => {
   test('web-check-06 — authenticated・anonymous・unavailable の値が全深さで凍結され、session.user と参照を共有しない', () => {
-    const user = { username: 'alice', role: 'user' as const, display_name: 'Alice', userId: 'u-alice' }
+    const user = { username: 'alice', role: 'user' as const, displayName: 'Alice', userId: 'u-alice' }
     const authenticated = authView({ kind: 'authenticated', user })
 
     expectDeeplyFrozen('authenticated', authenticated)

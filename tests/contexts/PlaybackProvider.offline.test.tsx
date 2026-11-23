@@ -107,7 +107,7 @@ function renderProvider() {
       <AuthProvider
         initialSession={{
           kind: 'authenticated',
-          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'user-test' },
+          user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'user-test' },
         }}
       >
         <ToastProvider>

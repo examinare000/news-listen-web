@@ -1,6 +1,6 @@
 import { describe, test, expect } from 'vitest'
 import { formatDuration, formatDate, formatRelativeTime, formatAuthUserLabel, formatRetryAfter, formatBytes } from '@/lib/presentation/format'
-import type { AuthUser } from '@/lib/api/dto'
+import type { AuthSessionUser } from '@/lib/account/domain/authSession'
 
 // ==========================================================
 // formatDuration(seconds: number): string
@@ -212,26 +212,26 @@ describe('formatRelativeTime', () => {
 })
 
 // ==========================================================
-// formatAuthUserLabel(user: AuthUser | null): string
+// formatAuthUserLabel(user: AuthSessionUser | null): string
 // ユーザー認証ラベルの表示形式を共通化。AccountSection と SidebarAccount で流用。
 // ==========================================================
 describe('formatAuthUserLabel', () => {
-  test('Given authenticated user, returns formatted label "display_name（username / role）"', () => {
-    const user: AuthUser = {
-      user_id: 'u-taro',
+  test('Given authenticated user, returns formatted label "displayName（username / role）"', () => {
+    const user: AuthSessionUser = {
+      userId: 'u-taro',
       username: 'taro',
       role: 'user',
-      display_name: '山田太郎',
+      displayName: '山田太郎',
     }
     expect(formatAuthUserLabel(user)).toBe('山田太郎（taro / user）')
   })
 
   test('Given admin user, returns formatted label with admin role', () => {
-    const user: AuthUser = {
-      user_id: 'u-admin-alice',
+    const user: AuthSessionUser = {
+      userId: 'u-admin-alice',
       username: 'admin-alice',
       role: 'admin',
-      display_name: 'Alice Admin',
+      displayName: 'Alice Admin',
     }
     expect(formatAuthUserLabel(user)).toBe('Alice Admin（admin-alice / admin）')
   })
@@ -240,8 +240,8 @@ describe('formatAuthUserLabel', () => {
     expect(formatAuthUserLabel(null)).toBe('—')
   })
 
-  test('web-dec-82: user_id の無い { username, role, display_name } と userId 付きの値のどちらにも同じ文字列を返す', () => {
-    const withoutId = { username: 'taro', role: 'user' as const, display_name: '山田太郎' }
+  test('web-dec-82: userId の無い { username, role, displayName } と userId 付きの値のどちらにも同じ文字列を返す', () => {
+    const withoutId = { username: 'taro', role: 'user' as const, displayName: '山田太郎' }
     const sessionUser = { ...withoutId, userId: 'u-taro' }
     expect(formatAuthUserLabel(withoutId)).toBe('山田太郎（taro / user）')
     expect(formatAuthUserLabel(sessionUser)).toBe('山田太郎（taro / user）')
