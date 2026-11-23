@@ -1,20 +1,12 @@
 'use client'
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
+import React, { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react'
 import type { ApiFailure } from '@/lib/shared/apiFailure'
 import type { Result } from '@/lib/shared/result'
-import {
-  RESOLVING_SESSION,
-  reduce,
-  type AuthEvent,
-  type AuthSession,
-  type AuthSessionUser,
-} from '@/lib/account/domain/authSession'
-import { subjectOf, type Subject } from '@/lib/account/domain/subject'
-import { createSubjectCleanup } from '@/lib/account/application/subjectCleanup'
-import { authView, type AuthView } from '@/lib/account/application/readModels'
-import { loginWithPasskey as passkeyLogin } from '@/lib/account/application/passkey'
-import type { AccountGateway, RegisterForm, WebAuthnPort } from '@/lib/account/application/ports'
+import type { AuthSession } from '@/lib/account/domain/authSession'
+import type { AuthView } from '@/lib/account/application/readModels'
+import type { RegisterForm, WebAuthnPort } from '@/lib/account/application/ports'
+import { createAccountSession, type RefreshMeResult } from '@/lib/account/application/accountSession'
 import { createAccountGateway } from '@/lib/account/infrastructure/accountGateway'
 import { createGateway } from '@/lib/api/gateway'
 import { createNotificationsCommands } from '@/lib/notifications/application/commands'
@@ -22,7 +14,7 @@ import { createNotificationsGateway } from '@/lib/notifications/infrastructure/n
 import { ApiClientProvider } from '@/contexts/ApiClientProvider'
 import { usePreferences } from '@/contexts/PreferencesProvider'
 import { createPreferencesQueries } from '@/lib/preferences/application/queries'
-import { defaultPlaybackSpeed } from '@/lib/preferences/domain/settings'
+import { createSubjectSpeedCopy } from '@/lib/preferences/application/subjectSpeedCopy'
 import { createPreferencesGateway } from '@/lib/preferences/infrastructure/preferencesGateway'
 import { createLocalPositionStore } from '@/lib/playback/infrastructure/localPositionStore'
 import { deleteSubjectAudio, reclaimAudioCaches } from '@/lib/playback/infrastructure/offlineLibrary'
@@ -36,10 +28,7 @@ import { clearManagedServiceWorkerCaches } from '@/lib/platform/swCacheCleanup'
 // サーバーサイドセッション方式のため、トークンは httpOnly Cookie に保持され
 // JS からは読めない。ログイン可否は GET /auth/me の成否で判定する。
 
-// web-contract-18 の失効 cleanup の発火条件（2026-09-17 user 裁定で候補 (b)）: refreshMe が失効（401）を検知したときの
-// SW 管理キャッシュ（shell-*/api-*）消去結果。'skipped' は 401 以外（成功・network error 等）で
-// cleanup 自体を行っていないことを表す。
-export type RefreshMeResult = { cleanup: 'done' | 'incomplete' | 'skipped' }
+export type { RefreshMeResult }
 
 interface AuthProviderValue {
   /** 認証状態の正本（判別共用体）。 */
@@ -76,278 +65,76 @@ interface AuthProviderProps {
   webAuthnPort?: WebAuthnPort
 }
 
-// getMe の失敗を事象に分類する（web-dec-67）。401 だけが未認証で、それ以外は一時障害。
-function classifyGetMeFailure(failure: ApiFailure): AuthEvent {
-  switch (failure.kind) {
-    case 'unauthorized':
-      return { type: 'unauthorized' }
-    case 'network':
-    case 'timeout':
-      return { type: 'failed', failure: { reason: 'network' } }
-    case 'server':
-      return { type: 'failed', failure: { reason: 'server' } }
-    default:
-      return { type: 'failed', failure: { reason: 'unknown' } }
-  }
-}
-
-// getMe の結果か reject を、成功の user か失敗の事象にまとめる。
-async function resolveMe(account: AccountGateway): Promise<Result<AuthSessionUser, AuthEvent>> {
-  try {
-    const result = await account.getMe()
-    return result.ok ? result : { ok: false, failure: classifyGetMeFailure(result.failure) }
-  } catch {
-    return { ok: false, failure: { type: 'failed', failure: { reason: 'unknown' } } }
-  }
-}
-
 export function AuthProvider({ children, initialSession, webAuthnPort }: AuthProviderProps) {
   const { ready, clearSubjectScoped, get, set } = usePreferences()
-  // この gateway を自身の呼出と ApiClientProvider の両方で使う（AuthProvider の内側の Provider は自分から読めない）。
-  const [gateway] = useState(() => createGateway())
-  const [accountGateway] = useState(() => createAccountGateway(gateway))
-  // 内側の Provider の hook は使えないので、accountGateway と同じく直接組み立てる（web-dec-130）。
-  const [preferencesQueries] = useState(() => createPreferencesQueries({ gateway: createPreferencesGateway(gateway) }))
-  const [webAuthn] = useState(() => webAuthnPort ?? createRealWebAuthnBrowserPort())
-  const [session, setSession] = useState<AuthSession>(initialSession ?? RESOLVING_SESSION)
-  // 直前の状態を同期に読むため、state の値を ref にも持つ。dispatch の中で更新するので、再描画を待たずに同時の 2 件目が最新の値を見る。
-  const sessionRef = useRef<AuthSession>(session)
-  const dispatch = useCallback((event: AuthEvent) => {
-    const next = reduce(sessionRef.current, event)
-    sessionRef.current = next
-    setSession(next)
-  }, [])
-
-  // 主体は session の外の ref で持つ: unavailable をまたいで A を保つ必要があり、session からは導けない（web-dec-80）。
-  const lastSubjectRef = useRef<Subject | null>(
-    initialSession?.kind === 'authenticated' ? subjectOf(initialSession.user.userId) : null,
-  )
-  // 起動時の回収は mount につき最初の確定事象で 1 回だけ（shared-leave-08・09）。
-  const reclaimedRef = useRef(false)
-  // 写しが書いた主体の userId（値は持たない）。主体の切替・logout・expiry で外す。
-  // 主体離脱の後始末が写しの後に走ったとき、現在の主体の値を消さないための印。
-  const copiedForRef = useRef<string | null>(null)
-  const leaveStepRef = useRef<(() => void | Promise<void>) | null>(null)
-
-  const currentUserId = useCallback(() => lastSubjectRef.current?.userId ?? null, [])
-
-  const registerSubjectLeaveStep = useCallback((stop: () => void | Promise<void>) => {
-    leaveStepRef.current = stop
-    return () => {
-      if (leaveStepRef.current === stop) leaveStepRef.current = null
-    }
-  }, [])
-
-  // 手順の組み立ては呼出時に行う（render の間に ref を読む関数を渡さないため）。
-  const subjectCleanup = useCallback(
-    (subject: Subject, options: { readonly audio: boolean }) => {
-      const localPositions = createLocalPositionStore(createBrowserKeyValueStore())
-      return createSubjectCleanup({
-        deleteAudio: (userId) => deleteSubjectAudio(createBrowserCacheStore(), userId),
-        stopPlayback: () => leaveStepRef.current?.(),
-        clearServiceWorkerCaches: () => clearManagedServiceWorkerCaches(),
-        clearSubjectSettings: () => {
-          // B の写しが A の後始末より先に書いていたら、clear が B の値まで消す。直前の現在値を読んでおき、直後に戻す。
-          // 写しが保持した値でなく現在値を使うのは、その後に B が変えた値を古い値で上書きしないため。
-          const current = get(defaultPlaybackSpeed)
-          clearSubjectScoped()
-          const now = lastSubjectRef.current?.userId ?? null
-          if (now !== subject.userId && copiedForRef.current !== null && copiedForRef.current === now) {
-            set(defaultPlaybackSpeed, current)
-          }
-          if (subject.userId !== null) localPositions.clearSubject(subject.userId)
-          // 既読の実績は Learning の store が持つ（registry の管轄外）。保存に失敗した記憶も空にする。
-          createBrowserSeenAchievementsStore().clear()
+  // gateway は自身の呼出と ApiClientProvider の両方で使う（AuthProvider の内側の Provider は自分から読めない）。
+  // 認証 session の状態と規則は application が持つ。ここは infrastructure の組立てと注入だけを行う（1 回だけ）。
+  const [{ gateway, account }] = useState(() => {
+    const apiGateway = createGateway()
+    const accountGateway = createAccountGateway(apiGateway)
+    // 内側の Provider の hook は使えないので、accountGateway と同じく直接組み立てる（web-dec-130）。
+    const preferencesQueries = createPreferencesQueries({ gateway: createPreferencesGateway(apiGateway) })
+    const speed = createSubjectSpeedCopy({ queries: preferencesQueries, local: { get, set, clearSubjectScoped } })
+    const created = createAccountSession({
+      gateway: accountGateway,
+      webAuthn: webAuthnPort ?? createRealWebAuthnBrowserPort(),
+      // 手順の組立ては後始末のたびに行う（render の間に store を作らない）。
+      cleanupSteps: (subject, currentUserId) => {
+        const localPositions = createLocalPositionStore(createBrowserKeyValueStore())
+        return {
+          deleteAudio: (userId) => deleteSubjectAudio(createBrowserCacheStore(), userId),
+          clearServiceWorkerCaches: () => clearManagedServiceWorkerCaches(),
+          clearSubjectSettings: () => {
+            speed.clearAfterLeave(subject.userId, currentUserId())
+            if (subject.userId !== null) localPositions.clearSubject(subject.userId)
+            // 既読の実績は Learning の store が持つ（registry の管轄外）。保存に失敗した記憶も空にする。
+            createBrowserSeenAchievementsStore().clear()
+          },
+        }
+      },
+      reclaim: {
+        positions: (userId) => {
+          createLocalPositionStore(createBrowserKeyValueStore()).reclaim(userId)
         },
-      })(subject, options)
-    },
-    [clearSubjectScoped, get, set],
-  )
-
-  // authenticated に確定した主体のサーバーの既定速度を端末へ写す。結果は捨て、呼び手は待たない。
-  // 失敗は握る（端末の値のまま。次の契機で再び写す）。書く直前に主体を照合し、別の主体の遅れた結果は書かない。
-  const copyServerPlaybackSpeed = useCallback(async (): Promise<void> => {
-    const startedFor = lastSubjectRef.current?.userId ?? null
-    try {
-      const result = await preferencesQueries.getServerPreferences()
-      if (!result.ok) return
-      const current = lastSubjectRef.current
-      if (current === null || current.userId !== startedFor) return
-      set(defaultPlaybackSpeed, result.value.defaultPlaybackSpeed)
-      copiedForRef.current = startedFor
-    } catch {
-      // 端末の値のまま。次の契機で再び写す。
-    }
-  }, [preferencesQueries, set])
-
-  // 最初の確定事象でだけ回収を始める。フラグは事象の処理の中で同期に立てる（effect と手動の refreshMe が並行しても 2 回走らない）。
-  // 失敗は無視する: 回収は次回起動でも収束し、状態遷移と RefreshMeResult に影響しない。
-  const reclaimOnce = useCallback((): Promise<void> => {
-    if (reclaimedRef.current) return Promise.resolve()
-    reclaimedRef.current = true
-    // 位置の回収は同期で行い、音声キャッシュの回収（非同期）の失敗や待ちに左右させない。
-    try {
-      createLocalPositionStore(createBrowserKeyValueStore()).reclaim(currentUserId())
-    } catch {
-      // 次回起動の回収で収束する。
-    }
-    return (async () => {
-      try {
-        await reclaimAudioCaches(createBrowserCacheStore(), currentUserId)
-      } catch {
-        // 次回起動の回収で収束する。
-      }
-    })()
-  }, [currentUserId])
-
-  // 失効（unauthorized）の後始末。refreshMe の 401 と expire が共有する。
-  const cleanupAfterExpiry = useCallback(async (): Promise<RefreshMeResult> => {
-    const previous = lastSubjectRef.current
-    lastSubjectRef.current = null
-    copiedForRef.current = null
-    const reclaiming = reclaimOnce()
-    let result: RefreshMeResult
-    if (previous !== null) {
-      // 実行中の 401 では音声を消さない（次回起動の回収が消す。web-dec-83）。
-      result = { cleanup: (await subjectCleanup(previous, { audio: false })).ok ? 'done' : 'incomplete' }
-    } else {
-      try {
-        await clearManagedServiceWorkerCaches()
-        result = { cleanup: 'done' }
-      } catch {
-        // キャッシュ消去の失敗は状態遷移を妨げない（observable な incomplete を返すのみ）。
-        result = { cleanup: 'incomplete' }
-      }
-    }
-    await reclaiming
-    return result
-  }, [reclaimOnce, subjectCleanup])
-
-  const refreshMe = useCallback(async (): Promise<RefreshMeResult> => {
-    const resolved = await resolveMe(accountGateway)
-    if (!resolved.ok) {
-      const event = resolved.failure
-      dispatch(event)
-      // 失効 cleanup は「実際に失効した」と判定できる 401 のときのみ発火する。
-      // 通信断や 401 以外では shell-*/api-* を残す
-      // （直前の状態は問わない — 初回 mount の自動解決でも同じ判定）。
-      if (event.type !== 'unauthorized') return { cleanup: 'skipped' }
-      return cleanupAfterExpiry()
-    }
-    const me = resolved.value
-    if (lastSubjectRef.current?.userId !== me.userId) copiedForRef.current = null
-    lastSubjectRef.current = subjectOf(me.userId)
-    dispatch({ type: 'resolved', user: me })
-    void copyServerPlaybackSpeed()
-    await reclaimOnce()
-    return { cleanup: 'skipped' }
-  }, [accountGateway, dispatch, reclaimOnce, cleanupAfterExpiry, copyServerPlaybackSpeed])
-
-  // Provider 経由の任意 API の unauthorized（ApiClientProvider）。authenticated のときだけ未認証へ移り、後始末を 1 回走らせる。
-  // それ以外の状態では何も動かさない（ログイン失敗の 401 など。shared-leave-05）。結果は捨てる。
-  const expire = useCallback(() => {
-    if (sessionRef.current.kind !== 'authenticated') return
-    dispatch({ type: 'expired' })
-    void cleanupAfterExpiry()
-  }, [dispatch, cleanupAfterExpiry])
-
-  const retry = useCallback(async () => {
-    dispatch({ type: 'retry' })
-    await refreshMe()
-  }, [dispatch, refreshMe])
-
-  // login・register・passkey の成功（遷移④）。B の確立が先で、A の後始末は待たない（shared-dec-28）。
-  const establish = useCallback(
-    (user: AuthSessionUser) => {
-      const previous = lastSubjectRef.current
-      const next = subjectOf(user.userId)
-      if (previous?.userId !== next.userId) copiedForRef.current = null
-      lastSubjectRef.current = next
-      dispatch({ type: 'signedIn', user })
-      void copyServerPlaybackSpeed()
-      const sameSubject = previous !== null && previous.userId !== null && previous.userId === next.userId
-      if (previous !== null && !sameSubject) void subjectCleanup(previous, { audio: true })
-      void reclaimOnce()
-    },
-    [dispatch, reclaimOnce, subjectCleanup, copyServerPlaybackSpeed],
-  )
-
-  const login = useCallback(
-    async (username: string, password: string): Promise<Result<void, ApiFailure>> => {
-      // API の失敗は状態を変えず Result で返す。reject は伝播する。成功時のみ状態を更新する。
-      const res = await accountGateway.login(username, password)
-      if (!res.ok) return res
-      establish(res.value)
-      return { ok: true, value: undefined }
-    },
-    [accountGateway, establish],
-  )
-
-  const register = useCallback(
-    async (form: RegisterForm): Promise<Result<void, ApiFailure>> => {
-      // login と同じ方針: API の失敗は Result で返し、成功時のみ状態を更新する。
-      const res = await accountGateway.register(form)
-      if (!res.ok) return res
-      establish(res.value)
-      return { ok: true, value: undefined }
-    },
-    [accountGateway, establish],
-  )
-
-  const logout = useCallback(async () => {
-    try {
-      await createNotificationsCommands({
-        gateway: createNotificationsGateway(gateway),
-        browser: createRealPushBrowserPort(),
-      }).detachFromSubject()
-    } catch {
-      // 購読行の削除はベストエフォート（決定 23）。失敗した行は次のログイン時の再送で上書きされる。
-    }
-    try {
-      await accountGateway.logout()
-    } catch {
-      // ログアウトはベストエフォート（サーバー失効に失敗してもローカル状態は落とす）。
-    }
-    const previous = lastSubjectRef.current ?? { userId: null }
-    lastSubjectRef.current = null
-    copiedForRef.current = null
-    dispatch({ type: 'loggedOut' })
-    // 後始末の完了は待たず、結果（CleanupIncomplete）も捨てる。端末全体の音声消去は残さない（§6.3 性質 1）。
-    void subjectCleanup(previous, { audio: true })
-  }, [gateway, accountGateway, dispatch, subjectCleanup])
-
-  // 手順（options 取得 → ceremony → verify）は application の use case。port は Provider が 1 つ持つ。
-  const loginWithPasskey = useCallback(async (): Promise<Result<void, ApiFailure>> => {
-    // API の失敗は Result で返し、port の例外は伝播する。成功時のみ状態を更新する。
-    const res = await passkeyLogin(accountGateway, webAuthn)
-    if (!res.ok) return res
-    establish(res.value.user)
-    return { ok: true, value: undefined }
-  }, [accountGateway, webAuthn, establish])
+        audio: (currentUserId) => reclaimAudioCaches(createBrowserCacheStore(), currentUserId),
+      },
+      detachNotifications: async () => {
+        await createNotificationsCommands({
+          gateway: createNotificationsGateway(apiGateway),
+          browser: createRealPushBrowserPort(),
+        }).detachFromSubject()
+      },
+      speed,
+      ...(initialSession === undefined ? {} : { initialSession }),
+    })
+    return { gateway: apiGateway, account: created }
+  })
+  const session = useSyncExternalStore(account.subscribe, account.session, account.session)
+  const view = useSyncExternalStore(account.subscribe, account.view, account.view)
 
   // restore 完了後に /auth/me で認証状態を解決する。
   useEffect(() => {
     if (initialSession) return // テスト時の固定状態を尊重
     if (!ready) return // restore 中は待つ
-    void refreshMe() // eslint-disable-line @typescript-eslint/no-floating-promises
-  }, [ready, refreshMe, initialSession])
+    void account.resolveSession()
+  }, [ready, account, initialSession])
 
   return (
     <AuthSessionContext.Provider
       value={{
         session,
-        view: authView(session),
-        login,
-        register,
-        logout,
-        refreshMe,
-        loginWithPasskey,
-        retry,
-        registerSubjectLeaveStep,
-        currentUserId,
+        view,
+        login: account.login,
+        register: account.register,
+        logout: account.logout,
+        refreshMe: account.resolveSession,
+        loginWithPasskey: account.loginWithPasskey,
+        retry: account.retry,
+        registerSubjectLeaveStep: account.registerSubjectLeaveStep,
+        currentUserId: account.currentUserId,
       }}
     >
-      <ApiClientProvider gateway={gateway} onUnauthorized={expire}>{children}</ApiClientProvider>
+      <ApiClientProvider gateway={gateway} onUnauthorized={account.expire}>{children}</ApiClientProvider>
     </AuthSessionContext.Provider>
   )
 }
