@@ -209,6 +209,34 @@ describe('DashboardPage — display', () => {
     expect(document.querySelectorAll('.achievement-item.locked')).toHaveLength(6)
   })
 
+  test('特性: 実績は 7 件を固定の順で、名前と説明つきで描く。解錠済みだけ unlocked になる', async () => {
+    respondDashboard(POPULATED_DASHBOARD)
+
+    renderDashboard()
+
+    await screen.findByText('実績')
+    const items = [...document.querySelectorAll('.achievement-item')]
+    expect(items.map((item) => item.querySelector('h3')?.textContent)).toEqual([
+      '初回エピソード完聴',
+      '初回クイズ正解',
+      '7 日連続聴取',
+      '30 日連続聴取',
+      '100 日連続聴取',
+      '累計 10 本完聴',
+      '累計 50 本完聴',
+    ])
+    expect(items.map((item) => item.querySelector('p')?.textContent)).toEqual([
+      'はじめてエピソードを最後まで聴く',
+      'はじめて理解度クイズに正解する',
+      '7 日間連続で聴く',
+      '30 日間連続で聴く',
+      '100 日間連続で聴く',
+      'エピソードを累計 10 本聴き終える',
+      'エピソードを累計 50 本聴き終える',
+    ])
+    expect(items.map((item) => item.classList.contains('unlocked'))).toEqual([true, false, false, false, false, false, false])
+  })
+
   test('detects only achievements added after the initial response and emits editorial toast + sound', async () => {
     respondDashboardInOrder(
       { ok: true, value: POPULATED_DASHBOARD },
