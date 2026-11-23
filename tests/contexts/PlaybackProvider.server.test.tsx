@@ -91,7 +91,7 @@ function renderOnServer(playbackSpeed = 1.0): string {
       <AuthProvider
         initialSession={{
           kind: 'authenticated',
-          user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'user-test' },
+          user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'user-test' },
         }}
       >
         <ToastProvider>

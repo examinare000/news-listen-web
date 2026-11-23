@@ -124,7 +124,7 @@ function Consumer({ authRef }: { authRef: AuthRef }) {
 function renderAuth(authRef: AuthRef) {
   return render(
     <PreferencesProvider store={memoryStore()}>
-      <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-alice' } }}>
+      <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-alice' } }}>
         <Consumer authRef={authRef} />
       </AuthProvider>
     </PreferencesProvider>

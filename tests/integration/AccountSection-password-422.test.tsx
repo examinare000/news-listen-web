@@ -17,7 +17,7 @@ const mockLogout = vi.fn()
 const mockRefreshMe = vi.fn()
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: vi.fn(() => ({
-    view: { kind: 'authenticated', user: { username: 'alice', role: 'user' as const, display_name: 'Alice' } },
+    view: { kind: 'authenticated', user: { username: 'alice', role: 'user' as const, displayName: 'Alice' } },
     logout: mockLogout,
     refreshMe: mockRefreshMe,
     loginWithPasskey: vi.fn(),

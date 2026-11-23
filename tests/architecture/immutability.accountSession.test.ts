@@ -10,7 +10,7 @@ import type { AccountSessionDeps } from '@/lib/account/application/accountSessio
 import type { AccountGateway } from '@/lib/account/application/ports'
 import type { AuthSessionUser } from '@/lib/account/domain/authSession'
 
-const USER: AuthSessionUser = { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-1' }
+const USER: AuthSessionUser = { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-1' }
 const unused = (): never => {
   throw new Error('この test では使わない')
 }

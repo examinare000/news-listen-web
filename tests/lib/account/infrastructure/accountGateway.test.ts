@@ -11,7 +11,7 @@ import { createGatewayDouble } from '../../../helpers/gatewayDouble'
 const BASE = '/api/backend/auth'
 const FAILURE: ApiFailure = { kind: 'server', status: 503 }
 const DTO_USER = { user_id: 'u-alice', username: 'alice', role: 'admin', display_name: 'Alice' }
-const MAPPED_USER = { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' }
+const MAPPED_USER = { username: 'alice', role: 'admin', displayName: 'Alice', userId: 'u-alice' }
 
 function setup() {
   const gw = createGatewayDouble()
@@ -19,7 +19,7 @@ function setup() {
 }
 
 describe('createAccountGateway: user の写し（getMe・login・register・verifyPasskeyLogin）', () => {
-  test('web-slice-account-01 — getMe は GET /auth/me を 1 回呼び、user_id を userId にした 4 key に写す', async () => {
+  test('web-slice-account-01 — getMe は GET /auth/me を 1 回呼び、user_id と display_name を内部名にした 4 key に写す', async () => {
     const { gw, account } = setup()
     gw.respond('GET', `${BASE}/me`, { ok: true, value: DTO_USER })
 
@@ -27,7 +27,7 @@ describe('createAccountGateway: user の写し（getMe・login・register・veri
 
     expect(gw.calls).toEqual([{ method: 'GET', path: `${BASE}/me`, body: undefined }])
     expect(result).toEqual({ ok: true, value: MAPPED_USER })
-    if (result.ok) expect(Object.keys(result.value).sort()).toEqual(['display_name', 'role', 'userId', 'username'])
+    if (result.ok) expect(Object.keys(result.value).sort()).toEqual(['displayName', 'role', 'userId', 'username'])
   })
 
   test('web-slice-account-01 — user_id が形式不正または欠落なら userId は null（getMe）', async () => {

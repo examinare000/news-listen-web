@@ -6,7 +6,7 @@ import { describe, expect, test } from 'vitest'
 import { authView } from '@/lib/account/application/readModels'
 import type { AuthSession } from '@/lib/account/domain/authSession'
 
-const USER = { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' } as const
+const USER = { username: 'alice', role: 'admin', displayName: 'Alice', userId: 'u-alice' } as const
 
 const authenticated: AuthSession = { kind: 'authenticated', user: USER }
 
@@ -14,7 +14,7 @@ describe('authView: 4 状態の写し (verifies: web-query-account-01)', () => {
   test('web-query-account-01 — authenticated は kind と user の 4 field を写す', () => {
     expect(authView(authenticated)).toEqual({
       kind: 'authenticated',
-      user: { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' },
+      user: { username: 'alice', role: 'admin', displayName: 'Alice', userId: 'u-alice' },
     })
   })
 
@@ -39,7 +39,7 @@ describe('authView: 4 状態の写し (verifies: web-query-account-01)', () => {
       user: { ...USER, password: 'leak' },
     } as unknown as AuthSession
     const view = authView(withExtra)
-    expect(Object.keys(view.user ?? {}).sort()).toEqual(['display_name', 'role', 'userId', 'username'])
+    expect(Object.keys(view.user ?? {}).sort()).toEqual(['displayName', 'role', 'userId', 'username'])
   })
 
   test('web-query-account-01 — userId が null の user も写す', () => {
@@ -65,10 +65,10 @@ describe('authView: 呼ぶたびに別の凍結済みの値 (verifies: web-query
   })
 
   test('web-query-account-01 — 入力 user を後から書き換えても値は変わらない', () => {
-    const user = { username: 'bob', role: 'user' as 'admin' | 'user', display_name: 'Bob', userId: 'u-bob' as string | null }
+    const user = { username: 'bob', role: 'user' as 'admin' | 'user', displayName: 'Bob', userId: 'u-bob' as string | null }
     const view = authView({ kind: 'authenticated', user })
     user.username = 'mallory'
     user.role = 'admin'
-    expect(view.user).toEqual({ username: 'bob', role: 'user', display_name: 'Bob', userId: 'u-bob' })
+    expect(view.user).toEqual({ username: 'bob', role: 'user', displayName: 'Bob', userId: 'u-bob' })
   })
 })

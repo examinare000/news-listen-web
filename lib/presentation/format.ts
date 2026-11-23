@@ -126,13 +126,13 @@ export function formatBytes(bytes: number): string {
  * Formats an authenticated user to a label string.
  * Used in AccountSection and SidebarAccount to display user info consistently.
  * @param user - The authenticated user, or null for unauthenticated state
- * @returns Formatted label like "display_name（username / role）", or "—" if user is null
+ * @returns Formatted label like "displayName（username / role）", or "—" if user is null
  */
 export function formatAuthUserLabel(
-  user: { readonly username: string; readonly role: UserRole; readonly display_name: string } | null,
+  user: { readonly username: string; readonly role: UserRole; readonly displayName: string } | null,
 ): string {
   if (!user) {
     return '—'
   }
-  return `${user.display_name}（${user.username} / ${user.role}）`
+  return `${user.displayName}（${user.username} / ${user.role}）`
 }

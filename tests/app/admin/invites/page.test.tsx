@@ -44,7 +44,7 @@ function callsTo(method: string, path: string) {
 }
 
 const authOverride = vi.hoisted(() => ({
-  current: { username: 'admin', role: 'admin', display_name: 'Admin' },
+  current: { username: 'admin', role: 'admin', displayName: 'Admin' },
 }))
 vi.mock('@/contexts/AuthProvider', () => ({
   useAuth: () => ({ status: 'authenticated', user: authOverride.current, session: { kind: 'authenticated', user: authOverride.current }, login: vi.fn(), logout: vi.fn(), register: vi.fn(), refreshMe: vi.fn() }),
@@ -68,7 +68,7 @@ beforeEach(() => {
   holder.gw = gw
   writeText.mockClear().mockResolvedValue(undefined)
   Object.assign(navigator, { clipboard: { writeText } })
-  authOverride.current = { username: 'admin', role: 'admin', display_name: 'Admin' }
+  authOverride.current = { username: 'admin', role: 'admin', displayName: 'Admin' }
   gw.respond('GET', INVITES_PATH, {
     ok: true,
     value: {
@@ -92,7 +92,7 @@ beforeEach(() => {
 
 describe('AdminInvitesPage', () => {
   test('non-admin sees a forbidden message and does not load invites', () => {
-    authOverride.current = { username: 'bob', role: 'user', display_name: 'Bob' }
+    authOverride.current = { username: 'bob', role: 'user', displayName: 'Bob' }
     renderPage()
     expect(screen.getByText(/管理者のみ利用できます/)).toBeInTheDocument()
     expect(callsTo('GET', INVITES_PATH)).toHaveLength(0)

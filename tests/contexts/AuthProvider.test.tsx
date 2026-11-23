@@ -905,9 +905,9 @@ describe('遷移④ 主体の交代の後始末 (verifies: web-dec-77, shared-le
 
 describe('session.user の写し (verifies: web-slice-account-01)', () => {
   const DTO = { user_id: 'u-alice', username: 'alice', role: 'admin', display_name: 'Alice' }
-  const MAPPED = { username: 'alice', role: 'admin', display_name: 'Alice', userId: 'u-alice' }
+  const MAPPED = { username: 'alice', role: 'admin', displayName: 'Alice', userId: 'u-alice' }
 
-  test('web-slice-account-01: GET /auth/me の成功で session.user が { username, role, display_name, userId } に全 field で一致する（応答の user_id が userId）', async () => {
+  test('web-slice-account-01: GET /auth/me の成功で session.user が { username, role, displayName, userId } に全 field で一致する（応答の user_id が userId）', async () => {
     gw.respond('GET', ME_PATH, { ok: true, value: DTO })
     renderAuth()
 
@@ -1105,7 +1105,7 @@ describe('認証の確定でサーバーの既定速度を端末へ写す (verif
     respondPrefs(1.0)
     render(
       <PreferencesProvider store={SEEDED_1_5()}>
-        <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', display_name: 'Alice', userId: 'u-a' } }}>
+        <AuthProvider initialSession={{ kind: 'authenticated', user: { username: 'alice', role: 'user', displayName: 'Alice', userId: 'u-a' } }}>
           <SpeedProbe />
         </AuthProvider>
       </PreferencesProvider>,
